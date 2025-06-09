@@ -59,6 +59,7 @@ kotlin {
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.cryptography.provider.jdk)
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -70,6 +71,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.bignum)
+            implementation(libs.cryptography.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -77,6 +79,13 @@ kotlin {
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation(libs.cryptography.provider.jdk)
+        }
+        appleMain.dependencies {
+            implementation(libs.cryptography.provider.apple)
+        }
+        wasmJsMain.dependencies {
+            implementation(libs.cryptography.provider.webcrypto)
         }
     }
 }
