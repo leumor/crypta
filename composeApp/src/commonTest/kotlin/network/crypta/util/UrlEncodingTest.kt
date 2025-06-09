@@ -14,10 +14,10 @@ class UrlEncodingTest {
     }
 
     private fun areCorrectlyEncodedDecoded(toEncode: Array<String>, withLetters: Boolean): Boolean {
-        val encoded = toEncode.map { URLEncoder.encode(it, withLetters) }
+        val encoded = toEncode.map { urlEncode(it, withLetters) }
         for (i in toEncode.indices) {
             val orig = toEncode[i]
-            val decoded = URLDecoder.decode(encoded[i], withLetters)
+            val decoded = urlDecode(encoded[i], withLetters)
             if (orig != decoded) return false
         }
         return true
@@ -32,7 +32,7 @@ class UrlEncodingTest {
     @Test
     fun testEncodeDecodeString_notSafeBaseChars() {
         val toEncode = arrayOf(
-            URLEncoder.SAFE_URL_CHARACTERS,
+            SAFE_URL_CHARACTERS,
             prtblAscii,
             "%%%",
             ""
@@ -50,18 +50,18 @@ class UrlEncodingTest {
 
     @Test
     fun testEncodeForced() {
-        for (c in URLEncoder.SAFE_URL_CHARACTERS) {
+        for (c in SAFE_URL_CHARACTERS) {
             val str = c.toString()
             val expected = "%" + str.encodeToByteArray()
                 .joinToString("") { ((it.toInt() and 0xFF).toString(16)).padStart(2, '0') }
-            assertEquals(expected, URLEncoder.encode(str, str, false))
-            assertEquals(expected, URLEncoder.encode(str, str, true))
+            assertEquals(expected, urlEncode(str, str, false))
+            assertEquals(expected, urlEncode(str, str, true))
         }
     }
 
     private fun isDecodeRaisingEncodedException(toDecode: String, tolerant: Boolean): Boolean {
         return try {
-            URLDecoder.decode(toDecode, tolerant)
+            urlDecode(toDecode, tolerant)
             false
         } catch (e: URLEncodedFormatException) {
             true
@@ -84,6 +84,6 @@ class UrlEncodingTest {
     @Test
     fun testTolerantDecoding() {
         val toDecode = "%%%"
-        assertEquals(toDecode, URLDecoder.decode(toDecode, true))
+        assertEquals(toDecode, urlDecode(toDecode, true))
     }
 }
