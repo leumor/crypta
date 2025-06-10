@@ -16,7 +16,13 @@ value class SecretKey(val bytes: ByteArray) {
 
 enum class CryptoAlgorithm(val value: Int) {
     AES_PCFB_256_SHA256(2),
-    AES_CTR_256_SHA256(3),
+    AES_CTR_256_SHA256(3);
+
+    companion object {
+        private val byValue: Map<Int, CryptoAlgorithm> = entries.associateBy(CryptoAlgorithm::value)
+        fun fromValue(value: Int): CryptoAlgorithm =
+            byValue[value] ?: error("Unknown value: $value")
+    }
 }
 
 /**
