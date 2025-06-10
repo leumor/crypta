@@ -3,6 +3,7 @@ package network.crypta.crypto
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 
 @OptIn(ExperimentalStdlibApi::class)
 class CryptoCipherTest {
@@ -34,6 +35,12 @@ class CryptoCipherTest {
                     "fc1d04b2c1addfb826cca1eab6813127" +
                     "2751b9d6cd536f78059b10b4867dbbd9"
             ).hexToByteArray()
+
+    @Test
+    fun testGenerateSecretKey() {
+        val key = CryptoCipher.generateSecretKey()
+        assertEquals(SECRET_KEY_SIZE, key.bytes.size)
+    }
 
     @Test
     fun testAesCtrKnownValues() {

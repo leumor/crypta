@@ -1,5 +1,24 @@
 package network.crypta.crypto
 
+import dev.whyoleg.cryptography.random.CryptographyRandom
+import kotlin.jvm.JvmInline
+
+const val SECRET_KEY_SIZE = 32
+
+@JvmInline
+value class SecretKey(val bytes: ByteArray) {
+    init {
+        require(bytes.size == SECRET_KEY_SIZE) {
+            "Secret key must be $SECRET_KEY_SIZE bytes"
+        }
+    }
+}
+
+enum class CryptoAlgorithm(val value: Int) {
+    AES_PCFB_256_SHA256(2),
+    AES_CTR_256_SHA256(3),
+}
+
 /**
  * An interface for symmetric ciphers used in the Crypta network.
  *
@@ -66,6 +85,15 @@ interface CryptoCipher {
             CryptoAlgorithm.AES_PCFB_256_SHA256 -> Rijndael256Cipher(key)
             CryptoAlgorithm.AES_CTR_256_SHA256 -> AesCtrCipher(key)
         }
+
+        /**
+         * Generates a new 256-bit [SecretKey] using the default cryptographic random source.
+         */
+        fun generateSecretKey(random: CryptographyRandom = CryptographyRandom.Default): SecretKey {
+            val bytes = ByteArray(SECRET_KEY_SIZE)
+            random.nextBytes(bytes)
+            return SecretKey(bytes)
+        }
     }
 }
 
@@ -78,9 +106,4 @@ interface CryptoCipher {
  */
 interface CryptoCipherStream {
     fun update(data: ByteArray, offset: Int = 0, length: Int = data.size): ByteArray
-}
-
-enum class CryptoAlgorithm(val value: Int) {
-    AES_PCFB_256_SHA256(2),
-    AES_CTR_256_SHA256(3),
 }
