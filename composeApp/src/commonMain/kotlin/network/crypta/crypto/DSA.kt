@@ -91,8 +91,11 @@ class DSA(
         var kVal = k ?: randomK()
         var r: BigInteger
         var s = BigInteger.ZERO
-        // h = H(m), where H is the hash function (SHA-1).
-        val h = BigInteger.fromByteArray(Sha1.digest(message), Sign.POSITIVE)
+        // h = H(m), where H is the chosen hash function (SHA-1).
+        val h = BigInteger.fromByteArray(
+            Hash.digest(HashAlgorithm.SHA1, message),
+            Sign.POSITIVE
+        )
 
         // Per FIPS 186-4, Section 4.6, step 5: In the unlikely event that r=0 or s=0,
         // a new value of k must be generated and the signature recomputed.
@@ -136,8 +139,11 @@ class DSA(
         if (r <= BigInteger.ZERO || r >= q) return false
         if (s <= BigInteger.ZERO || s >= q) return false
 
-        // h = H(m), where H is the hash function (SHA-1).
-        val h = BigInteger.fromByteArray(Sha1.digest(message), Sign.POSITIVE)
+        // h = H(m), where H is the chosen hash function (SHA-1).
+        val h = BigInteger.fromByteArray(
+            Hash.digest(HashAlgorithm.SHA1, message),
+            Sign.POSITIVE
+        )
 
         // w = s'^-1 mod q
         val w = s.modInverse(q)

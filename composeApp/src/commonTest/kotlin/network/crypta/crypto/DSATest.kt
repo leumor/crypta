@@ -1,10 +1,10 @@
 package network.crypta.crypto
 
 import com.ionspin.kotlin.bignum.integer.BigInteger
-import kotlin.test.Test
 import com.ionspin.kotlin.bignum.integer.Sign
-import kotlin.test.assertFailsWith
+import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class DSATest {
@@ -41,6 +41,7 @@ class DSATest {
         assertEquals(expectedS, s)
         assertTrue(dsa.verify(message, y, r, s))
     }
+
     @Test
     fun testGenerateKeyPair() {
         val (pub, priv) = dsa.generateKeyPair()
