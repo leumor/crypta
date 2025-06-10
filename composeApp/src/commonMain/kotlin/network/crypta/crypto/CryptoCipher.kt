@@ -1,7 +1,5 @@
 package network.crypta.crypto
 
-import network.crypta.entry.key.CryptoAlgorithm
-
 /**
  * An interface for symmetric ciphers used in the Crypta network.
  *
@@ -80,4 +78,9 @@ interface CryptoCipher {
  */
 interface CryptoCipherStream {
     fun update(data: ByteArray, offset: Int = 0, length: Int = data.size): ByteArray
+}
+
+enum class CryptoAlgorithm(val value: Int) {
+    AES_PCFB_256_SHA256(2),
+    AES_CTR_256_SHA256(3),
 }

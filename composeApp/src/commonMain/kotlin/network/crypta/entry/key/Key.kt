@@ -1,9 +1,10 @@
 package network.crypta.entry.key
 
+import network.crypta.crypto.CryptoAlgorithm
 import kotlin.jvm.JvmInline
 
 const val ROUTING_KEY_SIZE = 32
-const val DECRYPTION_KEY_SIZE = 32
+const val SHARED_KEY_SIZE = 32
 
 
 @JvmInline
@@ -16,17 +17,12 @@ value class RoutingKey(val bytes: ByteArray) {
 }
 
 @JvmInline
-value class DecryptionKey(val bytes: ByteArray) {
+value class SharedKey(val bytes: ByteArray) {
     init {
-        require(bytes.size == DECRYPTION_KEY_SIZE) {
-            "Decryption key must be $DECRYPTION_KEY_SIZE bytes"
+        require(bytes.size == SHARED_KEY_SIZE) {
+            "Decryption key must be $SHARED_KEY_SIZE bytes"
         }
     }
-}
-
-enum class CryptoAlgorithm(val value: Int) {
-    AES_PCFB_256_SHA256(2),
-    AES_CTR_256_SHA256(3),
 }
 
 enum class CompressionAlgorithm(val value: Int) {
