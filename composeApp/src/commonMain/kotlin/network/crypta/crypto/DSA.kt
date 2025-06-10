@@ -2,7 +2,30 @@ package network.crypta.crypto
 
 import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.ionspin.kotlin.bignum.integer.Sign
+import kotlin.jvm.JvmInline
 import kotlin.random.Random
+
+const val DSA_PUBLIC_KEY_SIZE = 128
+const val DSA_PRIVATE_KEY_SIZE = 20
+
+@JvmInline
+value class DSAPublicKey(val bytes: ByteArray) {
+    init {
+        require(bytes.size == DSA_PUBLIC_KEY_SIZE) {
+            "DSA public key must be $DSA_PUBLIC_KEY_SIZE bytes"
+        }
+    }
+}
+
+@JvmInline
+value class DSAPrivateKey(val bytes: ByteArray) {
+    init {
+        require(bytes.size == DSA_PRIVATE_KEY_SIZE) {
+            "DSA private key must be $DSA_PRIVATE_KEY_SIZE bytes"
+        }
+    }
+}
+
 
 /**
  * A minimal implementation of the Digital Signature Algorithm (DSA) for Kotlin
@@ -23,6 +46,21 @@ class DSA(
     val q: BigInteger,
     val g: BigInteger
 ) {
+    /**
+     * Generates a new DSA key pair.
+     *
+     * The private key is a random integer in the range `[1, q-1]` and the
+     * public key is calculated as `g^x mod p`. The resulting byte arrays are
+     * padded to the standard key lengths.
+     */
+    fun generateKeyPair(): Pair<DSAPublicKey, DSAPrivateKey> {
+        val x = randomK()
+        val y = modPow(g, x, p)
+        val pub = DSAPublicKey(y.toFixedLength(DSA_PUBLIC_KEY_SIZE))
+        val priv = DSAPrivateKey(x.toFixedLength(DSA_PRIVATE_KEY_SIZE))
+        return pub to priv
+    }
+
     /**
      * Creates a digital signature for a given message.
      *
@@ -132,6 +170,18 @@ class DSA(
             k = BigInteger.fromByteArray(bytes, Sign.POSITIVE).mod(q)
         } while (k == BigInteger.ZERO)
         return k
+    }
+
+    /**
+     * Converts this [BigInteger] to a fixed-length big-endian byte array.
+     * The resulting array is left padded with zeros when necessary.
+     */
+    private fun BigInteger.toFixedLength(length: Int): ByteArray {
+        val raw = toByteArray()
+        require(raw.size <= length) { "Integer does not fit in $length bytes" }
+        val result = ByteArray(length)
+        raw.copyInto(result, destinationOffset = length - raw.size)
+        return result
     }
 
     /**

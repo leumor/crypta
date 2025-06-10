@@ -2,6 +2,8 @@ package network.crypta.crypto
 
 import com.ionspin.kotlin.bignum.integer.BigInteger
 import kotlin.test.Test
+import com.ionspin.kotlin.bignum.integer.Sign
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -38,5 +40,23 @@ class DSATest {
         assertEquals(expectedR, r)
         assertEquals(expectedS, s)
         assertTrue(dsa.verify(message, y, r, s))
+    }
+    @Test
+    fun testGenerateKeyPair() {
+        val (pub, priv) = dsa.generateKeyPair()
+        assertEquals(DSA_PUBLIC_KEY_SIZE, pub.bytes.size)
+        assertEquals(DSA_PRIVATE_KEY_SIZE, priv.bytes.size)
+
+        val x = BigInteger.fromByteArray(priv.bytes, Sign.POSITIVE)
+        val y = BigInteger.fromByteArray(pub.bytes, Sign.POSITIVE)
+        val msg = "hello".encodeToByteArray()
+        val (r, s) = dsa.sign(msg, x)
+        assertTrue(dsa.verify(msg, y, r, s))
+    }
+
+    @Test
+    fun testKeyValidation() {
+        assertFailsWith<IllegalArgumentException> { DSAPublicKey(ByteArray(1)) }
+        assertFailsWith<IllegalArgumentException> { DSAPrivateKey(ByteArray(1)) }
     }
 }
