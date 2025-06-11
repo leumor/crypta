@@ -71,6 +71,20 @@ data class DsaPublicKey(
             val (y, _) = bytes.readMPI(idx)
             return DsaPublicKey(y, params)
         }
+
+        /**
+         * Derives a [DsaPublicKey] from the provided [DsaPrivateKey].
+         *
+         * This uses the formula `y = g^x mod p` where `x` is the private key and
+         * `g`, `p` are taken from the private key's parameters.
+         */
+        fun fromPrivateKey(
+            privateKey: DsaPrivateKey,
+            parameters: DsaParameters = DsaParameters.DEFAULT,
+        ): DsaPublicKey {
+            val y = Dsa.modPow(parameters.g, privateKey.x, parameters.p)
+            return DsaPublicKey(y, parameters)
+        }
     }
 }
 
@@ -265,7 +279,7 @@ class Dsa(
          * @param mod The modulus.
          * @return The result of `(base ^ exp) mod mod`.
          */
-        private fun modPow(base: BigInteger, exp: BigInteger, mod: BigInteger): BigInteger {
+        internal fun modPow(base: BigInteger, exp: BigInteger, mod: BigInteger): BigInteger {
             var result = BigInteger.ONE
             var b = base.mod(mod)
             var e = exp

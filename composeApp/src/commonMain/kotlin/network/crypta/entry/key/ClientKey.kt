@@ -1,5 +1,7 @@
 package network.crypta.entry.key
 
+import com.ionspin.kotlin.bignum.integer.BigInteger
+import com.ionspin.kotlin.bignum.integer.Sign
 import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.crypto.DsaPrivateKey
 import network.crypta.crypto.DsaPublicKey
@@ -155,10 +157,14 @@ class ClientChk(
 open class ClientSsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
     metaStrings: List<String>,
     val publicKey: DsaPublicKey?,
-) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings.toMutableList()), SubspaceKey {
+) : ClientKey(
+    routingKey,
+    sharedKey,
+    CryptoAlgorithm.AES_PCFB_256_SHA256,
+    metaStrings.toMutableList()
+), SubspaceKey {
 
     /** The human-readable name of the document. */
     final override val docName: String
@@ -241,10 +247,14 @@ open class ClientSsk(
             publicKey: DsaPublicKey? = null
         ): ClientSsk {
             val extraData = ExtraData.fromByteArray(extra);
+
+            require(extraData.cryptoAlgorithm == CryptoAlgorithm.AES_PCFB_256_SHA256) {
+                "Unknown encryption algorithm ${extraData.cryptoAlgorithm}"
+            }
+
             return ClientSsk(
                 routingKey,
                 sharedKey,
-                extraData.cryptoAlgorithm,
                 mutableListOf(docName),
                 publicKey
             )
@@ -278,12 +288,46 @@ open class ClientSsk(
 open class InsertableClientSsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
     docName: String,
     publicKey: DsaPublicKey,
     val privateKey: DsaPrivateKey,
-) : ClientSsk(routingKey, sharedKey, cryptoAlgorithm, listOf(docName), publicKey) {
+) : ClientSsk(routingKey, sharedKey, listOf(docName), publicKey) {
 
+    companion object {
+        /**
+         * Creates an [InsertableClientSsk] from the given [Uri].
+         *
+         * The URI must contain a private key and use the SSK type. Only the
+         * AES-PCFB-256-SHA256 cryptosystem is currently supported.
+         */
+        fun fromUri(uri: Uri): InsertableClientSsk {
+            require(uri.uriType == KeyType.SSK) { "Not a valid SSK insert URI type: ${'$'}{uri.uriType}" }
+
+            val routingKey = uri.keys.routingKey
+                ?: error("Insertable SSK URIs must have a routing key!")
+            val sharedKey = uri.keys.sharedKey
+                ?: error("Insertable SSK URIs must have a private key!")
+            val extra = uri.keys.getExtraBytes()
+            require(extra.size >= EXTRA_LENGTH) { "Insertable SSK, extra too short" }
+
+            require(extra[1].toInt() == 1) { "SSK not an insertable key" }
+            val cryptoAlgorithm = CryptoAlgorithm.fromValue(extra[2].toInt())
+            require(cryptoAlgorithm == CryptoAlgorithm.AES_PCFB_256_SHA256) {
+                "Unrecognized crypto type in SSK private key"
+            }
+
+            val docName = uri.metaStrings.firstOrNull()
+                ?: error("SSK URIs must have a document name (to avoid ambiguity)")
+
+            val x = BigInteger.fromByteArray(routingKey.bytes, Sign.POSITIVE)
+            val privKey = DsaPrivateKey(x)
+            val pubKey = DsaPublicKey.fromPrivateKey(privKey)
+            val hash = Hash.digest(HashAlgorithm.SHA256, pubKey.bytes)
+            val pkHash = RoutingKey(hash)
+
+            return InsertableClientSsk(pkHash, sharedKey, docName, pubKey, privKey)
+        }
+    }
 }
 
 /**
@@ -306,7 +350,6 @@ class ClientKsk(
 ) : InsertableClientSsk(
     routingKey,
     sharedKey,
-    CryptoAlgorithm.AES_PCFB_256_SHA256,
     docName,
     publicKey,
     privateKey
