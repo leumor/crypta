@@ -8,6 +8,8 @@ import network.crypta.crypto.HashAlgorithm
 import network.crypta.crypto.Rijndael256
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
+import network.crypta.entry.Uri
+import network.crypta.entry.KeyType
 
 /**
  * Represents a key from the client's perspective, containing all necessary
@@ -104,6 +106,31 @@ class ClientChk(
                 sharedKey,
                 extraData.cryptoAlgorithm,
                 emptyList(),
+                extraData.isControlDocument,
+                extraData.compressionAlgorithm
+            )
+        }
+
+        /**
+         * Creates a [ClientChk] from the given [Uri].
+         *
+         * @param uri The URI to parse. Its [Uri.uriType] must be [KeyType.CHK].
+         * @return A new [ClientChk] instance populated from the URI.
+         */
+        fun fromUri(uri: Uri): ClientChk {
+            require(uri.uriType == KeyType.CHK) { "URI is not a CHK" }
+
+            val routingKey = uri.keys.routingKey ?: error("Missing routing key")
+            val sharedKey = uri.keys.sharedKey ?: error("Missing shared key")
+            val extra = uri.keys.getExtraBytes()
+            require(extra.size >= EXTRA_LENGTH) { "No extra bytes in CHK" }
+
+            val extraData = ExtraData.fromByteArray(extra)
+            return ClientChk(
+                routingKey,
+                sharedKey,
+                extraData.cryptoAlgorithm,
+                uri.metaStrings,
                 extraData.isControlDocument,
                 extraData.compressionAlgorithm
             )
