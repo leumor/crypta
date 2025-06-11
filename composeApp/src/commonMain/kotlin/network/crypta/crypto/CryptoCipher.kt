@@ -2,10 +2,16 @@ package network.crypta.crypto
 
 import dev.whyoleg.cryptography.random.CryptographyRandom
 import kotlin.jvm.JvmInline
-import network.crypta.crypto.CryptoKey
 
+/** The required size, in bytes, for a secret key. */
 const val SECRET_KEY_SIZE = 32
 
+/**
+ * A value class representing a 32-byte secret key used for symmetric encryption.
+ *
+ * @property bytes The raw byte array of the secret key.
+ * @constructor Ensures the secret key is exactly [SECRET_KEY_SIZE] bytes long.
+ */
 @JvmInline
 value class SecretKey(override val bytes: ByteArray) : CryptoKey {
     init {
@@ -15,12 +21,26 @@ value class SecretKey(override val bytes: ByteArray) : CryptoKey {
     }
 }
 
+/**
+ * Enumerates the supported symmetric encryption algorithms in the Crypta network.
+ * @property value The integer identifier for the algorithm.
+ */
 enum class CryptoAlgorithm(val value: Int) {
+    /** AES-256 in Propagating Cipher Feedback (PCFB) mode, with SHA-256 for integrity. */
     AES_PCFB_256_SHA256(2),
+
+    /** AES-256 in Counter (CTR) mode, with SHA-256 for integrity. */
     AES_CTR_256_SHA256(3);
 
     companion object {
         private val byValue: Map<Int, CryptoAlgorithm> = entries.associateBy(CryptoAlgorithm::value)
+
+        /**
+         * Retrieves a [CryptoAlgorithm] from its integer value.
+         * @param value The integer representation of the algorithm.
+         * @return The corresponding [CryptoAlgorithm].
+         * @throws IllegalStateException if the value is unknown.
+         */
         fun fromValue(value: Int): CryptoAlgorithm =
             byValue[value] ?: error("Unknown value: $value")
     }
@@ -94,7 +114,10 @@ interface CryptoCipher {
         }
 
         /**
-         * Generates a new 256-bit [SecretKey] using the default cryptographic random source.
+         * Generates a new 256-bit [SecretKey] using a cryptographically secure random source.
+         *
+         * @param random The source of randomness. Defaults to [CryptographyRandom.Default].
+         * @return A new, randomly generated [SecretKey].
          */
         fun generateSecretKey(random: CryptographyRandom = CryptographyRandom.Default): SecretKey {
             val bytes = ByteArray(SECRET_KEY_SIZE)
@@ -112,5 +135,13 @@ interface CryptoCipher {
  * Instances of this stream are not thread-safe.
  */
 interface CryptoCipherStream {
+    /**
+     * Processes a chunk of data.
+     *
+     * @param data The byte array containing the data to process.
+     * @param offset The starting offset within the [data] array.
+     * @param length The number of bytes to process from the [data] array.
+     * @return The resulting processed data (ciphertext or plaintext).
+     */
     fun update(data: ByteArray, offset: Int = 0, length: Int = data.size): ByteArray
 }

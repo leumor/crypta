@@ -4,11 +4,19 @@ import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.ionspin.kotlin.bignum.integer.Sign
 import kotlin.jvm.JvmInline
 import kotlin.random.Random
-import network.crypta.crypto.CryptoKey
 
+/** The required size, in bytes, for a DSA public key. */
 const val DSA_PUBLIC_KEY_SIZE = 128
+
+/** The required size, in bytes, for a DSA private key. */
 const val DSA_PRIVATE_KEY_SIZE = 20
 
+/**
+ * A value class representing a 128-byte DSA public key.
+ *
+ * @property bytes The raw byte array of the public key.
+ * @constructor Ensures the public key is exactly [DSA_PUBLIC_KEY_SIZE] bytes long.
+ */
 @JvmInline
 value class DSAPublicKey(override val bytes: ByteArray) : CryptoKey {
     init {
@@ -18,6 +26,12 @@ value class DSAPublicKey(override val bytes: ByteArray) : CryptoKey {
     }
 }
 
+/**
+ * A value class representing a 20-byte DSA private key.
+ *
+ * @property bytes The raw byte array of the private key.
+ * @constructor Ensures the private key is exactly [DSA_PRIVATE_KEY_SIZE] bytes long.
+ */
 @JvmInline
 value class DSAPrivateKey(override val bytes: ByteArray) : CryptoKey {
     init {
@@ -50,9 +64,10 @@ class DSA(
     /**
      * Generates a new DSA key pair.
      *
-     * The private key is a random integer in the range `[1, q-1]` and the
-     * public key is calculated as `g^x mod p`. The resulting byte arrays are
-     * padded to the standard key lengths.
+     * The private key `x` is a random integer in the range `[1, q-1]`.
+     * The public key `y` is calculated as `g^x mod p`.
+     *
+     * @return A [Pair] containing the new [DSAPublicKey] and [DSAPrivateKey].
      */
     fun generateKeyPair(): Pair<DSAPublicKey, DSAPrivateKey> {
         val x = randomK()
@@ -181,7 +196,11 @@ class DSA(
 
     /**
      * Converts this [BigInteger] to a fixed-length big-endian byte array.
-     * The resulting array is left padded with zeros when necessary.
+     * The resulting array is left-padded with zeros if the number is smaller than the length.
+     *
+     * @param length The desired length of the output byte array.
+     * @return The number as a [ByteArray] of the specified [length].
+     * @throws IllegalArgumentException if the number's byte representation exceeds [length].
      */
     private fun BigInteger.toFixedLength(length: Int): ByteArray {
         val raw = toByteArray()
