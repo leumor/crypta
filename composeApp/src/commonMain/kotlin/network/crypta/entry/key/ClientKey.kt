@@ -6,10 +6,11 @@ import network.crypta.crypto.DSAPublicKey
 import network.crypta.crypto.Hash
 import network.crypta.crypto.HashAlgorithm
 import network.crypta.crypto.Rijndael256
+import network.crypta.crypto.toBase64
+import network.crypta.entry.KeyType
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
 import network.crypta.entry.Uri
-import network.crypta.entry.KeyType
 
 /**
  * Represents a key from the client's perspective, containing all necessary
@@ -48,6 +49,10 @@ class ClientChk(
     val isControlDocument: Boolean,
     val compressionAlgorithm: CompressionAlgorithm
 ) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, mutableListOf()) {
+    
+    override fun toString(): String {
+        return "${super.toString()}:${routingKey.toBase64()},${sharedKey.toBase64()},$compressionAlgorithm,$isControlDocument,$cryptoAlgorithm"
+    }
 
     /**
      * Internal data class to manage the serialization of extra metadata for a CHK.
