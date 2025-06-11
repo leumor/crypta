@@ -197,7 +197,7 @@ open class ClientSsk(
     /**
      * Internal data class to manage the serialization of extra metadata for an SSK.
      */
-    private data class ExtraData(
+    protected data class ExtraData(
         val cryptoAlgorithm: CryptoAlgorithm,
         val isInsertable: Boolean,
     ) {
@@ -272,7 +272,6 @@ open class ClientSsk(
             val routingKey = uri.keys.routingKey ?: error("Missing routing key")
             val sharedKey = uri.keys.sharedKey ?: error("Missing shared key")
             val extra = uri.keys.getExtraBytes()
-            require(extra.size >= EXTRA_LENGTH) { "No extra bytes in CHK" }
 
             return create(routingKey, sharedKey, extra, uri.metaStrings.first())
         }
@@ -297,7 +296,7 @@ open class InsertableClientSsk(
         /**
          * Creates an [InsertableClientSsk] from the given [Uri].
          *
-         * The URI must contain a private key and use the SSK type. Only the
+         * The URI must contain a private key (as the routing key in Uri) and use the SSK type. Only the
          * AES-PCFB-256-SHA256 cryptosystem is currently supported.
          */
         fun fromUri(uri: Uri): InsertableClientSsk {
@@ -308,11 +307,11 @@ open class InsertableClientSsk(
             val sharedKey = uri.keys.sharedKey
                 ?: error("Insertable SSK URIs must have a private key!")
             val extra = uri.keys.getExtraBytes()
-            require(extra.size >= EXTRA_LENGTH) { "Insertable SSK, extra too short" }
 
-            require(extra[1].toInt() == 1) { "SSK not an insertable key" }
-            val cryptoAlgorithm = CryptoAlgorithm.fromValue(extra[2].toInt())
-            require(cryptoAlgorithm == CryptoAlgorithm.AES_PCFB_256_SHA256) {
+            val extraData = ExtraData.fromByteArray(extra);
+
+            require(extraData.isInsertable) { "SSK not an insertable key" }
+            require(extraData.cryptoAlgorithm == CryptoAlgorithm.AES_PCFB_256_SHA256) {
                 "Unrecognized crypto type in SSK private key"
             }
 
