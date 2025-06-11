@@ -2,8 +2,12 @@ package network.crypta.entry.key
 
 import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.crypto.DsaPrivateKey
+import network.crypta.entry.KeyType
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
+import network.crypta.entry.Uri
+import network.crypta.entry.key.ClientSsk
+import network.crypta.entry.key.InsertableClientSsk
 
 /**
  * An abstract representation of a key that provides access to data.
@@ -114,6 +118,23 @@ open class Usk(
         cryptoAlgorithm,
         listOf(docName, suggestedEdition.toString())
     )
+
+    companion object {
+        /**
+         * Parses a [Uri] into a [Usk].
+         * The URI must have type [KeyType.USK].
+         */
+        fun fromUri(uri: Uri): Usk {
+            require(uri.uriType == KeyType.USK) { "URI is not a USK" }
+
+            val docName = uri.metaStrings.firstOrNull()
+                ?: error("USK URIs must have a document name")
+            val sskUri = Uri(KeyType.SSK, uri.keys, listOf(docName))
+            val ssk = ClientSsk.fromUri(sskUri)
+
+            return Usk(ssk.routingKey, ssk.sharedKey, ssk.cryptoAlgorithm, uri.metaStrings)
+        }
+    }
 }
 
 /**
@@ -136,5 +157,32 @@ class InsertableUsk(
     suggestedEdition: Long,
     override val privateKey: DsaPrivateKey
 ) : Usk(routingKey, sharedKey, cryptoAlgorithm, docName, suggestedEdition), Insertable {
+    companion object {
+        /**
+         * Parses an insertable USK [Uri] into an [InsertableUsk].
+         * The URI must use the [KeyType.USK] type and include a private key.
+         */
+        fun fromUri(uri: Uri): InsertableUsk {
+            require(uri.uriType == KeyType.USK) { "Not a valid USK insert URI type: ${'$'}{uri.uriType}" }
 
+            val docName = uri.metaStrings.firstOrNull()
+                ?: error("USK URIs must have a document name")
+            val editionStr = uri.metaStrings.getOrNull(1)
+                ?: error("USK URIs must have an edition number")
+
+            val sskUri = Uri(KeyType.SSK, uri.keys, listOf(docName))
+            val ssk = InsertableClientSsk.fromUri(sskUri)
+
+            val edition = editionStr.toLong()
+
+            return InsertableUsk(
+                ssk.routingKey,
+                ssk.sharedKey,
+                ssk.cryptoAlgorithm,
+                docName,
+                edition,
+                ssk.privateKey
+            )
+        }
+    }
 }
