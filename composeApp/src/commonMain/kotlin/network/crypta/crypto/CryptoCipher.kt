@@ -2,11 +2,12 @@ package network.crypta.crypto
 
 import dev.whyoleg.cryptography.random.CryptographyRandom
 import kotlin.jvm.JvmInline
+import network.crypta.crypto.CryptoKey
 
 const val SECRET_KEY_SIZE = 32
 
 @JvmInline
-value class SecretKey(val bytes: ByteArray) {
+value class SecretKey(override val bytes: ByteArray) : CryptoKey {
     init {
         require(bytes.size == SECRET_KEY_SIZE) {
             "Secret key must be $SECRET_KEY_SIZE bytes"

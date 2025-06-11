@@ -2,6 +2,8 @@ package network.crypta.entry.key
 
 import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.crypto.DSAPrivateKey
+import network.crypta.entry.RoutingKey
+import network.crypta.entry.SharedKey
 
 abstract class AccessKey(
     routingKey: RoutingKey,

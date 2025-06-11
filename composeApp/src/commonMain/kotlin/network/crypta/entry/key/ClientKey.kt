@@ -6,6 +6,8 @@ import network.crypta.crypto.DSAPublicKey
 import network.crypta.crypto.Hash
 import network.crypta.crypto.HashAlgorithm
 import network.crypta.crypto.Rijndael256
+import network.crypta.entry.RoutingKey
+import network.crypta.entry.SharedKey
 
 abstract class ClientKey(
     routingKey: RoutingKey,

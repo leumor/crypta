@@ -4,12 +4,13 @@ import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.ionspin.kotlin.bignum.integer.Sign
 import kotlin.jvm.JvmInline
 import kotlin.random.Random
+import network.crypta.crypto.CryptoKey
 
 const val DSA_PUBLIC_KEY_SIZE = 128
 const val DSA_PRIVATE_KEY_SIZE = 20
 
 @JvmInline
-value class DSAPublicKey(val bytes: ByteArray) {
+value class DSAPublicKey(override val bytes: ByteArray) : CryptoKey {
     init {
         require(bytes.size == DSA_PUBLIC_KEY_SIZE) {
             "DSA public key must be $DSA_PUBLIC_KEY_SIZE bytes"
@@ -18,7 +19,7 @@ value class DSAPublicKey(val bytes: ByteArray) {
 }
 
 @JvmInline
-value class DSAPrivateKey(val bytes: ByteArray) {
+value class DSAPrivateKey(override val bytes: ByteArray) : CryptoKey {
     init {
         require(bytes.size == DSA_PRIVATE_KEY_SIZE) {
             "DSA private key must be $DSA_PRIVATE_KEY_SIZE bytes"
