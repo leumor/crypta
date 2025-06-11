@@ -49,7 +49,7 @@ class ClientChk(
     val isControlDocument: Boolean,
     val compressionAlgorithm: CompressionAlgorithm
 ) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, mutableListOf()) {
-    
+
     override fun toString(): String {
         return "${super.toString()}:${routingKey.toBase64()},${sharedKey.toBase64()},$compressionAlgorithm,$isControlDocument,$cryptoAlgorithm"
     }
@@ -249,6 +249,23 @@ open class ClientSsk(
                 publicKey
             )
         }
+
+        /**
+         * Creates a [ClientSsk] from the given [Uri].
+         *
+         * @param uri The URI to parse. Its [Uri.uriType] must be [KeyType.SSK].
+         * @return A new [ClientSsk] instance populated from the URI.
+         */
+        fun fromUri(uri: Uri): ClientSsk {
+            require(uri.uriType == KeyType.SSK) { "URI is not an SSK" }
+
+            val routingKey = uri.keys.routingKey ?: error("Missing routing key")
+            val sharedKey = uri.keys.sharedKey ?: error("Missing shared key")
+            val extra = uri.keys.getExtraBytes()
+            require(extra.size >= EXTRA_LENGTH) { "No extra bytes in CHK" }
+
+            return create(routingKey, sharedKey, extra, uri.metaStrings.first())
+        }
     }
 }
 
@@ -258,7 +275,7 @@ open class ClientSsk(
  *
  * @param privateKey The DSA private key used for signing new data.
  */
-open class InsertableSsk(
+open class InsertableClientSsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
@@ -286,7 +303,7 @@ class ClientKsk(
     docName: String,
     publicKey: DSAPublicKey,
     privateKey: DSAPrivateKey
-) : InsertableSsk(
+) : InsertableClientSsk(
     routingKey,
     sharedKey,
     CryptoAlgorithm.AES_PCFB_256_SHA256,
