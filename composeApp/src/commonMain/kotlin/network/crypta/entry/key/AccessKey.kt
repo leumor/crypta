@@ -46,6 +46,28 @@ open class Usk(
             throw IllegalArgumentException("Invalid suggested edition number", e)
         }
     }
+
+    constructor(
+        routingKey: RoutingKey,
+        sharedKey: SharedKey,
+        cryptoAlgorithm: CryptoAlgorithm,
+        docName: String,
+        suggestedEdition: Long
+    ) : this(
+        routingKey,
+        sharedKey,
+        cryptoAlgorithm,
+        listOf(docName, suggestedEdition.toString())
+    )
 }
 
-class InsertableUsk
+class InsertableUsk(
+    routingKey: RoutingKey,
+    sharedKey: SharedKey,
+    cryptoAlgorithm: CryptoAlgorithm,
+    docName: String,
+    suggestedEdition: Long,
+    override val privateKey: DSAPrivateKey
+) : Usk(routingKey, sharedKey, cryptoAlgorithm, docName, suggestedEdition), Insertable {
+
+}

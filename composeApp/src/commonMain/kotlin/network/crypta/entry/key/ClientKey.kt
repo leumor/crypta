@@ -1,6 +1,7 @@
 package network.crypta.entry.key
 
 import network.crypta.crypto.CryptoAlgorithm
+import network.crypta.crypto.DSAPrivateKey
 import network.crypta.crypto.DSAPublicKey
 import network.crypta.crypto.Hash
 import network.crypta.crypto.HashAlgorithm
@@ -78,7 +79,7 @@ class ClientChk(
     }
 }
 
-class ClientSsk(
+open class ClientSsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
@@ -86,7 +87,7 @@ class ClientSsk(
     val publicKey: DSAPublicKey?,
 ) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings.toMutableList()), SubspaceKey {
 
-    override val docName: String
+    final override val docName: String
     val ehDocName: ByteArray
 
     init {
@@ -158,4 +159,32 @@ class ClientSsk(
             )
         }
     }
+}
+
+open class InsertableSsk(
+    routingKey: RoutingKey,
+    sharedKey: SharedKey,
+    cryptoAlgorithm: CryptoAlgorithm,
+    docName: String,
+    publicKey: DSAPublicKey,
+    val privateKey: DSAPrivateKey,
+) : ClientSsk(routingKey, sharedKey, cryptoAlgorithm, listOf(docName), publicKey) {
+
+}
+
+class ClientKsk(
+    routingKey: RoutingKey,
+    sharedKey: SharedKey,
+    docName: String,
+    publicKey: DSAPublicKey,
+    privateKey: DSAPrivateKey
+) : InsertableSsk(
+    routingKey,
+    sharedKey,
+    CryptoAlgorithm.AES_PCFB_256_SHA256,
+    docName,
+    publicKey,
+    privateKey
+) {
+
 }
