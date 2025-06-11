@@ -5,30 +5,74 @@ import network.crypta.crypto.DSAPrivateKey
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
 
+/**
+ * An abstract representation of a key that provides access to data.
+ * It forms the basis for keys that can be resolved to content, like [Usk] and [ClientKey].
+ *
+ * @property routingKey The key for locating data on the network.
+ * @property sharedKey The key for decrypting the content. Nullable for keys that might not have one.
+ * @property cryptoAlgorithm The encryption algorithm used for the content.
+ * @property metaStrings A list of metadata strings from the URI path.
+ */
 abstract class AccessKey(
     routingKey: RoutingKey,
-    val sharedKey: SharedKey?,
+    val sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
     val metaStrings: MutableList<String>
 ) : Key(routingKey, cryptoAlgorithm) {
 
 }
 
+/**
+ * An interface for keys that belong to a "subspace", a concept in Crypta
+ * for a collection of related documents under a single identity.
+ * SSKs, USKs, and KSKs are all subspace keys.
+ *
+ * @property docName The human-readable name of the document within the subspace.
+ */
 interface SubspaceKey {
     val docName: String
 }
 
+/**
+ * An interface for keys that can be used to insert or update content on the network.
+ * This requires a private key for signing.
+ *
+ * @property privateKey The DSA private key for signing new data insertions.
+ */
 interface Insertable {
     val privateKey: DSAPrivateKey
 }
 
+/**
+ * Represents an Updatable Subspace Key (USK).
+ * USKs are a type of [AccessKey] used for mutable content, such as a website that needs updates.
+ * They point to a specific version of a document, but can be resolved to the latest version.
+ *
+ * @param routingKey The key for locating the USK data.
+ * @param sharedKey The key for decrypting the USK data.
+ * @param cryptoAlgorithm The encryption algorithm used.
+ * @param metaStrings The metadata from the URI, which must include the document name and edition.
+ *
+ * @property docName The name of the document, often called the "site name".
+ * @property suggestedEdition The specific version number of the document this key points to.
+ */
 open class Usk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
     metaStrings: List<String>
 ) : AccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings.toMutableList()), SubspaceKey {
-    final override val docName: String // it's called "siteName" in Freenet
+    /**
+     * The human-readable name of the document. In the context of a freesite, this is the "site name".
+     */
+    final override val docName: String
+
+
+    /**
+     * The suggested edition number of the document. This allows clients to request a specific
+     * version, though they will typically seek the latest one.
+     */
     val suggestedEdition: Long
 
     init {
@@ -49,6 +93,15 @@ open class Usk(
         }
     }
 
+    /**
+     * Secondary constructor for creating a [Usk] with explicit document name and edition.
+     *
+     * @param routingKey The key for locating the USK data.
+     * @param sharedKey The key for decrypting the USK data.
+     * @param cryptoAlgorithm The encryption algorithm used.
+     * @param docName The human-readable name of the document.
+     * @param suggestedEdition The version number of the document.
+     */
     constructor(
         routingKey: RoutingKey,
         sharedKey: SharedKey,
@@ -63,6 +116,18 @@ open class Usk(
     )
 }
 
+/**
+ * An insertable Updatable Subspace Key (USK).
+ * This key contains the [DSAPrivateKey] necessary to sign and insert new versions
+ * of the content into the subspace.
+ *
+ * @param routingKey The key for locating the USK data.
+ * @param sharedKey The key for decrypting the USK data.
+ * @param cryptoAlgorithm The encryption algorithm used.
+ * @param docName The human-readable name of the document.
+ * @param suggestedEdition The version number of the document being inserted.
+ * @param privateKey The private key required for signing the new content.
+ */
 class InsertableUsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,

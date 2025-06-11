@@ -9,31 +9,53 @@ import network.crypta.crypto.Rijndael256
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
 
+/**
+ * Represents a key from the client's perspective, containing all necessary
+ * information to either fetch (read) or insert (write) data. It is a specialized
+ * type of [AccessKey].
+ *
+ * @property routingKey The key for locating data on the network.
+ * @property sharedKey The key for decrypting the content.
+ * @property cryptoAlgorithm The encryption algorithm used for the content.
+ * @property metaStrings A list of metadata strings from the URI path.
+ */
 abstract class ClientKey(
     routingKey: RoutingKey,
-    sharedKey: SharedKey?,
+    sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
     metaStrings: MutableList<String>
 ) : AccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings) {
 
 }
 
+/** The length of the "extra" data field in a CHK or SSK URI. */
 const val EXTRA_LENGTH = 5
 
+/**
+ * Represents a Client Content Hash Key (CHK).
+ * CHKs are used for immutable, static content. The key is derived directly from a hash of the content.
+ *
+ * @property isControlDocument A flag indicating if this is a control document.
+ * @property compressionAlgorithm The algorithm used to compress the data.
+ */
 class ClientChk(
     routingKey: RoutingKey,
-    sharedKey: SharedKey?,
+    sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
     metaStrings: List<String>,
     val isControlDocument: Boolean,
     val compressionAlgorithm: CompressionAlgorithm
 ) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, mutableListOf()) {
 
+    /**
+     * Internal data class to manage the serialization of extra metadata for a CHK.
+     */
     private data class ExtraData(
         val cryptoAlgorithm: CryptoAlgorithm,
         val isControlDocument: Boolean,
         val compressionAlgorithm: CompressionAlgorithm,
     ) {
+        /** Serializes the extra data into a byte array for inclusion in a URI. */
         fun toByteArray(): ByteArray {
             val extra = ByteArray(EXTRA_LENGTH)
             extra[0] = (cryptoAlgorithm.value shr 8).toByte()
@@ -46,6 +68,7 @@ class ClientChk(
         }
 
         companion object {
+            /** Deserializes a byte array from a URI into an [ExtraData] object. */
             fun fromByteArray(extra: ByteArray): ExtraData {
                 require(extra.size >= EXTRA_LENGTH) {
                     "Extra data must be at least $EXTRA_LENGTH bytes"
@@ -63,6 +86,13 @@ class ClientChk(
     }
 
     companion object {
+        /**
+         * Creates a [ClientChk] from its constituent parts, parsing the `extra` metadata block.
+         * @param routingKey The hash of the content.
+         * @param sharedKey The key for decrypting the content.
+         * @param extra The serialized metadata byte array from the URI.
+         * @return A new [ClientChk] instance.
+         */
         fun create(
             routingKey: RoutingKey,
             sharedKey: SharedKey,
@@ -81,6 +111,15 @@ class ClientChk(
     }
 }
 
+/**
+ * Represents a Client Signed Subspace Key (SSK).
+ * SSKs are used for mutable content where authorship is verified via digital signatures.
+ * The routing key is a hash of the creator's public key.
+ *
+ * @property publicKey The public key associated with this SSK, used for signature verification.
+ * @property docName The human-readable name of the document.
+ * @property ehDocName The encrypted hash of the document name, used internally.
+ */
 open class ClientSsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
@@ -89,7 +128,10 @@ open class ClientSsk(
     val publicKey: DSAPublicKey?,
 ) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings.toMutableList()), SubspaceKey {
 
+    /** The human-readable name of the document. */
     final override val docName: String
+
+    /** The encrypted hash of the document name. */
     val ehDocName: ByteArray
 
     init {
@@ -114,10 +156,14 @@ open class ClientSsk(
             rijndael256.encrypt(Hash.digest(HashAlgorithm.SHA256, docName.encodeToByteArray()))
     }
 
+    /**
+     * Internal data class to manage the serialization of extra metadata for an SSK.
+     */
     private data class ExtraData(
         val cryptoAlgorithm: CryptoAlgorithm,
         val isInsertable: Boolean,
     ) {
+        /** Serializes the extra data into a byte array for inclusion in a URI. */
         fun toByteArray(): ByteArray {
             val extra = ByteArray(EXTRA_LENGTH)
             extra[0] = 1
@@ -130,6 +176,7 @@ open class ClientSsk(
         }
 
         companion object {
+            /** Deserializes a byte array from a URI into an [ExtraData] object. */
             fun fromByteArray(extra: ByteArray): ExtraData {
                 require(extra.size >= EXTRA_LENGTH) {
                     "Extra data must be at least $EXTRA_LENGTH bytes"
@@ -144,6 +191,16 @@ open class ClientSsk(
     }
 
     companion object {
+        /**
+         * Creates a [ClientSsk] from its constituent parts, parsing the `extra` metadata block.
+         *
+         * @param routingKey The hash of the public key.
+         * @param sharedKey The key for decrypting the content.
+         * @param extra The serialized metadata byte array from the URI.
+         * @param docName The human-readable name of the document.
+         * @param publicKey The optional public key for verification.
+         * @return A new [ClientSsk] instance.
+         */
         fun create(
             routingKey: RoutingKey,
             sharedKey: SharedKey,
@@ -163,6 +220,12 @@ open class ClientSsk(
     }
 }
 
+/**
+ * Represents an insertable Client Signed Subspace Key (SSK).
+ * This key includes the private key needed to sign and insert new content.
+ *
+ * @param privateKey The DSA private key used for signing new data.
+ */
 open class InsertableSsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
@@ -174,6 +237,17 @@ open class InsertableSsk(
 
 }
 
+/**
+ * Represents a Client Keyword Signed Key (KSK).
+ * KSKs are a user-friendly type of SSK where the key is derived from a simple
+ * human-readable string. This class provides the full insertable key pair.
+ *
+ * @param routingKey The hash of the public key.
+ * @param sharedKey The key for decrypting the content.
+ * @param docName The human-readable name that forms the basis of the key.
+ * @param publicKey The public key part of the key pair.
+ * @param privateKey The private key part of the key pair, for insertions.
+ */
 class ClientKsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,

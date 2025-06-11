@@ -1,15 +1,13 @@
 package network.crypta.entry
 
-import network.crypta.entry.RoutingKey
-import network.crypta.entry.SharedKey
+import network.crypta.crypto.SecretKey
 import network.crypta.crypto.fromBase64
 import network.crypta.crypto.toBase64
-import network.crypta.crypto.SecretKey
+import network.crypta.util.URLEncodedFormatException
 import network.crypta.util.decodeFreenetBase64
 import network.crypta.util.encodeFreenetBase64
 import network.crypta.util.urlDecode
 import network.crypta.util.urlEncode
-import network.crypta.util.URLEncodedFormatException
 
 /** Exception thrown when parsing a URI fails. */
 class MalformedUriException(message: String) : Exception(message)
@@ -20,12 +18,28 @@ private const val URI_SEPARATOR = '/'
 
 /**
  * Representation of a Crypta URI.
+ *
+ * A Crypta URI uniquely identifies a piece of content on the network.
+ * It has a structure like: `KEYTYPE@ROUTING_KEY,SHARED_KEY,EXTRA/METADATA/METADATA`
+ * This class provides functionality to parse and construct these URIs.
  */
 class Uri {
+    /** The type of key specified in the URI (e.g., CHK, SSK, USK, KSK). */
     val uriType: KeyType
+
+    /** The metadata strings extracted from the path component of the URI. */
     val metaStrings: List<String>
+
+    /** The cryptographic keys ([RoutingKey], [SharedKey]) and extra data from the URI. */
     val keys: Keys
 
+    /**
+     * Parses a Crypta URI from its string representation.
+     *
+     * @param uri The string to parse.
+     * @param noTrim If true, the URI string will not be trimmed of whitespace.
+     * @throws MalformedUriException if the URI string is invalid.
+     */
     @Throws(MalformedUriException::class)
     constructor(uri: String, noTrim: Boolean = false) {
         var tmp = if (noTrim) uri else uri.trim()
@@ -71,6 +85,15 @@ class Uri {
         metaStrings = parseMetaStrings(path)
     }
 
+    /**
+     * Constructs a URI from its component parts.
+     *
+     * @param uriType The type of key.
+     * @param routingKey The routing key for locating content.
+     * @param sharedKey The key for decrypting content.
+     * @param extra Additional metadata as a byte array.
+     * @param metaStrings A list of path segments.
+     */
     constructor(
         uriType: KeyType,
         routingKey: RoutingKey?,
@@ -79,6 +102,13 @@ class Uri {
         metaStrings: List<String>
     ) : this(uriType, Keys(routingKey, sharedKey, extra), metaStrings)
 
+    /**
+     * Constructs a URI from its component parts.
+     *
+     * @param uriType The type of key.
+     * @param keys A [Keys] object containing the cryptographic keys.
+     * @param metaStrings A list of path segments.
+     */
     constructor(uriType: KeyType, keys: Keys, metaStrings: List<String>) {
         this.uriType = uriType
         this.keys = keys
@@ -86,23 +116,46 @@ class Uri {
     }
 
 
-
+    /**
+     * A container for the cryptographic keys and extra data found in a Crypta URI.
+     *
+     * @property routingKey The key used to locate data on the network.
+     * @property sharedKey The key used to decrypt the data.
+     * @property extra A list of bytes for additional metadata, often specifying crypto settings.
+     */
     data class Keys(
         val routingKey: RoutingKey?,
         val sharedKey: SharedKey?,
         val extra: List<Byte>
     ) {
+        /**
+         * Secondary constructor that accepts a nullable ByteArray for the extra data.
+         */
         constructor(
             routingKey: RoutingKey?,
             sharedKey: SharedKey?,
             extra: ByteArray?
         ) : this(routingKey, sharedKey, extra?.toList() ?: emptyList())
 
+
+        /**
+         * @return The extra metadata as a [ByteArray].
+         */
         fun getExtraBytes(): ByteArray = extra.toByteArray()
     }
 
+    /**
+     * @return The canonical string representation of the URI.
+     */
     override fun toString(): String = toLongString(prefix = false, pureAscii = false)
 
+    /**
+     * Generates the full string representation of the URI.
+     *
+     * @param prefix If true, prepends the "freenet:" scheme.
+     * @param pureAscii If true, ensures all characters in the metadata path are ASCII-safe.
+     * @return The formatted URI string.
+     */
     fun toLongString(prefix: Boolean = false, pureAscii: Boolean = false): String {
         val sb = StringBuilder()
         if (prefix) sb.append("freenet:")
@@ -124,7 +177,7 @@ class Uri {
                 .append(urlEncode(m, URI_SEPARATOR.toString(), pureAscii))
         }
         if (!hasKeys && metaSb.isNotEmpty()) {
-            metaSb.deleteCharAt(0)
+            metaSb.deleteAt(0)
         }
         sb.append(metaSb)
         return sb.toString()
@@ -135,7 +188,8 @@ class Uri {
         return uriType == o.uriType && metaStrings == o.metaStrings && keys == o.keys
     }
 
-    override fun hashCode(): Int = uriType.hashCode() * 31 + metaStrings.hashCode() * 31 + keys.hashCode()
+    override fun hashCode(): Int =
+        uriType.hashCode() * 31 + metaStrings.hashCode() * 31 + keys.hashCode()
 
     @Throws(MalformedUriException::class)
     private fun parseKeysStr(keysStr: String): Keys {
