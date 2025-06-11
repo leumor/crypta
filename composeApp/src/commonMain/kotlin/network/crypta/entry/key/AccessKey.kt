@@ -1,7 +1,7 @@
 package network.crypta.entry.key
 
 import network.crypta.crypto.CryptoAlgorithm
-import network.crypta.crypto.DSAPrivateKey
+import network.crypta.crypto.DsaPrivateKey
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
 
@@ -41,7 +41,7 @@ interface SubspaceKey {
  * @property privateKey The DSA private key for signing new data insertions.
  */
 interface Insertable {
-    val privateKey: DSAPrivateKey
+    val privateKey: DsaPrivateKey
 }
 
 /**
@@ -118,7 +118,7 @@ open class Usk(
 
 /**
  * An insertable Updatable Subspace Key (USK).
- * This key contains the [DSAPrivateKey] necessary to sign and insert new versions
+ * This key contains the [DsaPrivateKey] necessary to sign and insert new versions
  * of the content into the subspace.
  *
  * @param routingKey The key for locating the USK data.
@@ -134,7 +134,7 @@ class InsertableUsk(
     cryptoAlgorithm: CryptoAlgorithm,
     docName: String,
     suggestedEdition: Long,
-    override val privateKey: DSAPrivateKey
+    override val privateKey: DsaPrivateKey
 ) : Usk(routingKey, sharedKey, cryptoAlgorithm, docName, suggestedEdition), Insertable {
 
 }

@@ -2,41 +2,94 @@ package network.crypta.crypto
 
 import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.ionspin.kotlin.bignum.integer.Sign
-import kotlin.jvm.JvmInline
 import kotlin.random.Random
 
-/** The required size, in bytes, for a DSA public key. */
-const val DSA_PUBLIC_KEY_SIZE = 128
-
-/** The required size, in bytes, for a DSA private key. */
-const val DSA_PRIVATE_KEY_SIZE = 20
-
 /**
- * A value class representing a 128-byte DSA public key.
- *
- * @property bytes The raw byte array of the public key.
- * @constructor Ensures the public key is exactly [DSA_PUBLIC_KEY_SIZE] bytes long.
+ * Parameters for the DSA algorithm consisting of the prime modulus `p`,
+ * the prime divisor `q` and the generator `g`.
  */
-@JvmInline
-value class DSAPublicKey(override val bytes: ByteArray) : CryptoKey {
+data class DsaParameters(
+    val p: BigInteger,
+    val q: BigInteger,
+    val g: BigInteger,
+) {
     init {
-        require(bytes.size == DSA_PUBLIC_KEY_SIZE) {
-            "DSA public key must be $DSA_PUBLIC_KEY_SIZE bytes"
+        require(p > BigInteger.ZERO && q > BigInteger.ZERO && g > BigInteger.ZERO)
+    }
+
+    /** Encodes the parameters as a concatenation of MPI-encoded values. */
+    fun toByteArray(): ByteArray = p.toMPI() + q.toMPI() + g.toMPI()
+
+    companion object {
+        val DEFAULT = DsaParameters(
+            p = BigInteger.parseString(
+                "008608ac4f55361337f2a3e38ab1864ff3c98d66411d8d2afc9c526320c541f65078e86bc78494a5d73e4a9a67583f941f2993ed6c97dbc795dd88f0915c9cfbffc7e5373cde13e3c7ca9073b9106eb31bf82272ed0057f984a870a19f8a83bfa707d16440c382e62d3890473ea79e9d50c4ac6b1f1d30b10c32a02f685833c6278fc29eb3439c5333885614a115219b3808c92a37a0f365cd5e61b5861761dad9eff0ce23250f558848f8db932b87a3bd8d7a2f7cf99c75822bdc2fb7c1a1d78d0bcf81488ae0de5269ff853ab8b8f1f2bf3e6c0564573f612808f68dbfef49d5c9b4a705794cf7a424cd4eb1e0260552e67bfc1fa37b4a1f78b757ef185e86e9",
+                16
+            ),
+            q = BigInteger.parseString(
+                "00b143368abcd51f58d6440d5417399339a4d15bef096a2c5d8e6df44f52d6d379",
+                16
+            ),
+            g = BigInteger.parseString(
+                "51a45ab670c1c9fd10bd395a6805d33339f5675e4b0d35defc9fa03aa5c2bf4ce9cfcdc256781291bfff6d546e67d47ae4e160f804ca72ec3c5492709f5f80f69e6346dd8d3e3d8433b6eeef63bce7f98574185c6aff161c9b536d76f873137365a4246cf414bfe8049ee11e31373cd0a6558e2950ef095320ce86218f992551cc292224114f3b60146d22dd51f8125c9da0c028126ffa85efd4f4bfea2c104453329cc1268a97e9a835c14e4a9a43c6a1886580e35ad8f1de230e1af32208ef9337f1924702a4514e95dc16f30f0c11e714a112ee84a9d8d6c9bc9e74e336560bb5cd4e91eabf6dad26bf0ca04807f8c31a2fc18ea7d45baab7cc997b53c356",
+                16
+            )
+        )
+        /**
+         * Decodes parameters from a byte array starting at [offset].
+         *
+         * @return The decoded [DsaParameters] and the index after the consumed bytes.
+         */
+        fun fromByteArray(bytes: ByteArray, offset: Int = 0): Pair<DsaParameters, Int> {
+            var idx = offset
+            val (p, i1) = bytes.readMPI(idx)
+            idx = i1
+            val (q, i2) = bytes.readMPI(idx)
+            idx = i2
+            val (g, i3) = bytes.readMPI(idx)
+            idx = i3
+            return DsaParameters(p, q, g) to idx
         }
     }
 }
 
-/**
- * A value class representing a 20-byte DSA private key.
- *
- * @property bytes The raw byte array of the private key.
- * @constructor Ensures the private key is exactly [DSA_PRIVATE_KEY_SIZE] bytes long.
- */
-@JvmInline
-value class DSAPrivateKey(override val bytes: ByteArray) : CryptoKey {
+/** A DSA public key, storing the value `y` and its associated [DsaParameters]. */
+data class DsaPublicKey(
+    val y: BigInteger,
+    val parameters: DsaParameters = DsaParameters.DEFAULT,
+) : CryptoKey {
     init {
-        require(bytes.size == DSA_PRIVATE_KEY_SIZE) {
-            "DSA private key must be $DSA_PRIVATE_KEY_SIZE bytes"
+        require(y > BigInteger.ZERO && y < parameters.p)
+    }
+
+    override val bytes: ByteArray = parameters.toByteArray() + y.toMPI()
+
+    companion object {
+        /** Constructs a key from its MPI-encoded byte representation. */
+        fun fromByteArray(bytes: ByteArray): DsaPublicKey {
+            val (params, idx) = DsaParameters.fromByteArray(bytes, 0)
+            val (y, _) = bytes.readMPI(idx)
+            return DsaPublicKey(y, params)
+        }
+    }
+}
+
+/** A DSA private key storing the secret value `x`. */
+class DsaPrivateKey(
+    val x: BigInteger,
+    parameters: DsaParameters = DsaParameters.DEFAULT,
+) : CryptoKey {
+    init {
+        require(x > BigInteger.ZERO && x < parameters.q)
+    }
+
+    override val bytes: ByteArray = x.toMPI()
+
+    companion object {
+        /** Constructs a private key from MPI-encoded bytes. */
+        fun fromByteArray(bytes: ByteArray, parameters: DsaParameters): DsaPrivateKey {
+            val (x, _) = bytes.readMPI()
+            return DsaPrivateKey(x, parameters)
         }
     }
 }
@@ -56,24 +109,25 @@ value class DSAPrivateKey(override val bytes: ByteArray) : CryptoKey {
  * @property g The generator, calculated as `h^((p-1)/q) mod p` for some `h`.
  * @constructor Creates a DSA instance with the given domain parameters.
  */
-class DSA(
-    val p: BigInteger,
-    val q: BigInteger,
-    val g: BigInteger
+class Dsa(
+    val parameters: DsaParameters = DsaParameters.DEFAULT
 ) {
+    val p: BigInteger = parameters.p
+    val q: BigInteger = parameters.q
+    val g: BigInteger = parameters.g
     /**
      * Generates a new DSA key pair.
      *
      * The private key `x` is a random integer in the range `[1, q-1]`.
      * The public key `y` is calculated as `g^x mod p`.
      *
-     * @return A [Pair] containing the new [DSAPublicKey] and [DSAPrivateKey].
+     * @return A [Pair] containing the new [DsaPublicKey] and [DsaPrivateKey].
      */
-    fun generateKeyPair(): Pair<DSAPublicKey, DSAPrivateKey> {
+    fun generateKeyPair(): Pair<DsaPublicKey, DsaPrivateKey> {
         val x = randomK()
         val y = modPow(g, x, p)
-        val pub = DSAPublicKey(y.toFixedLength(DSA_PUBLIC_KEY_SIZE))
-        val priv = DSAPrivateKey(x.toFixedLength(DSA_PRIVATE_KEY_SIZE))
+        val pub = DsaPublicKey(y, parameters)
+        val priv = DsaPrivateKey(x, parameters)
         return pub to priv
     }
 
@@ -195,22 +249,6 @@ class DSA(
     }
 
     /**
-     * Converts this [BigInteger] to a fixed-length big-endian byte array.
-     * The resulting array is left-padded with zeros if the number is smaller than the length.
-     *
-     * @param length The desired length of the output byte array.
-     * @return The number as a [ByteArray] of the specified [length].
-     * @throws IllegalArgumentException if the number's byte representation exceeds [length].
-     */
-    private fun BigInteger.toFixedLength(length: Int): ByteArray {
-        val raw = toByteArray()
-        require(raw.size <= length) { "Integer does not fit in $length bytes" }
-        val result = ByteArray(length)
-        raw.copyInto(result, destinationOffset = length - raw.size)
-        return result
-    }
-
-    /**
      * Companion object for helper functions.
      */
     companion object Companion {
@@ -241,4 +279,32 @@ class DSA(
             return result
         }
     }
+}
+
+/** Encodes this [BigInteger] using the MPI format employed by Freenet. */
+internal fun BigInteger.toMPI(): ByteArray {
+    val bitLength = this.bitLength()
+    val byteLength = (bitLength + 7) / 8
+    val raw = this.toByteArray()
+    val unsigned = if (raw.isNotEmpty() && raw.first() == 0.toByte()) {
+        raw.copyOfRange(1, raw.size)
+    } else {
+        raw
+    }
+    val out = ByteArray(2 + byteLength)
+    out[0] = (bitLength shr 8).toByte()
+    out[1] = bitLength.toByte()
+    unsigned.copyInto(out, destinationOffset = out.size - unsigned.size)
+    return out
+}
+
+/** Reads an MPI-encoded [BigInteger] starting at [offset]. */
+internal fun ByteArray.readMPI(offset: Int = 0): Pair<BigInteger, Int> {
+    val b1 = this[offset].toInt() and 0xFF
+    val b2 = this[offset + 1].toInt() and 0xFF
+    val bitLength = (b1 shl 8) + b2
+    val byteLength = (bitLength + 7) / 8
+    val data = this.copyOfRange(offset + 2, offset + 2 + byteLength)
+    val value = BigInteger.fromByteArray(data, Sign.POSITIVE)
+    return value to (offset + 2 + byteLength)
 }

@@ -1,8 +1,8 @@
 package network.crypta.entry.key
 
 import network.crypta.crypto.CryptoAlgorithm
-import network.crypta.crypto.DSAPrivateKey
-import network.crypta.crypto.DSAPublicKey
+import network.crypta.crypto.DsaPrivateKey
+import network.crypta.crypto.DsaPublicKey
 import network.crypta.crypto.Hash
 import network.crypta.crypto.HashAlgorithm
 import network.crypta.crypto.Rijndael256
@@ -157,7 +157,7 @@ open class ClientSsk(
     sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
     metaStrings: List<String>,
-    val publicKey: DSAPublicKey?,
+    val publicKey: DsaPublicKey?,
 ) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings.toMutableList()), SubspaceKey {
 
     /** The human-readable name of the document. */
@@ -238,7 +238,7 @@ open class ClientSsk(
             sharedKey: SharedKey,
             extra: ByteArray,
             docName: String,
-            publicKey: DSAPublicKey? = null
+            publicKey: DsaPublicKey? = null
         ): ClientSsk {
             val extraData = ExtraData.fromByteArray(extra);
             return ClientSsk(
@@ -263,8 +263,8 @@ open class InsertableSsk(
     sharedKey: SharedKey,
     cryptoAlgorithm: CryptoAlgorithm,
     docName: String,
-    publicKey: DSAPublicKey,
-    val privateKey: DSAPrivateKey,
+    publicKey: DsaPublicKey,
+    val privateKey: DsaPrivateKey,
 ) : ClientSsk(routingKey, sharedKey, cryptoAlgorithm, listOf(docName), publicKey) {
 
 }
@@ -284,8 +284,8 @@ class ClientKsk(
     routingKey: RoutingKey,
     sharedKey: SharedKey,
     docName: String,
-    publicKey: DSAPublicKey,
-    privateKey: DSAPrivateKey
+    publicKey: DsaPublicKey,
+    privateKey: DsaPrivateKey
 ) : InsertableSsk(
     routingKey,
     sharedKey,

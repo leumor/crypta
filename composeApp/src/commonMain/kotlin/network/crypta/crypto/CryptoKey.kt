@@ -24,7 +24,7 @@ fun CryptoKey.toBase64(): String = bytes.encodeFreenetBase64()
 /**
  * Decodes a Freenet-style Base64 string into a [CryptoKey] of type [T].
  *
- * @param T The specific [CryptoKey] type to be created (e.g., [SecretKey], [DSAPublicKey]).
+ * @param T The specific [CryptoKey] type to be created (e.g., [SecretKey], [DsaPublicKey]).
  * @param factory A lambda function that constructs an instance of [T] from a [ByteArray].
  * @return An instance of [T] created from the decoded Base64 string.
  */

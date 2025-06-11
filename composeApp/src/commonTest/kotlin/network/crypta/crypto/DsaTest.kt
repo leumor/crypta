@@ -1,13 +1,12 @@
 package network.crypta.crypto
 
 import com.ionspin.kotlin.bignum.integer.BigInteger
-import com.ionspin.kotlin.bignum.integer.Sign
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-class DSATest {
+class DsaTest {
     private val p = BigInteger.parseString(
         "a8f9cd201e5e35d892f85f80e4db2599a5676a3b1d4f190330ed3256b26d0e80a0e49a8fffaaad2a24f472d2573241d4d6d6c7480c80b4c67bb4479c15ada7ea8424d2502fa01472e760241713dab025ae1b02e1703a1435f62ddf4ee4c1b664066eb22f2e3bf28bb70a2a76e4fd5ebe2d1229681b5b06439ac9c7e9d8bde283",
         16
@@ -28,7 +27,8 @@ class DSATest {
         "313fd9ebca91574e1c2eebe1517c57e0c21b0209872140c5328761bbb2450b33f1b18b409ce9ab7c4cd8fda3391e8e34868357c199e16a6b2eba06d6749def791d79e95d3a4d09b24c392ad89dbf100995ae19c01062056bb14bce005e8731efde175f95b975089bdcdaea562b32786d96f5a31aedf75364008ad4fffebb970b",
         16
     )
-    private val dsa = DSA(p, q, g)
+    private val params = DsaParameters(p, q, g)
+    private val dsa = Dsa(params)
     private val message = "hello".encodeToByteArray()
     private val k = BigInteger.fromInt(123456789).mod(q)
     private val expectedR = BigInteger.parseString("79402cc0e77cfe15824d4ed58397e6fa62f4a063", 16)
@@ -45,11 +45,9 @@ class DSATest {
     @Test
     fun testGenerateKeyPair() {
         val (pub, priv) = dsa.generateKeyPair()
-        assertEquals(DSA_PUBLIC_KEY_SIZE, pub.bytes.size)
-        assertEquals(DSA_PRIVATE_KEY_SIZE, priv.bytes.size)
 
-        val x = BigInteger.fromByteArray(priv.bytes, Sign.POSITIVE)
-        val y = BigInteger.fromByteArray(pub.bytes, Sign.POSITIVE)
+        val x = priv.x
+        val y = pub.y
         val msg = "hello".encodeToByteArray()
         val (r, s) = dsa.sign(msg, x)
         assertTrue(dsa.verify(msg, y, r, s))
@@ -57,7 +55,47 @@ class DSATest {
 
     @Test
     fun testKeyValidation() {
-        assertFailsWith<IllegalArgumentException> { DSAPublicKey(ByteArray(1)) }
-        assertFailsWith<IllegalArgumentException> { DSAPrivateKey(ByteArray(1)) }
+        assertFailsWith<IllegalArgumentException> { DsaPublicKey(BigInteger.ZERO, params) }
+        assertFailsWith<IllegalArgumentException> { DsaPublicKey(params.p, params) }
+        assertFailsWith<IllegalArgumentException> { DsaPrivateKey(BigInteger.ZERO, params) }
+        assertFailsWith<IllegalArgumentException> { DsaPrivateKey(params.q, params) }
+    }
+
+    @Test
+    fun testMpiRoundTrip() {
+        val numbers = listOf(
+            BigInteger.ZERO,
+            BigInteger.ONE,
+            BigInteger.fromInt(0x12345678),
+            BigInteger.parseString("abcdef1234567890", 16),
+        )
+        for (n in numbers) {
+            val bytes = n.toMPI()
+            val (decoded, idx) = bytes.readMPI()
+            assertEquals(bytes.size, idx)
+            assertEquals(n, decoded)
+        }
+    }
+
+    @Test
+    fun testMpiKnownValues() {
+        val cases = mapOf(
+            BigInteger.fromInt(9) to "000409",
+            BigInteger.parseString("1234567890123456789", 10) to "003d112210f47de98115",
+            BigInteger.parseString(
+                "100200300400500600700800900",
+                10
+            ) to "005752e23d2b3cc71d9f4a0f84",
+        )
+        for ((num, hex) in cases) {
+            val bytes = num.toMPI()
+            val actualHex = bytes
+                .joinToString("") {
+                    ((it.toInt() and 0xFF).toString(16)).padStart(2, '0')
+                }
+            assertEquals(hex, actualHex)
+            val (decoded, _) = bytes.readMPI()
+            assertEquals(num, decoded)
+        }
     }
 }
