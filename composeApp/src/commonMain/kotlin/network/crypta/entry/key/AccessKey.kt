@@ -18,14 +18,22 @@ import network.crypta.entry.key.InsertableClientSsk
  * @property cryptoAlgorithm The encryption algorithm used for the content.
  * @property metaStrings A list of metadata strings from the URI path.
  */
-abstract class AccessKey(
-    routingKey: RoutingKey,
-    val sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
+/**
+ * A key that grants access to data. Concrete implementations delegate the
+ * property storage to [BasicAccessKey] for convenience.
+ */
+sealed interface AccessKey : Key {
+    val sharedKey: SharedKey
     val metaStrings: MutableList<String>
-) : Key(routingKey, cryptoAlgorithm) {
-
 }
+
+/** Simple data holder implementing [AccessKey]. */
+data class BasicAccessKey(
+    override val routingKey: RoutingKey,
+    override val sharedKey: SharedKey,
+    override val cryptoAlgorithm: CryptoAlgorithm,
+    override val metaStrings: MutableList<String>
+) : AccessKey, Key by BasicKey(routingKey, cryptoAlgorithm)
 
 /**
  * An interface for keys that belong to a "subspace", a concept in Crypta
@@ -61,62 +69,33 @@ interface Insertable {
  * @property docName The name of the document, often called the "site name".
  * @property suggestedEdition The specific version number of the document this key points to.
  */
-open class Usk(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
-    metaStrings: List<String>
-) : AccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings.toMutableList()), SubspaceKey {
-    /**
-     * The human-readable name of the document. In the context of a freesite, this is the "site name".
-     */
-    final override val docName: String
-
-
-    /**
-     * The suggested edition number of the document. This allows clients to request a specific
-     * version, though they will typically seek the latest one.
-     */
+data class Usk(
+    override val routingKey: RoutingKey,
+    override val sharedKey: SharedKey,
+    override val cryptoAlgorithm: CryptoAlgorithm,
+    override val docName: String,
     val suggestedEdition: Long
+) : SubspaceKey,
+    AccessKey by BasicAccessKey(
+        routingKey,
+        sharedKey,
+        cryptoAlgorithm,
+        mutableListOf(docName, suggestedEdition.toString())
+    ) {
 
-    init {
-        require(this.metaStrings.isNotEmpty()) {
-            "No meta strings / document name given"
-        }
-
-        docName = this.metaStrings.removeFirst()
-
-        require(this.metaStrings.isNotEmpty()) {
-            "No suggested edition number"
-        }
-
-        try {
-            suggestedEdition = this.metaStrings.removeFirst().toLong()
-        } catch (e: NumberFormatException) {
-            throw IllegalArgumentException("Invalid suggested edition number", e)
-        }
-    }
-
-    /**
-     * Secondary constructor for creating a [Usk] with explicit document name and edition.
-     *
-     * @param routingKey The key for locating the USK data.
-     * @param sharedKey The key for decrypting the USK data.
-     * @param cryptoAlgorithm The encryption algorithm used.
-     * @param docName The human-readable name of the document.
-     * @param suggestedEdition The version number of the document.
-     */
     constructor(
         routingKey: RoutingKey,
         sharedKey: SharedKey,
         cryptoAlgorithm: CryptoAlgorithm,
-        docName: String,
-        suggestedEdition: Long
+        metaStrings: List<String>
     ) : this(
         routingKey,
         sharedKey,
         cryptoAlgorithm,
-        listOf(docName, suggestedEdition.toString())
+        metaStrings.firstOrNull()
+            ?: error("No meta strings / document name given"),
+        metaStrings.getOrNull(1)?.toLongOrNull()
+            ?: error("Invalid suggested edition number")
     )
 
     companion object {
@@ -149,14 +128,14 @@ open class Usk(
  * @param suggestedEdition The version number of the document being inserted.
  * @param privateKey The private key required for signing the new content.
  */
-class InsertableUsk(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
-    docName: String,
-    suggestedEdition: Long,
-    override val privateKey: DsaPrivateKey
-) : Usk(routingKey, sharedKey, cryptoAlgorithm, docName, suggestedEdition), Insertable {
+data class InsertableUsk(
+    val usk: Usk,
+    override val privateKey: DsaPrivateKey,
+) : SubspaceKey by usk,
+    Insertable,
+    AccessKey by usk {
+
+    val suggestedEdition: Long get() = usk.suggestedEdition
     companion object {
         /**
          * Parses an insertable USK [Uri] into an [InsertableUsk].
@@ -174,15 +153,9 @@ class InsertableUsk(
             val ssk = InsertableClientSsk.fromUri(sskUri)
 
             val edition = editionStr.toLong()
+            val usk = Usk(ssk.routingKey, ssk.sharedKey, ssk.cryptoAlgorithm, docName, edition)
 
-            return InsertableUsk(
-                ssk.routingKey,
-                ssk.sharedKey,
-                ssk.cryptoAlgorithm,
-                docName,
-                edition,
-                ssk.privateKey
-            )
+            return InsertableUsk(usk, ssk.privateKey)
         }
     }
 }

@@ -24,17 +24,45 @@ import network.crypta.entry.Uri
  * @property cryptoAlgorithm The encryption algorithm used for the content.
  * @property metaStrings A list of metadata strings from the URI path.
  */
-abstract class ClientKey(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
-    metaStrings: MutableList<String>
-) : AccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings) {
-
-}
+/**
+ * Marker interface for keys that originate from a client request.
+ */
+interface ClientKey : AccessKey
 
 /** The length of the "extra" data field in a CHK or SSK URI. */
 const val EXTRA_LENGTH = 5
+
+/** Metadata for SSK and USK keys contained in the `extra` block of a URI. */
+private data class SskExtraData(
+    val cryptoAlgorithm: CryptoAlgorithm,
+    val isInsertable: Boolean,
+) {
+    /** Serializes the extra data into a byte array for inclusion in a URI. */
+    fun toByteArray(): ByteArray {
+        val extra = ByteArray(EXTRA_LENGTH)
+        extra[0] = 1
+        extra[1] = if (isInsertable) 1 else 0
+        extra[2] = cryptoAlgorithm.value.toByte()
+        extra[3] = (1 shr 8).toByte()
+        extra[4] = 1
+        return extra
+
+    }
+
+    companion object {
+        /** Deserializes a byte array from a URI into an [SskExtraData] object. */
+        fun fromByteArray(extra: ByteArray): SskExtraData {
+            require(extra.size >= EXTRA_LENGTH) {
+                "Extra data must be at least $EXTRA_LENGTH bytes"
+            }
+
+            val cryptoAlgorithm = CryptoAlgorithm.fromValue(extra[2].toInt())
+            val isInsertable = extra[1].toInt() == 1
+
+            return SskExtraData(cryptoAlgorithm, isInsertable)
+        }
+    }
+}
 
 /**
  * Represents a Client Content Hash Key (CHK).
@@ -43,14 +71,15 @@ const val EXTRA_LENGTH = 5
  * @property isControlDocument A flag indicating if this is a control document.
  * @property compressionAlgorithm The algorithm used to compress the data.
  */
-class ClientChk(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
-    metaStrings: List<String>,
+data class ClientChk(
+    override val routingKey: RoutingKey,
+    override val sharedKey: SharedKey,
+    override val cryptoAlgorithm: CryptoAlgorithm,
+    override val metaStrings: MutableList<String>,
     val isControlDocument: Boolean,
     val compressionAlgorithm: CompressionAlgorithm
-) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, mutableListOf()) {
+) : ClientKey,
+    AccessKey by BasicAccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings) {
 
     override fun toString(): String {
         return "${super.toString()}:${routingKey.toBase64()},${sharedKey.toBase64()},$compressionAlgorithm,$isControlDocument,$cryptoAlgorithm"
@@ -112,7 +141,7 @@ class ClientChk(
                 routingKey,
                 sharedKey,
                 extraData.cryptoAlgorithm,
-                emptyList(),
+                mutableListOf(),
                 extraData.isControlDocument,
                 extraData.compressionAlgorithm
             )
@@ -137,7 +166,7 @@ class ClientChk(
                 routingKey,
                 sharedKey,
                 extraData.cryptoAlgorithm,
-                uri.metaStrings,
+                uri.metaStrings.toMutableList(),
                 extraData.isControlDocument,
                 extraData.compressionAlgorithm
             )
@@ -154,32 +183,36 @@ class ClientChk(
  * @property docName The human-readable name of the document.
  * @property ehDocName The encrypted hash of the document name, used internally.
  */
-open class ClientSsk(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    metaStrings: List<String>,
+data class ClientSsk(
+    override val routingKey: RoutingKey,
+    override val sharedKey: SharedKey,
     val publicKey: DsaPublicKey?,
-) : ClientKey(
-    routingKey,
-    sharedKey,
-    CryptoAlgorithm.AES_PCFB_256_SHA256,
-    metaStrings.toMutableList()
-), SubspaceKey {
-
-    /** The human-readable name of the document. */
-    final override val docName: String
+    override val docName: String
+) : ClientKey,
+    SubspaceKey,
+    AccessKey by BasicAccessKey(
+        routingKey,
+        sharedKey,
+        CryptoAlgorithm.AES_PCFB_256_SHA256,
+        mutableListOf(docName)
+    ) {
 
     /** The encrypted hash of the document name. */
     val ehDocName: ByteArray
 
+    constructor(
+        routingKey: RoutingKey,
+        sharedKey: SharedKey,
+        metaStrings: List<String>,
+        publicKey: DsaPublicKey?
+    ) : this(
+        routingKey,
+        sharedKey,
+        publicKey,
+        metaStrings.firstOrNull() ?: error("No meta strings / document name given")
+    )
+
     init {
-        require(this.metaStrings.isNotEmpty()) {
-            "No meta strings / document name given"
-        }
-
-        docName = this.metaStrings.removeFirst()
-
-        // verify publicKey
         if (publicKey != null) {
             val publicKeyBytes = publicKey.bytes
             val publicKeyHash = Hash.digest(HashAlgorithm.SHA256, publicKeyBytes)
@@ -188,45 +221,11 @@ open class ClientSsk(
             }
         }
 
-        // calculate ehDocname
         val rijndael256 = Rijndael256(sharedKey.bytes)
         ehDocName =
             rijndael256.encrypt(Hash.digest(HashAlgorithm.SHA256, docName.encodeToByteArray()))
     }
 
-    /**
-     * Internal data class to manage the serialization of extra metadata for an SSK.
-     */
-    protected data class ExtraData(
-        val cryptoAlgorithm: CryptoAlgorithm,
-        val isInsertable: Boolean,
-    ) {
-        /** Serializes the extra data into a byte array for inclusion in a URI. */
-        fun toByteArray(): ByteArray {
-            val extra = ByteArray(EXTRA_LENGTH)
-            extra[0] = 1
-            extra[1] = if (isInsertable) 1 else 0
-            extra[2] = cryptoAlgorithm.value.toByte()
-            extra[3] = (1 shr 8).toByte()
-            extra[4] = 1
-            return extra
-
-        }
-
-        companion object {
-            /** Deserializes a byte array from a URI into an [ExtraData] object. */
-            fun fromByteArray(extra: ByteArray): ExtraData {
-                require(extra.size >= EXTRA_LENGTH) {
-                    "Extra data must be at least $EXTRA_LENGTH bytes"
-                }
-
-                val cryptoAlgorithm = CryptoAlgorithm.fromValue(extra[2].toInt())
-                val isInsertable = extra[1].toInt() == 1
-
-                return ExtraData(cryptoAlgorithm, isInsertable)
-            }
-        }
-    }
 
     companion object {
         /**
@@ -246,7 +245,7 @@ open class ClientSsk(
             docName: String,
             publicKey: DsaPublicKey? = null
         ): ClientSsk {
-            val extraData = ExtraData.fromByteArray(extra);
+            val extraData = SskExtraData.fromByteArray(extra);
 
             require(extraData.cryptoAlgorithm == CryptoAlgorithm.AES_PCFB_256_SHA256) {
                 "Unknown encryption algorithm ${extraData.cryptoAlgorithm}"
@@ -255,8 +254,8 @@ open class ClientSsk(
             return ClientSsk(
                 routingKey,
                 sharedKey,
-                mutableListOf(docName),
-                publicKey
+                publicKey,
+                docName
             )
         }
 
@@ -284,13 +283,15 @@ open class ClientSsk(
  *
  * @param privateKey The DSA private key used for signing new data.
  */
-open class InsertableClientSsk(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    docName: String,
-    publicKey: DsaPublicKey,
-    val privateKey: DsaPrivateKey,
-) : ClientSsk(routingKey, sharedKey, listOf(docName), publicKey) {
+data class InsertableClientSsk(
+    val clientSsk: ClientSsk,
+    override val privateKey: DsaPrivateKey
+) : SubspaceKey by clientSsk,
+    Insertable,
+    AccessKey by clientSsk {
+
+    val publicKey: DsaPublicKey get() = clientSsk.publicKey!!
+    val ehDocName: ByteArray get() = clientSsk.ehDocName
 
     companion object {
         /**
@@ -308,7 +309,7 @@ open class InsertableClientSsk(
                 ?: error("Insertable SSK URIs must have a private key!")
             val extra = uri.keys.getExtraBytes()
 
-            val extraData = ExtraData.fromByteArray(extra);
+            val extraData = SskExtraData.fromByteArray(extra);
 
             require(extraData.isInsertable) { "SSK not an insertable key" }
             require(extraData.cryptoAlgorithm == CryptoAlgorithm.AES_PCFB_256_SHA256) {
@@ -324,7 +325,8 @@ open class InsertableClientSsk(
             val hash = Hash.digest(HashAlgorithm.SHA256, pubKey.bytes)
             val pkHash = RoutingKey(hash)
 
-            return InsertableClientSsk(pkHash, sharedKey, docName, pubKey, privKey)
+            val ssk = ClientSsk(pkHash, sharedKey, pubKey, docName)
+            return InsertableClientSsk(ssk, privKey)
         }
     }
 }
@@ -340,18 +342,12 @@ open class InsertableClientSsk(
  * @param publicKey The public key part of the key pair.
  * @param privateKey The private key part of the key pair, for insertions.
  */
-class ClientKsk(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    docName: String,
-    publicKey: DsaPublicKey,
-    privateKey: DsaPrivateKey,
-) : InsertableClientSsk(
-    routingKey,
-    sharedKey,
-    docName,
-    publicKey,
-    privateKey
-) {
+data class ClientKsk(
+    val insertableSsk: InsertableClientSsk
+) : SubspaceKey by insertableSsk,
+    Insertable by insertableSsk,
+    AccessKey by insertableSsk {
 
+    val publicKey: DsaPublicKey get() = insertableSsk.publicKey
+    val ehDocName: ByteArray get() = insertableSsk.ehDocName
 }
