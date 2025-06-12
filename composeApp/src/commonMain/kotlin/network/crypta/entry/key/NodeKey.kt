@@ -9,7 +9,7 @@ import network.crypta.entry.RoutingKey
 interface NodeKey
 
 class NodeChk(routingKey: RoutingKey, cryptoAlgorithm: CryptoAlgorithm) :
-    Key(routingKey, cryptoAlgorithm), NodeKey {
+    NodeKey, Key by BasicKey(routingKey, cryptoAlgorithm) {
 
 }
 
@@ -18,7 +18,8 @@ class NodeSsk(
     cryptoAlgorithm: CryptoAlgorithm,
     val ehDocName: ByteArray,
     val publicKey: DsaPublicKey? = null,
-) : Key(makeNodeRoutingKey(clientRoutingKey, ehDocName), cryptoAlgorithm), NodeKey {
+) : NodeKey,
+    Key by BasicKey(makeNodeRoutingKey(clientRoutingKey, ehDocName), cryptoAlgorithm) {
 
     init {
         if (publicKey != null) {
