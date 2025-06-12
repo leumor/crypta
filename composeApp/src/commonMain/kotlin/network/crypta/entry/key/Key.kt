@@ -38,22 +38,10 @@ enum class CompressionAlgorithm(val value: Int) {
 }
 
 /**
- * Base contract for all Crypta keys.
+ * Represents a base Crypta key. A key is a type of URI used to access data on the network.
+ * All key types are derived from this sealed class.
  *
- * Implementations should simply provide the routing key and the crypto
- * algorithm used. The common behaviour can then be delegated to
- * [BasicKey] to reduce boilerplate.
+ * @property routingKey The key used to locate the data in the Crypta network. It is typically a hash.
+ * @property cryptoAlgorithm The cryptographic algorithm used to encrypt the content.
  */
-sealed interface Key {
-    val routingKey: RoutingKey
-    val cryptoAlgorithm: CryptoAlgorithm
-}
-
-/**
- * Simple [Key] implementation that stores the required properties. Other
- * classes in the hierarchy delegate to this data class.
- */
-data class BasicKey(
-    override val routingKey: RoutingKey,
-    override val cryptoAlgorithm: CryptoAlgorithm
-) : Key
+sealed class Key(val routingKey: RoutingKey, val cryptoAlgorithm: CryptoAlgorithm)
