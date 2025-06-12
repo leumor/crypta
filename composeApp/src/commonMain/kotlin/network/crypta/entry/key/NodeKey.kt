@@ -8,18 +8,17 @@ import network.crypta.entry.RoutingKey
 
 interface NodeKey
 
-class NodeChk(routingKey: RoutingKey, cryptoAlgorithm: CryptoAlgorithm) :
-    NodeKey, Key by BasicKey(routingKey, cryptoAlgorithm) {
+data class NodeChk(
+    override val routingKey: RoutingKey,
+    override val cryptoAlgorithm: CryptoAlgorithm
+) : NodeKey, Key by BasicKey(routingKey, cryptoAlgorithm)
 
-}
-
-class NodeSsk(
+data class NodeSsk(
     val clientRoutingKey: RoutingKey,
-    cryptoAlgorithm: CryptoAlgorithm,
+    override val cryptoAlgorithm: CryptoAlgorithm,
     val ehDocName: ByteArray,
     val publicKey: DsaPublicKey? = null,
-) : NodeKey,
-    Key by BasicKey(makeNodeRoutingKey(clientRoutingKey, ehDocName), cryptoAlgorithm) {
+) : NodeKey, Key by BasicKey(makeNodeRoutingKey(clientRoutingKey, ehDocName), cryptoAlgorithm) {
 
     init {
         if (publicKey != null) {
@@ -47,5 +46,27 @@ class NodeSsk(
             return RoutingKey(hasher.digest())
         }
 
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as NodeSsk
+
+        if (clientRoutingKey != other.clientRoutingKey) return false
+        if (cryptoAlgorithm != other.cryptoAlgorithm) return false
+        if (!ehDocName.contentEquals(other.ehDocName)) return false
+        if (publicKey != other.publicKey) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = clientRoutingKey.hashCode()
+        result = 31 * result + cryptoAlgorithm.hashCode()
+        result = 31 * result + ehDocName.contentHashCode()
+        result = 31 * result + (publicKey?.hashCode() ?: 0)
+        return result
     }
 }

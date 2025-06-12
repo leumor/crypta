@@ -24,20 +24,13 @@ import network.crypta.entry.Uri
  * @property cryptoAlgorithm The encryption algorithm used for the content.
  * @property metaStrings A list of metadata strings from the URI path.
  */
-abstract class ClientKey(
-    routingKey: RoutingKey,
-    sharedKey: SharedKey,
-    cryptoAlgorithm: CryptoAlgorithm,
-    metaStrings: MutableList<String>
-) : AccessKey by BasicAccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings) {
-
-}
+interface ClientKey : AccessKey
 
 /** The length of the "extra" data field in a CHK or SSK URI. */
 const val EXTRA_LENGTH = 5
 
 /** Metadata for SSK and USK keys contained in the `extra` block of a URI. */
-data class SskExtraData(
+private data class SskExtraData(
     val cryptoAlgorithm: CryptoAlgorithm,
     val isInsertable: Boolean,
 ) {
@@ -82,7 +75,8 @@ data class ClientChk(
     override val metaStrings: MutableList<String>,
     val isControlDocument: Boolean,
     val compressionAlgorithm: CompressionAlgorithm
-) : ClientKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings) {
+) : ClientKey,
+    AccessKey by BasicAccessKey(routingKey, sharedKey, cryptoAlgorithm, metaStrings) {
 
     override fun toString(): String {
         return "${super.toString()}:${routingKey.toBase64()},${sharedKey.toBase64()},$compressionAlgorithm,$isControlDocument,$cryptoAlgorithm"
@@ -191,12 +185,14 @@ data class ClientSsk(
     override val sharedKey: SharedKey,
     val publicKey: DsaPublicKey?,
     override val docName: String
-) : ClientKey(
-    routingKey,
-    sharedKey,
-    CryptoAlgorithm.AES_PCFB_256_SHA256,
-    mutableListOf(docName)
-), SubspaceKey {
+) : ClientKey,
+    SubspaceKey,
+    AccessKey by BasicAccessKey(
+        routingKey,
+        sharedKey,
+        CryptoAlgorithm.AES_PCFB_256_SHA256,
+        mutableListOf(docName)
+    ) {
 
     /** The encrypted hash of the document name. */
     val ehDocName: ByteArray
