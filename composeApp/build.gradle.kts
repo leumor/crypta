@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -73,6 +74,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.bignum)
             implementation(libs.cryptography.core)
+            implementation(libs.kotlinx.serialization.core)
+            implementation(libs.kotlinx.io.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
