@@ -1,4 +1,4 @@
-package network.crypta.network
+package network.crypta.support.network
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.DoubleArraySerializer
@@ -6,12 +6,13 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import kotlin.math.E
 import kotlin.math.PI
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
-class MessageSerializerJvmTest {
+class MessageSerializationJvmTest {
     @Serializable
     data class Simple(val flag: Boolean, val number: Int, val text: String)
 
@@ -66,7 +67,7 @@ class MessageSerializerJvmTest {
             0xDE.toShort(),
             1_234_567,
             123_467_890_123L,
-            kotlin.math.E,
+            E,
             123.4567f,
             byteArrayOf(1, 2, 3, 4),
             "testing string",
