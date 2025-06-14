@@ -11,9 +11,11 @@ import kotlinx.serialization.descriptors.StructureKind
 import kotlinx.serialization.encoding.AbstractDecoder
 import kotlinx.serialization.encoding.AbstractEncoder
 import kotlinx.serialization.encoding.CompositeDecoder
-import kotlinx.serialization.modules.EmptySerializersModule
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.serializer
+
+// Serializers module providing MessageSerializable support
+import network.crypta.support.network.MessageSerialModule
 
 /** A multiplatform Crypta network message serializer. */
 
@@ -37,13 +39,13 @@ fun <T> decode(deserializer: DeserializationStrategy<T>, data: ByteArray): T {
 
 /** Inline reified wrappers for easier invocation. */
 inline fun <reified T> encode(value: T): ByteArray =
-    encode(serializer(), value)
+    encode(MessageSerialModule.serializer(), value)
 
 inline fun <reified T> decode(data: ByteArray): T =
-    decode(serializer(), data)
+    decode(MessageSerialModule.serializer(), data)
 
 private class Encoder(private val sink: Buffer) : AbstractEncoder() {
-    override val serializersModule: SerializersModule = EmptySerializersModule()
+    override val serializersModule: SerializersModule = MessageSerialModule
 
     override fun encodeBoolean(value: Boolean) {
         sink.writeByte(if (value) 1 else 0)
@@ -75,6 +77,10 @@ private class Encoder(private val sink: Buffer) : AbstractEncoder() {
 
     override fun encodeDouble(value: Double) {
         sink.writeLong(value.toBits())
+    }
+
+    override fun encodeEnum(enumDescriptor: SerialDescriptor, index: Int) {
+        encodeInt(index)
     }
 
     override fun encodeString(value: String) {
@@ -119,7 +125,7 @@ private class Encoder(private val sink: Buffer) : AbstractEncoder() {
 }
 
 private class Decoder(private val source: Buffer) : AbstractDecoder() {
-    override val serializersModule: SerializersModule = EmptySerializersModule()
+    override val serializersModule: SerializersModule = MessageSerialModule
 
     private val indices = ArrayDeque<Int>()
     private val listRemaining = ArrayDeque<Int>()
@@ -132,6 +138,8 @@ private class Decoder(private val source: Buffer) : AbstractDecoder() {
     override fun decodeChar(): Char = source.readShort().toInt().toChar()
     override fun decodeFloat(): Float = Float.fromBits(source.readInt())
     override fun decodeDouble(): Double = Double.fromBits(source.readLong())
+
+    override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = decodeInt()
 
     override fun decodeString(): String {
         val length = decodeInt()

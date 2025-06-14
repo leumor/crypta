@@ -1,5 +1,6 @@
 package network.crypta.entry
 
+import kotlinx.serialization.Serializable
 import network.crypta.crypto.CryptoKey
 import network.crypta.crypto.SecretKey
 import kotlin.jvm.JvmInline
@@ -31,6 +32,7 @@ enum class KeyType {
  * @property bytes The raw byte array of the routing key.
  * @constructor Ensures the routing key is exactly [ROUTING_KEY_SIZE] bytes long.
  */
+@Serializable
 @JvmInline
 value class RoutingKey(override val bytes: ByteArray) : CryptoKey {
     init {

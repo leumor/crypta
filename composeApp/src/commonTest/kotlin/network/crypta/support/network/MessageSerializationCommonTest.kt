@@ -8,6 +8,13 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import network.crypta.entry.key.ClientChk
+import network.crypta.crypto.SecretKey
+import network.crypta.entry.RoutingKey
+import network.crypta.entry.ROUTING_KEY_SIZE
+import network.crypta.crypto.SECRET_KEY_SIZE
+import network.crypta.crypto.CryptoAlgorithm
+import network.crypta.entry.key.CompressionAlgorithm
 
 class MessageSerializationCommonTest {
     @Serializable
@@ -84,6 +91,34 @@ class MessageSerializationCommonTest {
         assertEquals(value.text, decoded.text)
         assertContentEquals(value.doubles, decoded.doubles)
         assertContentEquals(value.floats, decoded.floats)
+    }
+
+    @Serializable
+    data class WithChk(
+        val chk: ClientChk,
+        val label: String,
+    )
+
+    @Test
+    fun clientChkRoundTrip() {
+        val chk = ClientChk(
+            RoutingKey(ByteArray(ROUTING_KEY_SIZE) { it.toByte() }),
+            SecretKey(ByteArray(SECRET_KEY_SIZE) { (it + 2).toByte() }),
+            CryptoAlgorithm.AES_CTR_256_SHA256,
+            mutableListOf("meta"),
+            isControlDocument = false,
+            compressionAlgorithm = CompressionAlgorithm.GZIP,
+        )
+        val wrapper = WithChk(chk, "data")
+        val bytes = encode(wrapper)
+        val decoded = decode<WithChk>(bytes)
+        assertEquals(wrapper.label, decoded.label)
+        assertEquals(chk.cryptoAlgorithm, decoded.chk.cryptoAlgorithm)
+        assertEquals(chk.isControlDocument, decoded.chk.isControlDocument)
+        assertEquals(chk.compressionAlgorithm, decoded.chk.compressionAlgorithm)
+        assertContentEquals(chk.routingKey.bytes, decoded.chk.routingKey.bytes)
+        assertContentEquals(chk.sharedKey.bytes, decoded.chk.sharedKey.bytes)
+        assertEquals(chk.metaStrings, decoded.chk.metaStrings)
     }
 
     @Test
