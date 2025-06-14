@@ -1,5 +1,6 @@
 package network.crypta.network
 
+import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.DoubleArraySerializer
 import kotlinx.serialization.serializer
@@ -96,6 +97,7 @@ class MessageSerializationCommonTest {
 
     @Serializable
     data class WithChk(
+        @Contextual
         val chk: ClientChk,
         val label: String,
         val id: Int,
