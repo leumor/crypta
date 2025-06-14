@@ -1,7 +1,6 @@
 package network.crypta.network
 
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.builtins.ByteArraySerializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
@@ -29,20 +28,16 @@ object ClientChkSerializer : KSerializer<ClientChk> {
             value.compressionAlgorithm
         ).toByteArray()
         val bytes = extra + value.routingKey.bytes + value.sharedKey.bytes
-        encoder.encodeSerializableValue(ByteArraySerializer(), bytes)
+        for (b in bytes) encoder.encodeByte(b)
     }
 
     override fun deserialize(decoder: Decoder): ClientChk {
-        val bytes = decoder.decodeSerializableValue(ByteArraySerializer())
-        require(bytes.size >= EXTRA_LENGTH + ROUTING_KEY_SIZE + SECRET_KEY_SIZE) {
-            "CHK encoding too short"
-        }
-        val extra = bytes.copyOfRange(0, EXTRA_LENGTH)
-        val routingBytes = bytes.copyOfRange(EXTRA_LENGTH, EXTRA_LENGTH + ROUTING_KEY_SIZE)
-        val sharedBytes = bytes.copyOfRange(
-            EXTRA_LENGTH + ROUTING_KEY_SIZE,
-            EXTRA_LENGTH + ROUTING_KEY_SIZE + SECRET_KEY_SIZE
-        )
+        val extra = ByteArray(EXTRA_LENGTH)
+        for (i in extra.indices) extra[i] = decoder.decodeByte()
+        val routingBytes = ByteArray(ROUTING_KEY_SIZE)
+        for (i in routingBytes.indices) routingBytes[i] = decoder.decodeByte()
+        val sharedBytes = ByteArray(SECRET_KEY_SIZE)
+        for (i in sharedBytes.indices) sharedBytes[i] = decoder.decodeByte()
         val extraData = ExtraData.fromByteArray(extra)
         return ClientChk(
             RoutingKey(routingBytes),
