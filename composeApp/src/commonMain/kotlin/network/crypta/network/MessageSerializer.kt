@@ -107,6 +107,12 @@ private class Encoder(private val sink: Buffer) : AbstractEncoder() {
                 for (f in arr) encodeFloat(f)
             }
 
+            "kotlin.ByteArray" -> {
+                val arr = value as ByteArray
+                sink.writeInt(arr.size)
+                sink.write(arr)
+            }
+
             else -> serializer.serialize(this, value)
         }
     }
@@ -195,6 +201,13 @@ private class Decoder(private val source: Buffer) : AbstractDecoder() {
                 val size = source.readShort().toInt() and 0xFFFF
                 val arr = FloatArray(size)
                 for (i in 0 until size) arr[i] = decodeFloat()
+                arr as T
+            }
+
+            "kotlin.ByteArray" -> {
+                val size = source.readInt()
+                val arr = ByteArray(size)
+                source.readAtMostTo(arr, 0, size)
                 arr as T
             }
 

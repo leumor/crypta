@@ -49,6 +49,7 @@ class MessageSerializerCommonTest {
         val longVal: Long,
         val doubleVal: Double,
         val floatVal: Float,
+        val bytes: ByteArray,
         val text: String,
         val doubles: DoubleArray,
         val floats: FloatArray
@@ -64,6 +65,7 @@ class MessageSerializerCommonTest {
             123_467_890_123L,
             E,
             123.4567f,
+            byteArrayOf(1, 2, 3, 4),
             "testing string",
             doubleArrayOf(PI, 0.1234),
             floatArrayOf(2345.678f, 8901.234f)
@@ -78,6 +80,7 @@ class MessageSerializerCommonTest {
         assertEquals(value.longVal, decoded.longVal)
         assertEquals(value.doubleVal, decoded.doubleVal)
         assertEquals(value.floatVal, decoded.floatVal)
+        assertContentEquals(value.bytes, decoded.bytes)
         assertEquals(value.text, decoded.text)
         assertContentEquals(value.doubles, decoded.doubles)
         assertContentEquals(value.floats, decoded.floats)

@@ -52,6 +52,7 @@ class MessageSerializerJvmTest {
         val longVal: Long,
         val doubleVal: Double,
         val floatVal: Float,
+        val bytes: ByteArray,
         val text: String,
         val doubles: DoubleArray,
         val floats: FloatArray
@@ -67,6 +68,7 @@ class MessageSerializerJvmTest {
             123_467_890_123L,
             kotlin.math.E,
             123.4567f,
+            byteArrayOf(1, 2, 3, 4),
             "testing string",
             doubleArrayOf(PI, 0.1234),
             floatArrayOf(2345.678f, 8901.234f)
@@ -83,6 +85,8 @@ class MessageSerializerJvmTest {
             out.writeLong(value.longVal)
             out.writeDouble(value.doubleVal)
             out.writeFloat(value.floatVal)
+            out.writeInt(value.bytes.size)
+            out.write(value.bytes)
             out.writeInt(value.text.length)
             for (ch in value.text) out.writeChar(ch.code)
             out.writeByte(value.doubles.size)
@@ -101,6 +105,7 @@ class MessageSerializerJvmTest {
         assertEquals(value.longVal, decoded.longVal)
         assertEquals(value.doubleVal, decoded.doubleVal)
         assertEquals(value.floatVal, decoded.floatVal)
+        assertContentEquals(value.bytes, decoded.bytes)
         assertEquals(value.text, decoded.text)
         assertContentEquals(value.doubles, decoded.doubles)
         assertContentEquals(value.floats, decoded.floats)
@@ -113,6 +118,10 @@ class MessageSerializerJvmTest {
             assertEquals(value.longVal, input.readLong())
             assertEquals(value.doubleVal, input.readDouble(), 0.0)
             assertEquals(value.floatVal, input.readFloat(), 0.0f)
+            val bSize = input.readInt()
+            val bArr = ByteArray(bSize)
+            input.readFully(bArr)
+            assertContentEquals(value.bytes, bArr)
             val len = input.readInt()
             val sb = StringBuilder()
             repeat(len) { sb.append(input.readChar()) }
