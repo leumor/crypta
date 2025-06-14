@@ -8,11 +8,8 @@ import network.crypta.crypto.DsaPublicKey
 import network.crypta.crypto.Hash
 import network.crypta.crypto.HashAlgorithm
 import network.crypta.crypto.Rijndael256
-import network.crypta.entry.ROUTING_KEY_SIZE
-import network.crypta.crypto.SECRET_KEY_SIZE
 import network.crypta.crypto.toBase64
 import network.crypta.entry.KeyType
-import network.crypta.entry.key.CompressionAlgorithm
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.SharedKey
 import network.crypta.entry.Uri
@@ -71,7 +68,6 @@ private data class SskExtraData(
  * @property isControlDocument A flag indicating if this is a control document.
  * @property compressionAlgorithm The algorithm used to compress the data.
  */
-@kotlinx.serialization.Serializable
 data class ClientChk(
     override val routingKey: RoutingKey,
     override val sharedKey: SharedKey,
@@ -87,13 +83,14 @@ data class ClientChk(
     }
 
     /**
-     * Internal data class managing the serialization of additional metadata for a CHK.
+     * Internal data class to manage the serialization of extra metadata for a CHK.
      */
-    internal data class ExtraData(
+    private data class ExtraData(
         val cryptoAlgorithm: CryptoAlgorithm,
         val isControlDocument: Boolean,
         val compressionAlgorithm: CompressionAlgorithm,
     ) {
+        /** Serializes the extra data into a byte array for inclusion in a URI. */
         fun toByteArray(): ByteArray {
             val extra = ByteArray(EXTRA_LENGTH)
             extra[0] = (cryptoAlgorithm.value shr 8).toByte()
@@ -102,18 +99,22 @@ data class ClientChk(
             extra[3] = (compressionAlgorithm.value shr 8).toByte()
             extra[4] = compressionAlgorithm.value.toByte()
             return extra
+
         }
 
         companion object {
+            /** Deserializes a byte array from a URI into an [ExtraData] object. */
             fun fromByteArray(extra: ByteArray): ExtraData {
                 require(extra.size >= EXTRA_LENGTH) {
                     "Extra data must be at least $EXTRA_LENGTH bytes"
                 }
+
                 val cryptoAlgorithm = CryptoAlgorithm.fromValue(extra[1].toInt())
                 val isControlDocument = (extra[2].toInt() and 0x02) != 0
                 val compressionAlgorithm = CompressionAlgorithm.fromValue(
-                    ((extra[3].toInt() and 0xFF) shl 8) + (extra[4].toInt() and 0xFF),
+                    ((extra[3].toInt() and 0xFF) shl 8) + (extra[4].toInt() and 0xFF)
                 )
+
                 return ExtraData(cryptoAlgorithm, isControlDocument, compressionAlgorithm)
             }
         }
@@ -132,14 +133,14 @@ data class ClientChk(
             sharedKey: SharedKey,
             extra: ByteArray
         ): ClientChk {
-            val extraData = ExtraData.fromByteArray(extra)
+            val extraData = ExtraData.fromByteArray(extra);
             return ClientChk(
                 routingKey,
                 sharedKey,
                 extraData.cryptoAlgorithm,
                 mutableListOf(),
                 extraData.isControlDocument,
-                extraData.compressionAlgorithm,
+                extraData.compressionAlgorithm
             )
         }
 
@@ -157,9 +158,15 @@ data class ClientChk(
             val extra = uri.keys.getExtraBytes()
             require(extra.size >= EXTRA_LENGTH) { "No extra bytes in CHK" }
 
-            val chk = create(routingKey, sharedKey, extra)
-            chk.metaStrings.addAll(uri.metaStrings)
-            return chk
+            val extraData = ExtraData.fromByteArray(extra)
+            return ClientChk(
+                routingKey,
+                sharedKey,
+                extraData.cryptoAlgorithm,
+                uri.metaStrings.toMutableList(),
+                extraData.isControlDocument,
+                extraData.compressionAlgorithm
+            )
         }
     }
 }

@@ -1,7 +1,6 @@
 package network.crypta.crypto
 
 import dev.whyoleg.cryptography.random.CryptographyRandom
-import kotlinx.serialization.Serializable
 import kotlin.jvm.JvmInline
 
 /** The required size, in bytes, for a secret key. */
@@ -13,7 +12,6 @@ const val SECRET_KEY_SIZE = 32
  * @property bytes The raw byte array of the secret key.
  * @constructor Ensures the secret key is exactly [SECRET_KEY_SIZE] bytes long.
  */
-@Serializable
 @JvmInline
 value class SecretKey(override val bytes: ByteArray) : CryptoKey {
     init {
@@ -27,7 +25,6 @@ value class SecretKey(override val bytes: ByteArray) : CryptoKey {
  * Enumerates the supported symmetric encryption algorithms in the Crypta network.
  * @property value The integer identifier for the algorithm.
  */
-@Serializable
 enum class CryptoAlgorithm(val value: Int) {
     /** AES-256 in Propagating Cipher Feedback (PCFB) mode, with SHA-256 for integrity. */
     AES_PCFB_256_SHA256(2),
