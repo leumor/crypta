@@ -12,7 +12,6 @@ import kotlinx.serialization.encoding.AbstractDecoder
 import kotlinx.serialization.encoding.AbstractEncoder
 import kotlinx.serialization.encoding.CompositeDecoder
 import kotlinx.serialization.modules.SerializersModule
-import network.crypta.network.MessageSerialModule
 import kotlinx.serialization.serializer
 
 /** A multiplatform Crypta network message serializer. */
@@ -45,49 +44,26 @@ inline fun <reified T> decode(data: ByteArray): T =
 private class Encoder(private val sink: Buffer) : AbstractEncoder() {
     override val serializersModule: SerializersModule = MessageSerialModule
 
-    override fun encodeBoolean(value: Boolean) {
-        sink.writeByte(if (value) 1 else 0)
-    }
-
-    override fun encodeByte(value: Byte) {
-        sink.writeByte(value)
-    }
-
-    override fun encodeShort(value: Short) {
-        sink.writeShort(value)
-    }
-
-    override fun encodeInt(value: Int) {
-        sink.writeInt(value)
-    }
-
-    override fun encodeLong(value: Long) {
-        sink.writeLong(value)
-    }
-
-    override fun encodeChar(value: Char) {
-        sink.writeShort(value.code.toShort())
-    }
-
-    override fun encodeFloat(value: Float) {
-        sink.writeInt(value.toBits())
-    }
-
-    override fun encodeDouble(value: Double) {
-        sink.writeLong(value.toBits())
-    }
-
+    override fun encodeBoolean(value: Boolean) = sink.writeByte(if (value) 1 else 0)
+    override fun encodeByte(value: Byte) = sink.writeByte(value)
+    override fun encodeShort(value: Short) = sink.writeShort(value)
+    override fun encodeInt(value: Int) = sink.writeInt(value)
+    override fun encodeLong(value: Long) = sink.writeLong(value)
+    override fun encodeChar(value: Char) = sink.writeShort(value.code.toShort())
+    override fun encodeFloat(value: Float) = sink.writeInt(value.toBits())
+    override fun encodeDouble(value: Double) = sink.writeLong(value.toBits())
     override fun encodeString(value: String) {
         encodeInt(value.length)
         for (ch in value) encodeChar(ch)
     }
+
+    override fun encodeEnum(enumDescriptor: SerialDescriptor, index: Int) = sink.writeInt(index)
 
     override fun beginCollection(descriptor: SerialDescriptor, collectionSize: Int) = apply {
         if (descriptor.kind == StructureKind.LIST) {
             sink.writeInt(collectionSize)
         }
     }
-
 
     override fun <T> encodeSerializableValue(serializer: SerializationStrategy<T>, value: T) {
         when (serializer.descriptor.serialName) {
@@ -139,6 +115,8 @@ private class Decoder(private val source: Buffer) : AbstractDecoder() {
         repeat(length) { sb.append(decodeChar()) }
         return sb.toString()
     }
+
+    override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = source.readInt()
 
     override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder {
         indices.addLast(0)
