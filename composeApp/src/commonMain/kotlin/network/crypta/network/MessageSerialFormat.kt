@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalSerializationApi::class)
 
-package network.crypta.support.network
+package network.crypta.network
 
 import kotlinx.io.Buffer
 import kotlinx.serialization.DeserializationStrategy

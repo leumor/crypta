@@ -1,4 +1,4 @@
-package network.crypta.support.network
+package network.crypta.network
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.DoubleArraySerializer
