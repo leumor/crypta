@@ -2,6 +2,7 @@ package network.crypta.entry.key
 
 import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.ionspin.kotlin.bignum.integer.Sign
+import kotlinx.serialization.Serializable
 import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.crypto.DsaPrivateKey
 import network.crypta.crypto.DsaPublicKey
@@ -68,6 +69,7 @@ private data class SskExtraData(
  * @property isControlDocument A flag indicating if this is a control document.
  * @property compressionAlgorithm The algorithm used to compress the data.
  */
+@Serializable
 data class ClientChk(
     override val routingKey: RoutingKey,
     override val sharedKey: SharedKey,
@@ -85,7 +87,7 @@ data class ClientChk(
     /**
      * Internal data class to manage the serialization of extra metadata for a CHK.
      */
-    private data class ExtraData(
+    internal data class ExtraData(
         val cryptoAlgorithm: CryptoAlgorithm,
         val isControlDocument: Boolean,
         val compressionAlgorithm: CompressionAlgorithm,

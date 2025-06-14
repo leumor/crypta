@@ -11,8 +11,8 @@ import kotlinx.serialization.descriptors.StructureKind
 import kotlinx.serialization.encoding.AbstractDecoder
 import kotlinx.serialization.encoding.AbstractEncoder
 import kotlinx.serialization.encoding.CompositeDecoder
-import kotlinx.serialization.modules.EmptySerializersModule
 import kotlinx.serialization.modules.SerializersModule
+import network.crypta.network.MessageSerialModule
 import kotlinx.serialization.serializer
 
 /** A multiplatform Crypta network message serializer. */
@@ -43,7 +43,7 @@ inline fun <reified T> decode(data: ByteArray): T =
     decode(serializer(), data)
 
 private class Encoder(private val sink: Buffer) : AbstractEncoder() {
-    override val serializersModule: SerializersModule = EmptySerializersModule()
+    override val serializersModule: SerializersModule = MessageSerialModule
 
     override fun encodeBoolean(value: Boolean) {
         sink.writeByte(if (value) 1 else 0)
@@ -119,7 +119,7 @@ private class Encoder(private val sink: Buffer) : AbstractEncoder() {
 }
 
 private class Decoder(private val source: Buffer) : AbstractDecoder() {
-    override val serializersModule: SerializersModule = EmptySerializersModule()
+    override val serializersModule: SerializersModule = MessageSerialModule
 
     private val indices = ArrayDeque<Int>()
     private val listRemaining = ArrayDeque<Int>()
