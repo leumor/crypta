@@ -93,7 +93,9 @@ private class Encoder(private val sink: Buffer) : AbstractEncoder() {
         when (serializer.descriptor.serialName) {
             "kotlin.DoubleArray" -> {
                 val arr = value as DoubleArray
-                require(arr.size <= 255)
+                require(arr.size <= 255) {
+                    "Cannot serialize an array of more than 255 doubles; attempted to serialize ${arr.size}."
+                }
                 sink.writeByte(arr.size.toByte())
                 for (d in arr) encodeDouble(d)
             }
