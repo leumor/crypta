@@ -2,6 +2,7 @@ package network.crypta.support.network
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.DoubleArraySerializer
+import kotlinx.io.Buffer
 import kotlin.math.E
 import kotlin.math.PI
 import kotlin.test.Test
@@ -16,6 +17,12 @@ import network.crypta.crypto.SECRET_KEY_SIZE
 import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.entry.key.CompressionAlgorithm
 
+private fun Buffer.toByteArray(): ByteArray {
+    val result = ByteArray(size.toInt())
+    readAtMostTo(result, 0, result.size)
+    return result
+}
+
 class MessageSerializationCommonTest {
     @Serializable
     data class Sample(
@@ -26,6 +33,21 @@ class MessageSerializationCommonTest {
         val doubles: DoubleArray,
         val floats: FloatArray
     )
+
+    private fun expectedBytes(value: Sample): ByteArray {
+        val buf = Buffer()
+        buf.writeByte((if (value.flag) 1 else 0).toByte())
+        buf.writeInt(value.number)
+        buf.writeInt(value.text.length)
+        for (ch in value.text) buf.writeShort(ch.code.toShort())
+        buf.writeInt(value.numbers.size)
+        for (n in value.numbers) buf.writeInt(n)
+        buf.writeByte(value.doubles.size.toByte())
+        for (d in value.doubles) buf.writeLong(d.toBits())
+        buf.writeShort(value.floats.size.toShort())
+        for (f in value.floats) buf.writeInt(f.toBits())
+        return buf.toByteArray()
+    }
 
     @Test
     fun roundTrip() {
@@ -38,6 +60,7 @@ class MessageSerializationCommonTest {
             floatArrayOf(1f, 2f)
         )
         val bytes = encode(value)
+        assertContentEquals(expectedBytes(value), bytes)
         val decoded = decode<Sample>(bytes)
         assertEquals(value.flag, decoded.flag)
         assertEquals(value.number, decoded.number)
@@ -62,6 +85,26 @@ class MessageSerializationCommonTest {
         val floats: FloatArray
     )
 
+    private fun expectedBytes(value: AllTypes): ByteArray {
+        val buf = Buffer()
+        buf.writeByte((if (value.bool) 1 else 0).toByte())
+        buf.writeByte(value.byteVal)
+        buf.writeShort(value.shortVal)
+        buf.writeInt(value.intVal)
+        buf.writeLong(value.longVal)
+        buf.writeLong(value.doubleVal.toBits())
+        buf.writeInt(value.floatVal.toBits())
+        buf.writeInt(value.bytes.size)
+        buf.write(value.bytes)
+        buf.writeInt(value.text.length)
+        for (ch in value.text) buf.writeShort(ch.code.toShort())
+        buf.writeByte(value.doubles.size.toByte())
+        for (d in value.doubles) buf.writeLong(d.toBits())
+        buf.writeShort(value.floats.size.toShort())
+        for (f in value.floats) buf.writeInt(f.toBits())
+        return buf.toByteArray()
+    }
+
     @Test
     fun readWriteAllTypesRoundTrip() {
         val value = AllTypes(
@@ -79,6 +122,7 @@ class MessageSerializationCommonTest {
         )
 
         val bytes = encode(value)
+        assertContentEquals(expectedBytes(value), bytes)
         val decoded = decode<AllTypes>(bytes)
         assertEquals(value.bool, decoded.bool)
         assertEquals(value.byteVal, decoded.byteVal)
@@ -99,6 +143,27 @@ class MessageSerializationCommonTest {
         val label: String,
     )
 
+    private fun expectedBytes(value: WithChk): ByteArray {
+        val buf = Buffer()
+        // ClientChk fields
+        buf.writeInt(value.chk.routingKey.bytes.size)
+        buf.write(value.chk.routingKey.bytes)
+        buf.writeInt(value.chk.sharedKey.bytes.size)
+        buf.write(value.chk.sharedKey.bytes)
+        buf.writeInt(value.chk.cryptoAlgorithm.ordinal)
+        buf.writeInt(value.chk.metaStrings.size)
+        for (s in value.chk.metaStrings) {
+            buf.writeInt(s.length)
+            for (ch in s) buf.writeShort(ch.code.toShort())
+        }
+        buf.writeByte((if (value.chk.isControlDocument) 1 else 0).toByte())
+        buf.writeInt(value.chk.compressionAlgorithm.ordinal)
+        // label
+        buf.writeInt(value.label.length)
+        for (ch in value.label) buf.writeShort(ch.code.toShort())
+        return buf.toByteArray()
+    }
+
     @Test
     fun clientChkRoundTrip() {
         val chk = ClientChk(
@@ -111,6 +176,7 @@ class MessageSerializationCommonTest {
         )
         val wrapper = WithChk(chk, "data")
         val bytes = encode(wrapper)
+        assertContentEquals(expectedBytes(wrapper), bytes)
         val decoded = decode<WithChk>(bytes)
         assertEquals(wrapper.label, decoded.label)
         assertEquals(chk.cryptoAlgorithm, decoded.chk.cryptoAlgorithm)
@@ -132,6 +198,11 @@ class MessageSerializationCommonTest {
             }
             val bytes = encode(DoubleArraySerializer(), case)
             assertEquals(1 + 8 * case.size, bytes.size)
+            val expectedBuf = Buffer()
+            expectedBuf.writeByte(case.size.toByte())
+            for (d in case) expectedBuf.writeLong(d.toBits())
+            val expected = expectedBuf.toByteArray()
+            assertContentEquals(expected, bytes)
             val decoded = decode(DoubleArraySerializer(), bytes)
             assertContentEquals(case, decoded)
         }
