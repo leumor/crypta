@@ -4,53 +4,43 @@ import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.serializer
 import network.crypta.crypto.CryptoAlgorithm
-import network.crypta.crypto.SECRET_KEY_SIZE
-import network.crypta.crypto.SecretKey
 import network.crypta.entry.ROUTING_KEY_SIZE
 import network.crypta.entry.RoutingKey
-import network.crypta.entry.key.ClientChk
-import network.crypta.entry.key.CompressionAlgorithm
+import network.crypta.entry.key.NodeChk
 import network.crypta.support.BitArray
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
 class MessageSerializerTest {
+
     @Serializable
-    data class WithChk(
-        @Contextual val chk: ClientChk,
+    data class WithNodeChk(
+        @Contextual val chk: NodeChk,
         val label: String,
         val id: Int,
     )
 
     @Test
-    fun clientChkRoundTrip() {
-        val chk = ClientChk(
+    fun nodeChkRoundTrip() {
+        val chk = NodeChk(
             RoutingKey(ByteArray(ROUTING_KEY_SIZE) { it.toByte() }),
-            SecretKey(ByteArray(SECRET_KEY_SIZE) { (it + 2).toByte() }),
-            CryptoAlgorithm.AES_CTR_256_SHA256,
-            mutableListOf("meta"),
-            isControlDocument = true,
-            compressionAlgorithm = CompressionAlgorithm.GZIP,
+            CryptoAlgorithm.AES_PCFB_256_SHA256,
         )
-        val wrapper = WithChk(chk, "data", 7)
+        val wrapper = WithNodeChk(chk, "data", 7)
 
         val bytes = encode(wrapper)
 
-        val expected = encode(ClientChkSerializer, chk) +
+        val expected = encode(NodeChkSerializer, chk) +
                 encode(serializer<String>(), wrapper.label) +
                 encode(serializer<Int>(), wrapper.id)
         assertContentEquals(expected, bytes)
 
-        val decoded = decode<WithChk>(bytes)
+        val decoded = decode<WithNodeChk>(bytes)
         assertEquals(wrapper.label, decoded.label)
         assertEquals(wrapper.id, decoded.id)
         assertEquals(chk.cryptoAlgorithm, decoded.chk.cryptoAlgorithm)
-        assertEquals(chk.isControlDocument, decoded.chk.isControlDocument)
-        assertEquals(chk.compressionAlgorithm, decoded.chk.compressionAlgorithm)
         assertContentEquals(chk.routingKey.bytes, decoded.chk.routingKey.bytes)
-        assertContentEquals(chk.sharedKey.bytes, decoded.chk.sharedKey.bytes)
-        assertEquals(emptyList(), decoded.chk.metaStrings)
     }
 
     @Test

@@ -8,46 +8,29 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
-import network.crypta.crypto.SECRET_KEY_SIZE
+import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.entry.ROUTING_KEY_SIZE
 import network.crypta.entry.RoutingKey
-import network.crypta.entry.SharedKey
-import network.crypta.entry.key.ClientChk
-import network.crypta.entry.key.ClientChk.ExtraData
-import network.crypta.entry.key.EXTRA_LENGTH
+import network.crypta.entry.key.NodeChk
 import network.crypta.support.BitArray
 
-/** Serializer for [ClientChk] that encodes it as raw bytes. */
-object ClientChkSerializer : KSerializer<ClientChk> {
+/** Serializer for [NodeChk] that encodes it as raw bytes. */
+object NodeChkSerializer : KSerializer<NodeChk> {
     override val descriptor: SerialDescriptor =
-        PrimitiveSerialDescriptor("ClientChk", PrimitiveKind.BYTE)
+        PrimitiveSerialDescriptor("NodeChk", PrimitiveKind.BYTE)
 
-    override fun serialize(encoder: Encoder, value: ClientChk) {
-        val extra = ExtraData(
-            value.cryptoAlgorithm,
-            value.isControlDocument,
-            value.compressionAlgorithm
-        ).toByteArray()
-        val bytes = extra + value.routingKey.bytes + value.sharedKey.bytes
-        for (b in bytes) encoder.encodeByte(b)
+    override fun serialize(encoder: Encoder, value: NodeChk) {
+        encoder.encodeShort(value.getType())
+        for (b in value.routingKey.bytes) encoder.encodeByte(b)
     }
 
-    override fun deserialize(decoder: Decoder): ClientChk {
-        val extra = ByteArray(EXTRA_LENGTH)
-        for (i in extra.indices) extra[i] = decoder.decodeByte()
+    override fun deserialize(decoder: Decoder): NodeChk {
+        val type = decoder.decodeShort()
         val routingBytes = ByteArray(ROUTING_KEY_SIZE)
         for (i in routingBytes.indices) routingBytes[i] = decoder.decodeByte()
-        val sharedBytes = ByteArray(SECRET_KEY_SIZE)
-        for (i in sharedBytes.indices) sharedBytes[i] = decoder.decodeByte()
-        val extraData = ExtraData.fromByteArray(extra)
-        return ClientChk(
-            RoutingKey(routingBytes),
-            SharedKey(sharedBytes),
-            extraData.cryptoAlgorithm,
-            mutableListOf(),
-            extraData.isControlDocument,
-            extraData.compressionAlgorithm
-        )
+        require(((type.toInt() shr 8) and 0xFF) == NodeChk.BASE_TYPE.toInt())
+        val algorithm = CryptoAlgorithm.fromValue(type.toInt() and 0xFF)
+        return NodeChk(RoutingKey(routingBytes), algorithm)
     }
 }
 
@@ -75,6 +58,6 @@ object BitArraySerializer : KSerializer<BitArray> {
 
 /** Serializers module registering Crypta-specific serializers. */
 val MessageSerialModule: SerializersModule = SerializersModule {
-    contextual(ClientChkSerializer)
+    contextual(NodeChkSerializer)
     contextual(BitArraySerializer)
 }

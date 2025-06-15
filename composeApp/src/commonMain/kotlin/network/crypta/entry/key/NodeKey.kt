@@ -11,7 +11,22 @@ interface NodeKey
 data class NodeChk(
     override val routingKey: RoutingKey,
     override val cryptoAlgorithm: CryptoAlgorithm
-) : NodeKey, Key by BasicKey(routingKey, cryptoAlgorithm)
+) : NodeKey, Key by BasicKey(routingKey, cryptoAlgorithm) {
+
+    companion object {
+        /** Base type identifier for a CHK stored on a node. */
+        const val BASE_TYPE: Byte = 1
+    }
+
+    /**
+     * Get key type.
+     *
+     * High 8 bit of the returned value contains the base type while the
+     * low 8 bit stores the crypto algorithm identifier.
+     */
+    fun getType(): Short =
+        ((BASE_TYPE.toInt() shl 8) + (cryptoAlgorithm.value and 0xFF)).toShort()
+}
 
 data class NodeSsk(
     val clientRoutingKey: RoutingKey,
