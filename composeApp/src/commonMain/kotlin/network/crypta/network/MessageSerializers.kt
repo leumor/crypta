@@ -15,6 +15,7 @@ import network.crypta.entry.SharedKey
 import network.crypta.entry.key.ClientChk
 import network.crypta.entry.key.ClientChk.ExtraData
 import network.crypta.entry.key.EXTRA_LENGTH
+import network.crypta.support.BitArray
 
 /** Serializer for [ClientChk] that encodes it as raw bytes. */
 object ClientChkSerializer : KSerializer<ClientChk> {
@@ -50,7 +51,30 @@ object ClientChkSerializer : KSerializer<ClientChk> {
     }
 }
 
+/** Serializer for [BitArray] matching the Java data stream format. */
+object BitArraySerializer : KSerializer<BitArray> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("BitArray", PrimitiveKind.BYTE)
+
+    override fun serialize(encoder: Encoder, value: BitArray) {
+        encoder.encodeInt(value.getSize())
+        val bytes = value.toByteArray()
+        for (b in bytes) encoder.encodeByte(b)
+    }
+
+    override fun deserialize(decoder: Decoder): BitArray {
+        val size = decoder.decodeInt()
+        val byteSize = BitArray.toByteSize(size)
+        val data = ByteArray(byteSize)
+        for (i in 0 until byteSize) data[i] = decoder.decodeByte()
+        val result = BitArray(data)
+        result.setSize(size)
+        return result
+    }
+}
+
 /** Serializers module registering Crypta-specific serializers. */
 val MessageSerialModule: SerializersModule = SerializersModule {
     contextual(ClientChkSerializer)
+    contextual(BitArraySerializer)
 }
