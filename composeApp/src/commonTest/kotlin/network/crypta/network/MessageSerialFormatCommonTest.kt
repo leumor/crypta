@@ -2,7 +2,6 @@ package network.crypta.network
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.DoubleArraySerializer
-import kotlinx.serialization.serializer
 import kotlin.math.E
 import kotlin.math.PI
 import kotlin.test.Test
@@ -10,7 +9,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-class MessageSerializationCommonTest {
+class MessageSerialFormatCommonTest {
     @Serializable
     data class Sample(
         val flag: Boolean,

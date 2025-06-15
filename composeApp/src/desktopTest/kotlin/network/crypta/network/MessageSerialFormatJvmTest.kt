@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
-class MessageSerializationJvmTest {
+class MessageSerialFormatJvmTest {
     @Serializable
     data class Simple(val flag: Boolean, val number: Int, val text: String)
 
