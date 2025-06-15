@@ -1,4 +1,4 @@
-package network.crypta.util
+package network.crypta.support
 
 /**
  * A utility object providing collections of characters for testing purposes.

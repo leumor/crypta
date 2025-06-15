@@ -1,19 +1,19 @@
-package network.crypta.util
+package network.crypta.support
 
-import network.crypta.util.DataUtils.MULTIPLES
-import network.crypta.util.DataUtils.bytesToDoubles
-import network.crypta.util.DataUtils.bytesToInt
-import network.crypta.util.DataUtils.bytesToInts
-import network.crypta.util.DataUtils.bytesToLong
-import network.crypta.util.DataUtils.bytesToLongs
-import network.crypta.util.DataUtils.commaList
-import network.crypta.util.DataUtils.compareVersion
-import network.crypta.util.DataUtils.formatWithUnits
-import network.crypta.util.DataUtils.hashCode
-import network.crypta.util.DataUtils.intsToBytes
-import network.crypta.util.DataUtils.longHashCode
-import network.crypta.util.DataUtils.parseWithMultiplier
-import network.crypta.util.DataUtils.textList
+import network.crypta.support.DataUtils.MULTIPLES
+import network.crypta.support.DataUtils.bytesToDoubles
+import network.crypta.support.DataUtils.bytesToInt
+import network.crypta.support.DataUtils.bytesToInts
+import network.crypta.support.DataUtils.bytesToLong
+import network.crypta.support.DataUtils.bytesToLongs
+import network.crypta.support.DataUtils.commaList
+import network.crypta.support.DataUtils.compareVersion
+import network.crypta.support.DataUtils.formatWithUnits
+import network.crypta.support.DataUtils.hashCode
+import network.crypta.support.DataUtils.intsToBytes
+import network.crypta.support.DataUtils.longHashCode
+import network.crypta.support.DataUtils.parseWithMultiplier
+import network.crypta.support.DataUtils.textList
 import kotlin.math.min
 
 /**

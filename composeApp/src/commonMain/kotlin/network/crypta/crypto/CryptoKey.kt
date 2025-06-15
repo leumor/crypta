@@ -1,7 +1,7 @@
 package network.crypta.crypto
 
-import network.crypta.util.decodeFreenetBase64
-import network.crypta.util.encodeFreenetBase64
+import network.crypta.support.decodeFreenetBase64
+import network.crypta.support.encodeFreenetBase64
 
 /**
  * A base interface for cryptographic keys.

@@ -1,4 +1,4 @@
-package network.crypta.util
+package network.crypta.support
 
 import kotlin.random.Random
 import kotlin.test.Test

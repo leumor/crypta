@@ -3,11 +3,11 @@ package network.crypta.entry
 import network.crypta.crypto.SecretKey
 import network.crypta.crypto.fromBase64
 import network.crypta.crypto.toBase64
-import network.crypta.util.URLEncodedFormatException
-import network.crypta.util.decodeFreenetBase64
-import network.crypta.util.encodeFreenetBase64
-import network.crypta.util.urlDecode
-import network.crypta.util.urlEncode
+import network.crypta.support.URLEncodedFormatException
+import network.crypta.support.decodeFreenetBase64
+import network.crypta.support.encodeFreenetBase64
+import network.crypta.support.urlDecode
+import network.crypta.support.urlEncode
 
 /** Exception thrown when parsing a URI fails. */
 class MalformedUriException(message: String) : Exception(message)

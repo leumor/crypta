@@ -1,4 +1,4 @@
-package network.crypta.util
+package network.crypta.support
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

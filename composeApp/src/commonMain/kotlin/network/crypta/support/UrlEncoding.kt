@@ -1,4 +1,4 @@
-package network.crypta.util
+package network.crypta.support
 
 /**
  * Utility functions for percent encoding and decoding URIs.
