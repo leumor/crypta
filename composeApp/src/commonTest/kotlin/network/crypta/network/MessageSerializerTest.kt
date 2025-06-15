@@ -7,6 +7,7 @@ import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.entry.ROUTING_KEY_SIZE
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.key.NodeChk
+import network.crypta.entry.key.NodeSsk
 import network.crypta.support.BitArray
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -17,6 +18,13 @@ class MessageSerializerTest {
     @Serializable
     data class WithNodeChk(
         @Contextual val chk: NodeChk,
+        val label: String,
+        val id: Int,
+    )
+
+    @Serializable
+    data class WithNodeSsk(
+        @Contextual val ssk: NodeSsk,
         val label: String,
         val id: Int,
     )
@@ -41,6 +49,30 @@ class MessageSerializerTest {
         assertEquals(wrapper.id, decoded.id)
         assertEquals(chk.cryptoAlgorithm, decoded.chk.cryptoAlgorithm)
         assertContentEquals(chk.routingKey.bytes, decoded.chk.routingKey.bytes)
+    }
+
+    @Test
+    fun nodeSskRoundTrip() {
+        val ssk = NodeSsk(
+            RoutingKey(ByteArray(ROUTING_KEY_SIZE) { (it + 1).toByte() }),
+            CryptoAlgorithm.AES_PCFB_256_SHA256,
+            ByteArray(NodeSsk.EH_DOC_NAME_SIZE) { it.toByte() },
+        )
+        val wrapper = WithNodeSsk(ssk, "info", 8)
+
+        val bytes = encode(wrapper)
+
+        val expected = encode(NodeSskSerializer, ssk) +
+                encode(serializer<String>(), wrapper.label) +
+                encode(serializer<Int>(), wrapper.id)
+        assertContentEquals(expected, bytes)
+
+        val decoded = decode<WithNodeSsk>(bytes)
+        assertEquals(wrapper.label, decoded.label)
+        assertEquals(wrapper.id, decoded.id)
+        assertEquals(ssk.cryptoAlgorithm, decoded.ssk.cryptoAlgorithm)
+        assertContentEquals(ssk.clientRoutingKey.bytes, decoded.ssk.clientRoutingKey.bytes)
+        assertContentEquals(ssk.ehDocName, decoded.ssk.ehDocName)
     }
 
     @Test

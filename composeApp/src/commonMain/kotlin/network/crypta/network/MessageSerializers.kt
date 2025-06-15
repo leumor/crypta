@@ -12,6 +12,7 @@ import network.crypta.crypto.CryptoAlgorithm
 import network.crypta.entry.ROUTING_KEY_SIZE
 import network.crypta.entry.RoutingKey
 import network.crypta.entry.key.NodeChk
+import network.crypta.entry.key.NodeSsk
 import network.crypta.support.BitArray
 
 /** Serializer for [NodeChk] that encodes it as raw bytes. */
@@ -31,6 +32,29 @@ object NodeChkSerializer : KSerializer<NodeChk> {
         require(((type.toInt() shr 8) and 0xFF) == NodeChk.BASE_TYPE.toInt())
         val algorithm = CryptoAlgorithm.fromValue(type.toInt() and 0xFF)
         return NodeChk(RoutingKey(routingBytes), algorithm)
+    }
+}
+
+/** Serializer for [NodeSsk] that encodes it as raw bytes. */
+object NodeSskSerializer : KSerializer<NodeSsk> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("NodeSsk", PrimitiveKind.BYTE)
+
+    override fun serialize(encoder: Encoder, value: NodeSsk) {
+        encoder.encodeShort(value.getType())
+        for (b in value.ehDocName) encoder.encodeByte(b)
+        for (b in value.clientRoutingKey.bytes) encoder.encodeByte(b)
+    }
+
+    override fun deserialize(decoder: Decoder): NodeSsk {
+        val type = decoder.decodeShort()
+        val ehDocName = ByteArray(NodeSsk.EH_DOC_NAME_SIZE)
+        for (i in ehDocName.indices) ehDocName[i] = decoder.decodeByte()
+        val routingBytes = ByteArray(ROUTING_KEY_SIZE)
+        for (i in routingBytes.indices) routingBytes[i] = decoder.decodeByte()
+        require(((type.toInt() shr 8) and 0xFF) == NodeSsk.BASE_TYPE.toInt())
+        val algorithm = CryptoAlgorithm.fromValue(type.toInt() and 0xFF)
+        return NodeSsk(RoutingKey(routingBytes), algorithm, ehDocName)
     }
 }
 
@@ -59,5 +83,6 @@ object BitArraySerializer : KSerializer<BitArray> {
 /** Serializers module registering Crypta-specific serializers. */
 val MessageSerialModule: SerializersModule = SerializersModule {
     contextual(NodeChkSerializer)
+    contextual(NodeSskSerializer)
     contextual(BitArraySerializer)
 }

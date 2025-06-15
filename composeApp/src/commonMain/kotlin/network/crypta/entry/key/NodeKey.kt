@@ -48,7 +48,19 @@ data class NodeSsk(
         }
     }
 
+    /**
+     * Get key type.
+     *
+     * High 8 bits contain the base type ([BASE_TYPE]) while the low 8 bits store
+     * the crypto algorithm identifier.
+     */
+    fun getType(): Short =
+        ((BASE_TYPE.toInt() shl 8) + (cryptoAlgorithm.value and 0xFF)).toShort()
+
     companion object {
+        /** Base type identifier for an SSK stored on a node. */
+        const val BASE_TYPE: Byte = 2
+
         const val EH_DOC_NAME_SIZE = 32
 
         private fun makeNodeRoutingKey(
