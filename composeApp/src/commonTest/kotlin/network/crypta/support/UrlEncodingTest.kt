@@ -75,7 +75,7 @@ class UrlEncodingTest {
 
     @Test
     fun testDecodeWrongHex() {
-        val toDecode = "123456789abcde" + prtblAscii + stressedUTF8Chars
+        val toDecode = "123456789abcde$prtblAscii$stressedUTF8Chars"
         for (i in toDecode.indices) {
             assertTrue(isDecodeRaisingEncodedException("%" + toDecode[i], false))
         }
