@@ -1,4 +1,5 @@
 @file:UseContextualSerialization
+// FNP stands for "Freenet Node Protocol"
 // Unimplemented message types from DMT.java: none
 // Message types whose complex fields were simplified to ByteArray:
 // PacketTransmit, FNPBulkPacketSend, TestSendCHK, TestRequest, TestDataReply,
@@ -13,8 +14,8 @@
 package network.crypta.network
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.UseContextualSerialization
 import kotlinx.serialization.Transient
+import kotlinx.serialization.UseContextualSerialization
 
 /**
  * Represents the priority level of a network message.
@@ -23,14 +24,19 @@ import kotlinx.serialization.Transient
 enum class Priority {
     /** Very urgent */
     NOW,
+
     /** Short timeout, or urgent for other reasons - Accepted, RejectedLoop etc. */
     HIGH,
+
     /** Stuff that completes a request, and miscellaneous stuff. */
     UNSPECIFIED,
+
     /** Stuff that starts a request. */
     LOW,
+
     /** Bulk data transfer for realtime requests. */
     REALTIME_DATA,
+
     /**
      * Bulk data transfer, bottom of the heap, high level limiting must ensure there is
      * time to send it by not accepting an infeasible number of requests.
