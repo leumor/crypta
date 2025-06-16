@@ -11,7 +11,7 @@
 // FNPLocChangeNotificationNew, FNPRoutedPing, FNPDetectedIPAddress,
 // FNPSentPackets, FNPDisconnect, UOMFetchDependency, FNPSwapNodeUIDs,
 // FNPBestRoutesNotTaken, FNPCheckStillRunning, FNPIsStillRunning
-package network.crypta.network
+package network.crypta.network.message
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient

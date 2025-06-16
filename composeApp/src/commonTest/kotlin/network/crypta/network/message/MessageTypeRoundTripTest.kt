@@ -1,4 +1,4 @@
-package network.crypta.network
+package network.crypta.network.message
 
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
