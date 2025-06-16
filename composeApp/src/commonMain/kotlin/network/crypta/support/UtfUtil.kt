@@ -8,7 +8,7 @@ package network.crypta.support
  * especially for UTF-8. It was ported from an original Java version to ensure
  * that tests can reference the same consistent data sets.
  */
-object UtfUtils {
+object UtfUtil {
 
     /**
      * A character array containing all characters in the Unicode Basic Multilingual Plane (BMP),

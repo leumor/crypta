@@ -48,7 +48,7 @@ fun urlDecode(s: String, tolerant: Boolean): String {
             val hexVal = "" + s[i + 1] + s[i + 2]
             i += 2
             try {
-                val read = DataUtils.hexToLong(hexVal)
+                val read = DataUtil.hexToLong(hexVal)
                 if (read == 0L) throw URLEncodedFormatException("Can't encode 00")
                 bytes.add(read.toInt().toByte())
                 hasDecodedSomething = true

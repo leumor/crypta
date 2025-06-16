@@ -1,19 +1,19 @@
 package network.crypta.support
 
-import network.crypta.support.DataUtils.MULTIPLES
-import network.crypta.support.DataUtils.bytesToDoubles
-import network.crypta.support.DataUtils.bytesToInt
-import network.crypta.support.DataUtils.bytesToInts
-import network.crypta.support.DataUtils.bytesToLong
-import network.crypta.support.DataUtils.bytesToLongs
-import network.crypta.support.DataUtils.commaList
-import network.crypta.support.DataUtils.compareVersion
-import network.crypta.support.DataUtils.formatWithUnits
-import network.crypta.support.DataUtils.hashCode
-import network.crypta.support.DataUtils.intsToBytes
-import network.crypta.support.DataUtils.longHashCode
-import network.crypta.support.DataUtils.parseWithMultiplier
-import network.crypta.support.DataUtils.textList
+import network.crypta.support.DataUtil.MULTIPLES
+import network.crypta.support.DataUtil.bytesToDoubles
+import network.crypta.support.DataUtil.bytesToInt
+import network.crypta.support.DataUtil.bytesToInts
+import network.crypta.support.DataUtil.bytesToLong
+import network.crypta.support.DataUtil.bytesToLongs
+import network.crypta.support.DataUtil.commaList
+import network.crypta.support.DataUtil.compareVersion
+import network.crypta.support.DataUtil.formatWithUnits
+import network.crypta.support.DataUtil.hashCode
+import network.crypta.support.DataUtil.intsToBytes
+import network.crypta.support.DataUtil.longHashCode
+import network.crypta.support.DataUtil.parseWithMultiplier
+import network.crypta.support.DataUtil.textList
 import kotlin.math.min
 
 /**
@@ -22,7 +22,7 @@ import kotlin.math.min
  * parsing strings into numbers (with support for unit multipliers), formatting numbers,
  * and comparing various data types like byte arrays and version strings.
  */
-object DataUtils {
+object DataUtil {
     /**
      * Stores numeric values for decimal (1000-based) and binary (1024-based) multipliers.
      * Used by [parseWithMultiplier] and [formatWithUnits].

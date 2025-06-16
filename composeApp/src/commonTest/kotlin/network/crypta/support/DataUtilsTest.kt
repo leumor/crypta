@@ -16,124 +16,124 @@ class DataUtilsTest {
 
     @Test
     fun testHexToLong() {
-        var l = DataUtils.hexToLong("0")
+        var l = DataUtil.hexToLong("0")
         assertEquals(0L, l)
 
-        l = DataUtils.hexToLong("000000")
+        l = DataUtil.hexToLong("000000")
         assertEquals(0L, l)
 
-        l = DataUtils.hexToLong("1")
+        l = DataUtil.hexToLong("1")
         assertEquals(1L, l)
 
-        l = DataUtils.hexToLong("a")
+        l = DataUtil.hexToLong("a")
         assertEquals(10L, l)
 
-        l = DataUtils.hexToLong("ff")
+        l = DataUtil.hexToLong("ff")
         assertEquals(255L, l)
 
-        l = DataUtils.hexToLong("ffffffff")
+        l = DataUtil.hexToLong("ffffffff")
         assertEquals(4294967295L, l)
 
-        l = DataUtils.hexToLong("7fffffffffffffff")
+        l = DataUtil.hexToLong("7fffffffffffffff")
         assertEquals(Long.MAX_VALUE, l)
 
-        l = DataUtils.hexToLong("8000000000000000")
+        l = DataUtil.hexToLong("8000000000000000")
         assertEquals(Long.MIN_VALUE, l)
 
-        l = DataUtils.hexToLong("FFfffFfF")
+        l = DataUtil.hexToLong("FFfffFfF")
         assertEquals(4294967295L, l)
 
-        assertFailsWith<NumberFormatException> { DataUtils.hexToLong("abcdef123456789aa") }
-        assertFailsWith<NumberFormatException> { DataUtils.hexToLong("DeADC0dER") }
+        assertFailsWith<NumberFormatException> { DataUtil.hexToLong("abcdef123456789aa") }
+        assertFailsWith<NumberFormatException> { DataUtil.hexToLong("DeADC0dER") }
 
-        l = DataUtils.hexToLong(20L.toHexString())
+        l = DataUtil.hexToLong(20L.toHexString())
         assertEquals(20L, l)
 
         val temp = Long.MIN_VALUE.toHexString()
-        l = DataUtils.hexToLong(Long.MIN_VALUE.toHexString())
+        l = DataUtil.hexToLong(Long.MIN_VALUE.toHexString())
         assertEquals(Long.MIN_VALUE, l)
 
         val longAsString = (-1L).toString(16)
-        assertFailsWith<NumberFormatException> { DataUtils.hexToLong(longAsString) }
+        assertFailsWith<NumberFormatException> { DataUtil.hexToLong(longAsString) }
     }
 
     @Test
     fun testHexToInt() {
-        var i = DataUtils.hexToInt("0")
+        var i = DataUtil.hexToInt("0")
         assertEquals(0, i)
 
-        i = DataUtils.hexToInt("000000")
+        i = DataUtil.hexToInt("000000")
         assertEquals(0, i)
 
-        i = DataUtils.hexToInt("1")
+        i = DataUtil.hexToInt("1")
         assertEquals(1, i)
 
-        i = DataUtils.hexToInt("a")
+        i = DataUtil.hexToInt("a")
         assertEquals(10, i)
 
-        i = DataUtils.hexToInt("ff")
+        i = DataUtil.hexToInt("ff")
         assertEquals(255, i)
 
-        i = DataUtils.hexToInt("80000000")
+        i = DataUtil.hexToInt("80000000")
         assertEquals(Int.MIN_VALUE, i)
 
-        i = DataUtils.hexToInt("0000000080000000")
+        i = DataUtil.hexToInt("0000000080000000")
         assertEquals(Int.MIN_VALUE, i)
 
-        i = DataUtils.hexToInt("7fffffff")
+        i = DataUtil.hexToInt("7fffffff")
         assertEquals(Int.MAX_VALUE, i)
 
-        assertFailsWith<NumberFormatException> { DataUtils.hexToInt("0123456789abcdef0") }
-        assertFailsWith<NumberFormatException> { DataUtils.hexToInt("C0dER") }
+        assertFailsWith<NumberFormatException> { DataUtil.hexToInt("0123456789abcdef0") }
+        assertFailsWith<NumberFormatException> { DataUtil.hexToInt("C0dER") }
 
-        i = DataUtils.hexToInt(20L.toHexString())
+        i = DataUtil.hexToInt(20L.toHexString())
         assertEquals(20, i)
 
-        i = DataUtils.hexToInt(Int.MIN_VALUE.toHexString())
+        i = DataUtil.hexToInt(Int.MIN_VALUE.toHexString())
         assertEquals(Int.MIN_VALUE, i)
 
         val intAsString = (-1).toString(16)
-        assertFailsWith<NumberFormatException> { DataUtils.hexToInt(intAsString) }
+        assertFailsWith<NumberFormatException> { DataUtil.hexToInt(intAsString) }
     }
 
     @Test
     fun testStringToBool() {
-        assertTrue(DataUtils.stringToBool("true"))
-        assertTrue(DataUtils.stringToBool("TRUE"))
-        assertFalse(DataUtils.stringToBool("false"))
-        assertFalse(DataUtils.stringToBool("FALSE"))
+        assertTrue(DataUtil.stringToBool("true"))
+        assertTrue(DataUtil.stringToBool("TRUE"))
+        assertFalse(DataUtil.stringToBool("false"))
+        assertFalse(DataUtil.stringToBool("FALSE"))
 
-        assertFailsWith<NumberFormatException> { DataUtils.stringToBool("Free Tibet") }
-        assertFailsWith<NumberFormatException> { DataUtils.stringToBool(null) }
+        assertFailsWith<NumberFormatException> { DataUtil.stringToBool("Free Tibet") }
+        assertFailsWith<NumberFormatException> { DataUtil.stringToBool(null) }
     }
 
     @Test
     fun testStringToBoolWithDefault() {
-        assertTrue(DataUtils.stringToBool("true", false))
-        assertFalse(DataUtils.stringToBool("false", true))
-        assertTrue(DataUtils.stringToBool("TruE", false))
-        assertFalse(DataUtils.stringToBool("faLSE", true))
-        assertTrue(DataUtils.stringToBool("trueXXX", true))
-        assertFalse(DataUtils.stringToBool("XXXFalse", false))
-        assertTrue(DataUtils.stringToBool(null, true))
+        assertTrue(DataUtil.stringToBool("true", false))
+        assertFalse(DataUtil.stringToBool("false", true))
+        assertTrue(DataUtil.stringToBool("TruE", false))
+        assertFalse(DataUtil.stringToBool("faLSE", true))
+        assertTrue(DataUtil.stringToBool("trueXXX", true))
+        assertFalse(DataUtil.stringToBool("XXXFalse", false))
+        assertTrue(DataUtil.stringToBool(null, true))
     }
 
     @Test
     fun testBoolToString() {
-        assertEquals("true", DataUtils.boolToString(true))
-        assertEquals("false", DataUtils.boolToString(false))
+        assertEquals("true", DataUtil.boolToString(true))
+        assertEquals("false", DataUtil.boolToString(false))
     }
 
     @Test
     fun testCommaListFromString() {
         val expected = arrayOf("one", "two", "three", "four")
-        val actual = DataUtils.commaList("one,two,     three    ,  four")
+        val actual = DataUtil.commaList("one,two,     three    ,  four")
         assertNotNull(actual)
         assertContentEquals(expected, actual)
 
-        assertNull(DataUtils.commaList(null as String?))
+        assertNull(DataUtil.commaList(null as String?))
 
-        val emptyActual = DataUtils.commaList("")
+        val emptyActual = DataUtil.commaList("")
         assertNotNull(emptyActual)
         assertEquals(0, emptyActual.size)
     }
@@ -142,22 +142,22 @@ class DataUtilsTest {
     fun testStringArrayToCommaList() {
         var input = arrayOf("one", "two", "three", "four")
         var expected = "one,two,three,four"
-        var actual = DataUtils.commaList(input)
+        var actual = DataUtil.commaList(input)
         assertEquals(expected, actual)
 
         input = emptyArray()
         expected = ""
-        actual = DataUtils.commaList(input)
+        actual = DataUtil.commaList(input)
         assertEquals(expected, actual)
     }
 
     @Test
     fun testHashcodeForByteArray() {
         var arr = ByteArray(8) { it.toByte() }
-        assertEquals(67372036, DataUtils.hashCode(arr))
+        assertEquals(67372036, DataUtil.hashCode(arr))
 
         arr = byteArrayOf()
-        assertEquals(0, DataUtils.hashCode(arr))
+        assertEquals(0, DataUtil.hashCode(arr))
     }
 
     @Test
@@ -166,9 +166,9 @@ class DataUtilsTest {
         val b2 = byteArrayOf(2, 2, 3, 3, 4, 4)
         val b3 = byteArrayOf(1, 1, 2, 2, 3, 3)
 
-        val l1 = DataUtils.longHashCode(b1)
-        val l2 = DataUtils.longHashCode(b2)
-        val l3 = DataUtils.longHashCode(b3)
+        val l1 = DataUtil.longHashCode(b1)
+        val l2 = DataUtil.longHashCode(b2)
+        val l3 = DataUtil.longHashCode(b3)
 
         assertNotEquals(l1, l2)
         assertNotEquals(l2, l3)
@@ -193,13 +193,13 @@ class DataUtilsTest {
     @Test
     fun testBytesToLongsException() {
         val bytes = ByteArray(3)
-        assertFailsWith<IllegalArgumentException> { DataUtils.bytesToLongs(bytes, 0, bytes.size) }
+        assertFailsWith<IllegalArgumentException> { DataUtil.bytesToLongs(bytes, 0, bytes.size) }
     }
 
     @Test
     fun testBytesToInt() {
         val bytes = byteArrayOf(0, 1, 2, 2)
-        val outInt = DataUtils.bytesToInt(bytes, 0)
+        val outInt = DataUtil.bytesToInt(bytes, 0)
         assertEquals(33685760, outInt)
         doTestRoundTripBytesArrayToInt(bytes)
 
@@ -228,13 +228,13 @@ class DataUtilsTest {
     @Test
     fun testBytesToLongException() {
         val bytes = ByteArray(3)
-        assertFailsWith<IllegalArgumentException> { DataUtils.bytesToLong(bytes, 0) }
+        assertFailsWith<IllegalArgumentException> { DataUtil.bytesToLong(bytes, 0) }
     }
 
     @Test
     fun testBytesToLong() {
         var bytes = byteArrayOf(0, 1, 2, 2, 1, 3, 6, 7)
-        val out = DataUtils.bytesToLong(bytes)
+        val out = DataUtil.bytesToLong(bytes)
         assertEquals(506095310989295872L, out)
         doTestRoundTripBytesArrayToLong(bytes)
 
@@ -247,26 +247,26 @@ class DataUtilsTest {
 
     @Test
     fun testTrimLines() {
-        assertEquals("", DataUtils.trimLines(""))
-        assertEquals("", DataUtils.trimLines("\n"))
-        assertEquals("a\n", DataUtils.trimLines("a"))
-        assertEquals("a\n", DataUtils.trimLines("a\n"))
-        assertEquals("a\n", DataUtils.trimLines(" a\n"))
-        assertEquals("a\n", DataUtils.trimLines(" a \n"))
-        assertEquals("a\n", DataUtils.trimLines(" a\n"))
-        assertEquals("a\n", DataUtils.trimLines("\na"))
-        assertEquals("a\n", DataUtils.trimLines("\na\n"))
-        assertEquals("a\nb\n", DataUtils.trimLines("a\nb"))
+        assertEquals("", DataUtil.trimLines(""))
+        assertEquals("", DataUtil.trimLines("\n"))
+        assertEquals("a\n", DataUtil.trimLines("a"))
+        assertEquals("a\n", DataUtil.trimLines("a\n"))
+        assertEquals("a\n", DataUtil.trimLines(" a\n"))
+        assertEquals("a\n", DataUtil.trimLines(" a \n"))
+        assertEquals("a\n", DataUtil.trimLines(" a\n"))
+        assertEquals("a\n", DataUtil.trimLines("\na"))
+        assertEquals("a\n", DataUtil.trimLines("\na\n"))
+        assertEquals("a\nb\n", DataUtil.trimLines("a\nb"))
     }
 
     @Test
     fun testGetDigits() {
-        assertEquals(1, DataUtils.getDigits("1.0", 0, true))
-        assertEquals(0, DataUtils.getDigits("1.0", 0, false))
-        assertEquals(1, DataUtils.getDigits("1.0", 1, false))
-        assertEquals(0, DataUtils.getDigits("1.0", 1, true))
-        assertEquals(1, DataUtils.getDigits("1.0", 2, true))
-        assertEquals(0, DataUtils.getDigits("1.0", 2, false))
+        assertEquals(1, DataUtil.getDigits("1.0", 0, true))
+        assertEquals(0, DataUtil.getDigits("1.0", 0, false))
+        assertEquals(1, DataUtil.getDigits("1.0", 1, false))
+        assertEquals(0, DataUtil.getDigits("1.0", 1, true))
+        assertEquals(1, DataUtil.getDigits("1.0", 2, true))
+        assertEquals(0, DataUtil.getDigits("1.0", 2, false))
 
         val r = Random(88888)
         repeat(1024) {
@@ -277,12 +277,12 @@ class DataUtilsTest {
                 r,
                 digits2
             )
-            assertEquals(0, DataUtils.getDigits(s, 0, false))
-            assertEquals(digits, DataUtils.getDigits(s, 0, true))
-            assertEquals(nonDigits, DataUtils.getDigits(s, digits, false))
-            assertEquals(0, DataUtils.getDigits(s, digits, true))
-            assertEquals(digits2, DataUtils.getDigits(s, digits + nonDigits, true))
-            assertEquals(0, DataUtils.getDigits(s, digits + nonDigits, false))
+            assertEquals(0, DataUtil.getDigits(s, 0, false))
+            assertEquals(digits, DataUtil.getDigits(s, 0, true))
+            assertEquals(nonDigits, DataUtil.getDigits(s, digits, false))
+            assertEquals(0, DataUtil.getDigits(s, digits, true))
+            assertEquals(digits2, DataUtil.getDigits(s, digits + nonDigits, true))
+            assertEquals(0, DataUtil.getDigits(s, digits + nonDigits, false))
         }
     }
 
@@ -303,32 +303,32 @@ class DataUtilsTest {
 
     @Test
     fun testStringToLongOverflow() {
-        assertFailsWith<NumberFormatException> { DataUtils.parseLong("9999999999GiB") }
+        assertFailsWith<NumberFormatException> { DataUtil.parseLong("9999999999GiB") }
     }
 
     private fun doRoundTripIntsArrayToBytesArray(ints: IntArray) {
-        val bytes = DataUtils.intsToBytes(ints)
+        val bytes = DataUtil.intsToBytes(ints)
         assertEquals(bytes.size, ints.size * 4)
-        val out = DataUtils.bytesToInts(bytes)
+        val out = DataUtil.bytesToInts(bytes)
         assertContentEquals(ints, out)
     }
 
     private fun doTestRoundTripBytesArrayToInt(bytes: ByteArray) {
-        val out = DataUtils.bytesToInt(bytes, 0)
-        val back = DataUtils.intToBytes(out)
+        val out = DataUtil.bytesToInt(bytes, 0)
+        val back = DataUtil.intToBytes(out)
         assertContentEquals(bytes, back)
     }
 
     private fun doRoundTripLongsArrayToBytesArray(longs: LongArray) {
-        val bytes = DataUtils.longsToBytes(longs)
+        val bytes = DataUtil.longsToBytes(longs)
         assertEquals(bytes.size, longs.size * 8)
-        val out = DataUtils.bytesToLongs(bytes)
+        val out = DataUtil.bytesToLongs(bytes)
         assertContentEquals(longs, out)
     }
 
     private fun doTestRoundTripBytesArrayToLong(bytes: ByteArray) {
-        val out = DataUtils.bytesToLong(bytes)
-        val back = DataUtils.longToBytes(out)
+        val out = DataUtil.bytesToLong(bytes)
+        val back = DataUtil.longToBytes(out)
         assertContentEquals(bytes, back)
     }
 
@@ -347,11 +347,11 @@ class DataUtilsTest {
     private fun checkCompareVersionLessThan(a: String, b: String) {
         checkCompareVersionEquals(a, a)
         checkCompareVersionEquals(b, b)
-        assertTrue(DataUtils.compareVersion(a, b) < 0)
-        assertTrue(DataUtils.compareVersion(b, a) > 0)
+        assertTrue(DataUtil.compareVersion(a, b) < 0)
+        assertTrue(DataUtil.compareVersion(b, a) > 0)
     }
 
     private fun checkCompareVersionEquals(a: String, b: String) {
-        assertEquals(0, DataUtils.compareVersion(a, b))
+        assertEquals(0, DataUtil.compareVersion(a, b))
     }
 }

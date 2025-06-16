@@ -7,9 +7,9 @@ import kotlin.test.assertTrue
 class UrlEncodingTest {
 
     companion object {
-        val prtblAscii = UtfUtils.PRINTABLE_ASCII.concatToString()
-        val stressedUTF8Chars = UtfUtils.STRESSED_UTF.concatToString()
-        val allChars = UtfUtils.ALL_CHARACTERS.concatToString()
+        val prtblAscii = UtfUtil.PRINTABLE_ASCII.concatToString()
+        val stressedUTF8Chars = UtfUtil.STRESSED_UTF.concatToString()
+        val allChars = UtfUtil.ALL_CHARACTERS.concatToString()
         val allCharsExceptNull = allChars.replace("\u0000", "")
     }
 
