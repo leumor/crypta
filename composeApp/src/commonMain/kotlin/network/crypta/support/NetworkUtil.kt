@@ -1,12 +1,31 @@
 package network.crypta.support
 
 /**
- * Utilities for working with IP addresses without relying on JVM-specific APIs.
- *
- * The functions here implement simplified checks inspired by the original
- * Freenet IPUtil class.
+ * Collection of helpers for working with network related strings such as
+ * hostnames and textual IP address literals. These functions are implemented
+ * without relying on platform specific networking APIs so that they can run on
+ * all Kotlin targets.
  */
-object IPUtil {
+object NetworkUtil {
+    // Regex derived from the original Freenet HostnameUtil implementation.
+    // It allows hostnames containing letters, digits and a selection of
+    // punctuation characters. A valid hostname must contain at least one dot
+    // separating the domain labels and end with a top level domain of length
+    // 2 to 6 characters.
+    private val HOSTNAME_REGEX =
+        Regex("(?:[-!#\\$%&'\\*+\\/0-9=?A-Z^_`a-z{|}]+\\.)+[a-zA-Z]{2,6}")
+
+    /**
+     * Returns `true` if [hn] represents a syntactically valid hostname.
+     *
+     * When [allowIPAddress] is `true`, IPv4 and IPv6 literals are also accepted
+     * as valid hostnames.
+     */
+    fun isValidHostname(hn: String, allowIPAddress: Boolean): Boolean {
+        if (allowIPAddress && isIpAddress(hn)) return true
+        return HOSTNAME_REGEX.matches(hn)
+    }
+
     /** Returns true if the given [address] string is in a site local range. */
     fun isSiteLocalAddress(address: String): Boolean {
         val bytes = parseAddress(address) ?: return false
@@ -23,6 +42,14 @@ object IPUtil {
         val bytes = parseAddress(address) ?: return false
         return isValidAddress(bytes, includeLocalAddressesInNoderefs)
     }
+
+    // ---------------- private helpers ----------------
+
+    private fun isIpAddress(addr: String): Boolean = isIPv4(addr) || isIPv6(addr)
+
+    private fun isIPv4(address: String): Boolean = parseIPv4(address) != null
+
+    private fun isIPv6(address: String): Boolean = parseIPv6(address) != null
 
     private fun isValidAddress(bytes: ByteArray, includeLocalAddressesInNoderefs: Boolean): Boolean {
         if (isAnyLocalAddress(bytes)) return false
@@ -134,3 +161,4 @@ object IPUtil {
         }
     }
 }
+
