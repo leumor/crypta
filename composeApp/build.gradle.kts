@@ -76,6 +76,7 @@ kotlin {
             implementation(libs.cryptography.core)
             implementation(libs.kotlinx.serialization.core)
             implementation(libs.kotlinx.io.core)
+            implementation(libs.uri.kmp)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

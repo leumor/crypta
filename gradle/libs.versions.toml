@@ -19,6 +19,7 @@ bignum = "0.3.10"
 cryptography = "0.4.0"
 kotlinx-serialization = "1.8.1"
 kotlinx-io = "0.7.0"
+uri-kmp = "0.0.19"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -42,6 +43,7 @@ cryptography-provider-webcrypto = { module = "dev.whyoleg.cryptography:cryptogra
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinx-serialization" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
+uri-kmp = { module = "com.eygraber:uri-kmp", version.ref = "uri-kmp" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
