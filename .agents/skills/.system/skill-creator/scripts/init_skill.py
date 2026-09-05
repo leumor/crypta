@@ -20,9 +20,10 @@ from pathlib import Path
 MAX_SKILL_NAME_LENGTH = 64
 ALLOWED_RESOURCES = {"scripts", "references", "assets"}
 
+# Keep the description placeholder non-string so unfinished scaffolds fail validation and packaging.
 SKILL_TEMPLATE = """---
 name: {skill_name}
-description: "TODO: State the capability and when to use it in one concise sentence."
+description: [TODO: State the capability and when to use it in one concise sentence.]
 ---
 
 # {skill_title}
