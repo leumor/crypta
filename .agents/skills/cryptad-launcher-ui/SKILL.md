@@ -1,7 +1,6 @@
 ---
 name: cryptad-launcher-ui
 description: "Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics."
-compatibility: opencode
 metadata:
   area: launcher
   domain: cryptad

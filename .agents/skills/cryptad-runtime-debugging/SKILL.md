@@ -1,6 +1,6 @@
 ---
 name: cryptad-runtime-debugging
-description: Debug live or reproducible Cryptad runtime failures such as deadlocks, hangs, blocked HTTP requests, stalled update flows, or thread contention. Use when Codex needs to inspect a running Cryptad JVM on Windows, macOS, or Linux, capture evidence with jcmd, or attach a remote debugger with jdb to the default JDWP listener on 127.0.0.1:5005.
+description: Diagnose live Cryptad JVM hangs, deadlocks, stalled requests, and thread contention with jcmd/jdb.
 ---
 
 # Cryptad Runtime Debugging
@@ -64,8 +64,10 @@ Use `jcmd` against the process ID instead of the JDWP socket. The commands are t
 ```powershell
 jcmd <pid> VM.command_line
 jcmd <pid> Thread.print -l
-jcmd <pid> GC.class_histogram
 ```
+
+Capture a class histogram only for a memory investigation; it can pause a live JVM.
+Keep raw command lines and dumps local and redact secrets before sharing.
 
 Read `Thread.print -l` in this order:
 
@@ -137,11 +139,11 @@ That writes `crypta-uidtrace-latest.log` under the configured log directory and 
 - Run targeted Gradle verification first:
 
 ```powershell
-.\gradlew.bat test --tests *TargetTestClass
+.\gradlew.bat test --tests '*TargetTestClass'
 ```
 
 ```bash
-./gradlew test --tests *TargetTestClass
+./gradlew test --tests '*TargetTestClass'
 ```
 
 - If there is no focused test, at least compile and then run the smallest relevant test slice before broader validation.

@@ -1,7 +1,6 @@
 ---
 name: cryptad-appenv
 description: "Use AppEnv as the single source of truth for OS/arch/sandbox/service detection; refactor legacy checks safely."
-compatibility: opencode
 metadata:
   area: platform
   domain: cryptad

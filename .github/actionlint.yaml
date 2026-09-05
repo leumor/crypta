@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - cryptad-stable-catalog-publication
+    - cryptad-stable-catalog-observation
+    - cryptad-federated-catalog-runtime
+    - cryptad-third-party-pilot-node

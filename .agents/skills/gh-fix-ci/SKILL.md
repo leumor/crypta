@@ -1,83 +1,33 @@
 ---
 name: gh-fix-ci
-description: Inspect GitHub PR checks with gh, pull failing GitHub Actions logs, summarize failure context, then create a fix plan and implement after user approval. Use when a user asks to debug or fix failing PR CI/CD checks on GitHub Actions and wants a plan + code changes; for external checks (e.g., Buildkite), only report the details URL and mark them out of scope.
+description: Diagnose and fix failing GitHub Actions checks for a PR using gh and captured job logs.
 metadata:
-  short-description: Fix failing Github CI actions
+  short-description: Fix failing GitHub Actions checks
 ---
 
-# Gh Pr Checks Plan Fix
+# Fix GitHub Actions checks
 
-## Overview
+Use [Git policy](../cryptad-git-workflow/SKILL.md) for identity and authorization.
+Default to the current branch's PR unless the user selects another.
 
-Use gh to locate failing PR checks, fetch GitHub Actions logs for actionable failures, summarize the failure snippet, then propose a fix plan and implement after explicit approval.
-- Depends on the `plan` skill for drafting and approving the fix plan.
-
-Prereq: ensure `gh` is authenticated for the `leumor` account. This repository's GitHub
-operations must always use `leumor`, even when another account is active in `gh`. Verify access
-with `gh auth token --user leumor >/dev/null`. If it fails, ask the user to run `gh auth login`
-for `leumor` before proceeding.
-
-For every manual `gh` command in this workflow, inject the account token explicitly:
+Run the bundled inspector from the repository root:
 
 ```bash
-GH_TOKEN="$(gh auth token --user leumor)" gh <command>
+python3 .agents/skills/gh-fix-ci/scripts/inspect_pr_checks.py --repo . --json
 ```
 
-The bundled script also forces `GH_TOKEN` from `gh auth token --user leumor` before it shells out to
-`gh`.
+Add `--pr <number-or-url>` when needed. The script selects `leumor` explicitly and returns
+nonzero when failing checks remain; inspect its JSON/log evidence before treating that as a
+tool failure. Missing logs are an evidence gap, not proof of success.
 
-## Inputs
+Identify the failed job, source SHA, error, and relevant code. For an authorized fix request,
+explain the approach briefly, implement it, and run relevant local checks. A diagnosis-only request
+ends with findings. No separate plan approval is required for fixes already requested.
 
-- `repo`: path inside the repo (default `.`)
-- `pr`: PR number or URL (optional; defaults to current branch PR)
-- `gh` authentication for the repo host
+Load build/tooling or certification guidance for the affected job. Do not weaken required checks,
+permissions, protected environments, or evidence authentication to make CI green.
+For external-provider checks, report URLs and access limitations unless the user requests
+investigation with an available integration.
 
-## Quick start
-
-- `python "<path-to-skill>/scripts/inspect_pr_checks.py" --repo "." --pr "<number-or-url>"`
-- Add `--json` if you want machine-friendly output for summarization.
-
-## Workflow
-
-1. Verify gh authentication.
-   - Run `gh auth token --user leumor >/dev/null` in the repo.
-   - If unauthenticated, ask the user to log in as `leumor` before proceeding.
-2. Resolve the PR.
-   - Prefer the current branch PR:
-     `GH_TOKEN="$(gh auth token --user leumor)" gh pr view --json number,url`.
-   - If the user provides a PR number or URL, use that directly.
-3. Inspect failing checks (GitHub Actions only).
-   - Preferred: run the bundled script (handles gh field drift and job-log fallbacks):
-     - `python "<path-to-skill>/scripts/inspect_pr_checks.py" --repo "." --pr "<number-or-url>"`
-     - Add `--json` for machine-friendly output.
-   - Manual fallback:
-     - `GH_TOKEN="$(gh auth token --user leumor)" gh pr checks <pr> --json name,state,bucket,link,startedAt,completedAt,workflow`
-       - If a field is rejected, rerun with the available fields reported by `gh`.
-     - For each failing check, extract the run id from `detailsUrl` and run:
-       - `GH_TOKEN="$(gh auth token --user leumor)" gh run view <run_id> --json name,workflowName,conclusion,status,url,event,headBranch,headSha`
-       - `GH_TOKEN="$(gh auth token --user leumor)" gh run view <run_id> --log`
-     - If the run log says it is still in progress, fetch job logs directly:
-       - `GH_TOKEN="$(gh auth token --user leumor)" gh api "/repos/<owner>/<repo>/actions/jobs/<job_id>/logs" > "<path>"`
-4. Scope non-GitHub Actions checks.
-   - If `detailsUrl` is not a GitHub Actions run, label it as external and only report the URL.
-   - Do not attempt Buildkite or other providers; keep the workflow lean.
-5. Summarize failures for the user.
-   - Provide the failing check name, run URL (if any), and a concise log snippet.
-   - Call out missing logs explicitly.
-6. Create a plan.
-   - Use the `plan` skill to draft a concise plan and request approval.
-7. Implement after approval.
-   - Apply the approved plan, summarize diffs/tests, and ask about opening a PR.
-8. Recheck status.
-   - After changes, suggest re-running the relevant tests and `gh pr checks` to confirm.
-
-## Bundled Resources
-
-### scripts/inspect_pr_checks.py
-
-Fetch failing PR checks, pull GitHub Actions logs, and extract a failure snippet. Exits non-zero when failures remain so it can be used in automation.
-
-Usage examples:
-- `python "<path-to-skill>/scripts/inspect_pr_checks.py" --repo "." --pr "123"`
-- `python "<path-to-skill>/scripts/inspect_pr_checks.py" --repo "." --pr "https://github.com/org/repo/pull/123" --json`
-- `python "<path-to-skill>/scripts/inspect_pr_checks.py" --repo "." --max-lines 200 --context 40`
+Recheck PR status with explicit `leumor` credentials after an authorized push. Distinguish
+local validation from hosted checks for the new SHA. Report cause, change, checks, and blockers.

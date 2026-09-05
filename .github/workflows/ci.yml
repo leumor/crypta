@@ -6,7 +6,7 @@ name: Java CI with Gradle
 on:
   push:
     branches: [ main, develop, 'release/**', 'hotfix/**' ]
-    tags: [ 'v*.*.*' ]
+    tags: [ 'v[0-9]+' ]
   pull_request:
     branches: [ main, develop, 'feature/**', 'bugfix/**', 'hotfix/**', 'release/**' ]
   workflow_dispatch:

@@ -49,7 +49,9 @@ annotated `v<build-number>` tag through the required `leumor` GitHub identity. I
 
 Notes
 - Use Conventional Commits in messages (e.g., `feat:`, `fix:`, `docs:`). Squash & merge for feature/bugfix PRs is encouraged. Do not squash `release/*` or `hotfix/*` merges.
-- PR creation policy: open PRs only with maintainer/requester approval; all PRs require at least one approval and green CI.
+- PR creation requires maintainer/requester authorization; an explicit request to open a PR
+  provides that authorization without a second confirmation. A review/preparation-only request
+  does not. Merging still requires at least one approval and green CI.
 
 ## Common Workflows
 
@@ -70,6 +72,10 @@ Notes
 
 ### 3) Release Workflow (stabilization)
 
+The manual tag commands below apply to ordinary releases. For Stable RC/GA or post-GA maintenance,
+use the protected publication sequence described above and in the maintenance runbook; do not
+create its tag manually. Run publication and merge steps only within their authorized scope.
+
 1. Prepare the build number in `build.gradle.kts` (e.g., bump to `version = 2`).
 2. Create release branch:
    - `git checkout develop && git pull`
@@ -87,6 +93,9 @@ Notes
 Outcome: `main` now reflects release `v2`. `develop` includes the same changes so future work starts from the released state.
 
 ### 4) Hotfix Workflow (production)
+
+The manual tag command below applies to an ordinary hotfix. Stable security hotfixes use the
+protected maintenance workflow for tag creation and exact-byte publication.
 
 1. Branch from `main`:
    - `git checkout main && git pull`

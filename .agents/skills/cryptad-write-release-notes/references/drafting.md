@@ -1,0 +1,180 @@
+# Release-note drafting reference
+
+Select inputs for the requested release; do not read every runbook. Source paths are repository-root-relative.
+
+
+# Write release notes
+
+This skill covers how to draft or review a Cryptad GitHub release body and matching changelog artifacts for a build tag such as `v2`.
+
+## Select relevant inputs
+
+- `../../cryptad-writing-guides/references/writing-guide.md`
+- `../../cryptad-writing-guides/references/release-notes-guide.md`
+- Repo-root `changelog-full.md` if it exists
+- Repo-root `changelog-short.txt` if it exists
+- Repo-root `changelog-full.txt` if it exists
+- Repo-root `docs/standard-git-branching-and-release-workflow.md`
+- Repo-root `docs/cryptad-release-workflow-and-runbook.md`
+- Repo-root `docs/stable-1.0-rc-execution-and-release-freeze.md` for Stable RC notes
+- Repo-root `docs/stable-1.0-rc-validation-and-ga-promotion.md` for Stable GA notes
+- Repo-root `docs/stable-1.0-maintenance-release-and-hotfix-path.md` for later Stable 1.0 notes
+- Repo-root `docs/stable-1.0-backport-and-release-train-governance.md` for fix disposition,
+  public-safe lineage, carried obligations, and release-train digest rules
+- Repo-root `docs/templates/stable-1.0-rc-release-notes.md` or
+  `docs/templates/stable-1.0-ga-release-notes.md` when that generated contract is in scope
+- Repo-root `docs/templates/stable-1.0-maintenance-release-notes.md` for a maintenance or
+  security-hotfix generated-note contract
+- Repo-root `build.gradle.kts`
+
+## Process
+
+### 1. Confirm the target release
+
+- Cryptad releases use integer build tags: `v<build-number>`.
+- Confirm whether the target release is a draft or already published.
+- Select one source ref and retain it as `NOTES_SOURCE_REF`:
+  1. For a tagged release, use `refs/tags/v<build-number>`.
+  2. Otherwise honor an explicit user-selected candidate ref. Without an explicit ref, use
+     `refs/heads/hotfix/<build-number>` for a hotfix or `refs/heads/release/<build-number>` for
+     ordinary stabilization. An existing release branch must not override a selected hotfix.
+  3. If the selected source is missing, report it rather than silently switching branches.
+- Resolve the selected ref to `NOTES_SOURCE_COMMIT` and verify the intended integer build in
+  `build.gradle.kts` at that commit, not in an unrelated working-tree checkout.
+
+### 2. Find the shipped or candidate range
+
+Identify the previous published tag and retain its resolved commit as `NOTES_PREVIOUS_COMMIT`.
+Compare that commit to `NOTES_SOURCE_COMMIT` for tagged releases, untagged release/hotfix branches,
+and explicit candidate refs alike. Keep the selected ref and commit in the working notes.
+Do not derive the source from `baseRefName = main` or substitute a release branch later.
+
+Example for an untagged hotfix; replace the source and previous tag with the selected identities:
+
+```bash
+NOTES_SOURCE_REF='refs/heads/hotfix/3'
+NOTES_PREVIOUS_TAG='refs/tags/v2'
+NOTES_SOURCE_COMMIT="$(git rev-parse --verify --end-of-options "${NOTES_SOURCE_REF}^{commit}")" || exit 1
+NOTES_PREVIOUS_COMMIT="$(git rev-parse --verify --end-of-options "${NOTES_PREVIOUS_TAG}^{commit}")" || exit 1
+git show "${NOTES_SOURCE_COMMIT}:build.gradle.kts"
+git log --oneline "${NOTES_PREVIOUS_COMMIT}..${NOTES_SOURCE_COMMIT}" --
+```
+
+Use the same resolved range when inspecting commits and drafting entries. A branch moving during
+review does not change that range; explicitly reselect and revalidate if the task should include
+its newer tip. A missing published predecessor is a first-release/source decision to establish,
+not a reason to invent a tag or use a different candidate.
+
+### Stable 1.0 generated notes
+
+- Do not hand-author a second RC or GA release body. `stable-rc` and `stable-ga` render their
+  checked-in templates from authenticated frozen/validation data and fail closed when a required
+  token is missing, duplicated, unknown, or reordered.
+- Keep the project version and tag as integer `v<build-number>`. `Stable 1.0` is the product/API
+  milestone, not a `1.0.0` semantic version.
+- RC notes describe a frozen candidate and must not claim GA publication. Pre-publication GA notes
+  may describe validated and authorized promotion material, but must not claim that the tag,
+  GitHub Release, update descriptor, catalog publication, or network insert already exists.
+- Preserve exact frozen limitations and carried policy-compliant waivers. Never broaden, omit, or
+  rewrite them while editing prose.
+- Treat the generated GA note digest as an authorized publication identity. The protected workflow
+  may publish only those validated bytes or the documented normalized form, and the publication
+  receipt must verify the result.
+- Keep `stable-1.0-ga-checksums.txt` limited to the planned public assets so operators can run a
+  complete checksum verification without missing internal validation files.
+
+### 3. Gather candidate changes
+
+- Inspect the commit range first.
+- If a GitHub draft release already exists, use the autogenerated `What's Changed` list only as an index of PR numbers.
+- Open the notable PRs or commits and extract user-facing impact, compatibility notes, installer changes, launcher/updater behavior, and meaningful bug fixes.
+- When the selected source is an untagged release branch, hotfix branch, or explicit candidate ref,
+  treat its resolved commit as unreleased candidate state. Call out pre-tag status in working notes
+  or the final response, not inside changelog artifacts unless the user requests that wording.
+
+Helpful command:
+
+```bash
+GH_TOKEN="$(gh auth token --user leumor)" gh pr view <PR_NUMBER> --json title,body,labels,author,baseRefName
+```
+
+### 4. Categorize by impact
+
+Typical Cryptad buckets:
+
+- `What's new`
+- `Upgrade and compatibility`
+- App platform, Platform API, Web Shell, app bundles/catalogs, app-owned UI, browser SDK, and
+  developer app CLI
+- Installers and packaging
+- Launcher and UI
+- Core updater
+- Interop, stability, performance, and security
+- Contributor or packager notes, only if they matter outside the core dev loop
+
+### 5. Draft the release body
+
+- Write a short introduction.
+- Prefer themed sections over a flat PR dump.
+- Use the release-notes guide for section order and tone.
+- Put inline checksums at the end if the release publishes them.
+
+### 6. Generate changelog artifacts
+
+When the task requests changelog artifacts, generate the following set together so it stays aligned.
+A release-body-only request does not require creating repository changelog files:
+
+- Repo-root `changelog-full.md`: Markdown changelog for non-technical readers.
+- Repo-root `changelog-short.txt`: Plain-text version of `changelog-full.md` with the same content and ordering.
+- Repo-root `changelog-full.txt`: Plain-text developer changelog with deeper technical detail.
+- GitHub release body: usually based on `changelog-full.md`, adjusted for the release page and asset/checksum presentation.
+
+Authoring rules:
+
+- Write `changelog-full.md` first.
+- Derive `changelog-short.txt` directly from `changelog-full.md`. Do not add or remove substantive content.
+- Expand into `changelog-full.txt` only after the short changelog is stable.
+- Keep `changelog-full.md` and `changelog-short.txt` focused on non-technical readers: what changed, why it matters, upgrade impact, and platform notes.
+- Use `changelog-full.txt` for developers: subsystem names, technical migration notes, compatibility details, packaging/build changes, and noteworthy implementation fixes.
+- Do not turn `changelog-full.txt` into a raw commit or PR dump. Curate it.
+- Do not add `Draft`, `Draft status`, or `Reference` sections to changelog artifacts unless the user explicitly asks for them.
+
+### 7. Verify before publishing
+
+- The source ref, resolved source commit, and previous published commit match the identities used
+  for range calculation, build-number validation, and drafting. If a selected ref moved or a release
+  tag appeared, report the change and revalidate before publishing notes for a different commit.
+- Tag, build number, and asset names are correct.
+- Commands and upgrade steps match the shipped artifacts.
+- Linux, macOS, Windows, Flatpak, and Snap notes are present when relevant.
+- App permission/audit changes, AppHost runtime boundary changes, developer app CLI changes,
+  production security response/advisory changes, legacy admin retirement changes, interop gate
+  changes, and performance-gate changes are called out when they affect operators, packagers, or
+  app developers. For a security incident release, use `docs/templates/security-release-notes.md`
+  and omit private reporter data, private insert URIs, tokens, raw fetched content, raw app data,
+  local paths, and raw incident artifacts.
+- Stable GA notes match the authenticated release ID, integer build/tag, source commit, selected RC
+  freeze/product/archive/catalog/app/API/profile identities, exact limitations, validation result,
+  and maintenance baseline. They do not imply publication before a verified receipt exists.
+- Internal churn, reverted noise, and same-cycle regressions are removed.
+- The final body does not leave GitHub's autogenerated `## What's Changed` section in place unless the user explicitly wants that format.
+- `changelog-short.txt` matches `changelog-full.md` in substance.
+- `changelog-full.txt` is more technical, but still organized by impact or subsystem rather than commit chronology.
+
+## Output
+
+Produce these artifacts unless the user narrows the request or the Stable generated-note contract
+applies:
+
+- GitHub-flavored Markdown ready to paste into a GitHub Release body
+- Repo-root `changelog-full.md`
+- Repo-root `changelog-short.txt`
+- Repo-root `changelog-full.txt`
+
+Report the selected source ref, resolved commit, and comparison range. For any untagged candidate
+(including a hotfix or explicit ref), state its pre-tag status in working notes or the response.
+Do not add draft labeling to changelog artifacts unless requested, or present the candidate as
+already published.
+
+For Stable RC or GA, update the template or authoritative source data and rerun the corresponding
+certification command. Do not manually patch generated output inside a release workspace.

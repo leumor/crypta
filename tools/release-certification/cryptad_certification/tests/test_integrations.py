@@ -3120,9 +3120,16 @@ class WorkflowIntegrationTest(unittest.TestCase):
 
     def test_release_workflow_skill_uses_only_unified_cli_options(self) -> None:
         root = workspace_root()
-        release_skill = (root / ".agents/skills/cryptad-release-workflow/SKILL.md").read_text(
-            encoding="utf-8"
-        )
+        skill_dir = root / ".agents/skills/cryptad-release-workflow"
+        entrypoint = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        references = sorted((skill_dir / "references").glob("*.md"))
+        self.assertTrue(references, "release workflow references must exist")
+        guidance = [entrypoint]
+        for reference in references:
+            with self.subTest(reference=reference.name):
+                self.assertIn(f"(references/{reference.name})", entrypoint)
+            guidance.append(reference.read_text(encoding="utf-8"))
+        release_skill = "\n".join(guidance)
         forbidden = (
             "--out-dir",
             "--mode release-candidate",

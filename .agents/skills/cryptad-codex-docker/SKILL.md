@@ -47,6 +47,11 @@ Playwright remote browser service, or docs that describe this stack.
 
 ## Validation
 
+Choose checks for the changed layer. Documentation-only changes need command/link review;
+Compose edits need config validation; image/helper changes need the affected build and smoke test.
+Recreating services with `up` affects running containers: use an isolated stack or existing user
+authorization for that restart. The commands below are a menu, not an unconditional sequence.
+
 From `tools/codex-docker`:
 
 ```bash

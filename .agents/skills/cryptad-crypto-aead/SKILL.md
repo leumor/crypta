@@ -1,7 +1,6 @@
 ---
 name: cryptad-crypto-aead
 description: "Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes)."
-compatibility: opencode
 metadata:
   area: crypto
   domain: cryptad

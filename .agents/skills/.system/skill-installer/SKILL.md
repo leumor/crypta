@@ -27,11 +27,11 @@ Skills from {repo}:
 Which ones would you like installed?
 """
 
-After installing a skill, tell the user: "Restart Codex to pick up new skills."
+After installation, report the installed path. If the session catalog has not refreshed, start a new session to discover the skill.
 
 ## Scripts
 
-All of these scripts use network, so when running in the sandbox, request escalation when running them.
+These scripts use network access. Use the session's existing permissions; request additional access only if the environment requires it. Run Python helpers with `python3`.
 
 - `scripts/list-curated-skills.py` (prints curated list with installed annotations)
 - `scripts/list-curated-skills.py --format json`

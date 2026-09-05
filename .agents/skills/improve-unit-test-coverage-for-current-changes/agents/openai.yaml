@@ -1,4 +1,4 @@
 interface:
   display_name: "Current Change Test Coverage"
-  short_description: "Improve tests for uncommitted changes"
-  default_prompt: "Use $improve-unit-test-coverage-for-current-changes to add or improve focused unit tests for the current uncommitted or unstaged working-tree changes."
+  short_description: "Cover branch and local Java changes"
+  default_prompt: "Use $improve-unit-test-coverage-for-current-changes to add or improve focused unit tests for the current branch and local Java changes."
