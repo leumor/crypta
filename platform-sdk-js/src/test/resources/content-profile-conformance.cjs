@@ -29,7 +29,7 @@ function app(file, name, exports) {
 }
 const social = app('apps/social-inbox/src/staged/static/app.js', 'socialHarness',
   'ensureSignedSocialMessage,verifySocialMessageSignature,canonicalSocialMessagePayload,expectedSocialMessageId,importOutboxText,normalizeTrustScore,buildThreadIndex,state,parseJsonObject,trustAnnotationFailure,refreshTrustAnnotations,prepareProfileDocument,elements');
-const feed = app('apps/feed-reader/src/staged/static/app.js', 'feedHarness', 'parseCanonicalSnapshot,buildPublishedSnapshot,normalizeEntry');
+const feed = app('apps/feed-reader/src/staged/static/app.js', 'feedHarness', 'parseCanonicalSnapshot,buildPublishedSnapshot,normalizeEntry,snapshotFromTextResponse');
 const profileApp = app('apps/profile-publisher/src/staged/static/app.js', 'profileHarness', 'createSignedProfileDocument,state');
 context.CryptaPlatform = Object.assign({}, context.CryptaPlatform, {
   data: { records: { putJson: async () => ({}) } },
@@ -189,6 +189,42 @@ check('feed-byte-limit-minus-at-plus-with-multibyte', () => {
     else assert.equal(context.CryptaPlatform.feed.parseSnapshot(text).title,'雪😀');
   }
 });
+check('profile-verification-snapshots-caller-owned-input', async () => {
+  const text = fs.readFileSync(path.join(corpus, 'profile/document.json'), 'utf8');
+  const document = JSON.parse(text);
+  const pending = context.CryptaPlatform.profile.verifyDocument(document);
+  document.profile.displayName = 'NOT SIGNED';
+  document.profile.tags[0] = 'NOT SIGNED';
+  document.identity.identityId = 'NOT SIGNED';
+  document.signature.purpose = 'NOT SIGNED';
+  const verified = await pending;
+  assert.equal(JSON.stringify(verified), text);
+  assert.notEqual(verified, document);
+  assert.notEqual(verified.profile.tags, document.profile.tags);
+});
+check('feed-xml-json-like-content-reaches-xml-fallback', () => {
+  const previous = context.DOMParser;
+  const reached = new Error('XML parser reached');
+  let parsedText;
+  context.DOMParser = class {
+    parseFromString(text, mime) {
+      assert.equal(mime, 'application/xml');
+      parsedText = text;
+      throw reached;
+    }
+  };
+  try {
+    for (const text of [
+      '<rss><channel><item><description><![CDATA[{"x":1,"x":2}]]></description></item></channel></rss>',
+      '<feed xmlns="http://www.w3.org/2005/Atom"><entry><summary>{"x":1,"x":2}</summary></entry></feed>'
+    ]) {
+      assert.equal(feed.parseCanonicalSnapshot(text), null);
+      assert.throws(() => feed.snapshotFromTextResponse({label: 'Synthetic', uri: ''}, text), error => error === reached);
+      assert.equal(parsedText, text);
+    }
+    assert.throws(() => feed.parseCanonicalSnapshot('{"type":"crypta.feed.snapshot.v1","type":"other","items":[]}'));
+  } finally { context.DOMParser = previous; }
+});
 check('profile-duplicate-and-envelope-rejection', async () => {
   const text = fs.readFileSync(path.join(corpus,'profile/document.json'),'utf8');
   await assert.rejects(() => context.CryptaPlatform.profile.verifyDocument(text.replace('{','{"schema":"other",')));
@@ -201,7 +237,7 @@ check('profile-duplicate-and-envelope-rejection', async () => {
 check('profile-envelope-members-require-objects-without-recursive-decoding', async () => {
   const text = fs.readFileSync(path.join(corpus, 'profile/document.json'), 'utf8');
   const document = JSON.parse(text);
-  assert.equal(await context.CryptaPlatform.profile.verifyDocument(document), document);
+  assert.equal(JSON.stringify(await context.CryptaPlatform.profile.verifyDocument(document)), text);
   assert.equal(JSON.stringify(await context.CryptaPlatform.profile.verifyDocument(text)), text);
   for (const [member, duplicatedField] of [['profile', 'displayName'], ['identity', 'identityId'], ['signature', 'purpose']]) {
     const serialized = JSON.stringify(document[member]);

@@ -282,6 +282,8 @@
     "feed-production-generator-current-reader",
     "social-duplicate-depth-surrogate-rejection",
     "feed-byte-limit-minus-at-plus-with-multibyte",
+    "profile-verification-snapshots-caller-owned-input",
+    "feed-xml-json-like-content-reaches-xml-fallback",
     "profile-duplicate-and-envelope-rejection",
     "profile-envelope-members-require-objects-without-recursive-decoding",
     "feed-no-ambiguous-downgrade-or-null-nesting",

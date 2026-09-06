@@ -957,7 +957,7 @@
   function parseCanonicalSnapshot(textValue) {
     const sourceText = typeof textValue === "string" ? textValue : "";
     if (
-      !sourceText ||
+      !/^\s*[\[{]/.test(sourceText) ||
       !CryptaPlatform.feed ||
       typeof CryptaPlatform.feed.parseSnapshot !== "function"
     ) {

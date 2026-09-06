@@ -1043,10 +1043,17 @@
   });
 
   async function verifyProfileDocument(value) {
-    if (jsonDocumentByteLength(value, "Profile") > contentFormats.profileDocument.maxDocumentBytes) {
+    let text;
+    try {
+      text = typeof value === "string" ? value : JSON.stringify(value);
+    } catch (error) {
+      throw new Error("Profile must be JSON-serializable.");
+    }
+    if (typeof text !== "string") throw new Error("Profile must be JSON-serializable.");
+    if (jsonDocumentByteLength(text, "Profile") > contentFormats.profileDocument.maxDocumentBytes) {
       throw new Error("Profile document is too large.");
     }
-    const document = requireJsonObject(typeof value === "string" ? parseContentJson(value) : value, "Profile");
+    const document = requireJsonObject(parseContentJson(text), "Profile");
     const profile = requireJsonObject(document.profile, "Profile payload");
     const identity = requireJsonObject(document.identity, "Profile identity");
     const signature = requireJsonObject(document.signature, "Profile signature");
