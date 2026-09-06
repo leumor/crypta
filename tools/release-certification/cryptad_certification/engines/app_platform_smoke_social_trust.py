@@ -1463,6 +1463,16 @@ def collect_trust_social_content_format_profiles_evidence(settings: Settings) ->
         or "not Platform API 1.0 stable baseline route guarantees" in docs_text
     )
     details["profiles"] = list(profile_ids)
+    details["evidenceLevel"] = "source-inspection"
+    from .stable_content_profile_review import bound_summary
+
+    try:
+        review = bound_summary(workspace)
+        details["executableReview"] = review or {"evidenceLevel": "not-observed"}
+    except (ValueError, OSError, KeyError):
+        checks["executableReviewBinding"] = False
+        details["executableReview"] = {"evidenceLevel": "invalid-or-stale"}
+
     errors = [
         f"content format profile check failed: {name}"
         for name, passed in checks.items()

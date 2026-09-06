@@ -440,3 +440,12 @@ package and lifecycle subscribers from restarting under that key.
 
 See [Stable 1.0 support lifecycle and deprecation
 governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).
+
+## Content profile executable evidence
+
+The [Trust/Social stable profile review](trust-social-stable-profile-review.md) supplements
+`app-platform.trust-social-content-format-profiles` source inspection with a separately labeled,
+current-source-bound local conformance result. Run the unified `stable-content-profile-review`
+command before collecting the optional executable result. Missing local results remain unobserved;
+stale results fail binding. This evidence does not promote content profiles, activate an API
+baseline, authenticate remote execution, or replace protected production prerequisites.

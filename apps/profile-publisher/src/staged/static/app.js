@@ -212,7 +212,7 @@
       selectedIdentityId(),
       buildProfilePayload(),
     );
-    return profileDocumentFromResponse(response);
+    return CryptaPlatform.profile.verifyDocument(profileDocumentFromResponse(response));
   }
 
   function cachedSignedDocumentForSelectedIdentity() {

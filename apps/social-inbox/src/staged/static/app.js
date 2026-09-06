@@ -231,7 +231,7 @@
       return;
     }
     try {
-      const profileDocument = await CryptaPlatform.vault.identities.createProfileDocument(
+      const response = await CryptaPlatform.vault.identities.createProfileDocument(
         identityId(identity),
         {
           displayName,
@@ -240,6 +240,7 @@
           tags: ["social-inbox", "rc"],
         }
       );
+      const profileDocument = await CryptaPlatform.profile.verifyDocument(response.profileDocument);
       elements.profilePreview.textContent = boundedPreview(
         JSON.stringify(profileDocumentPreviewSummary(profileDocument), null, 2),
         maxFetchedDocumentBytes,
@@ -838,7 +839,7 @@
     appendOptionalCanonicalField(payload, "replyTo", message.replyTo);
     appendOptionalCanonicalField(payload, "recipientFingerprint", message.recipientFingerprint);
     if (Array.isArray(message.tags) && message.tags.length > 0) {
-      payload.tags = message.tags.map((tag) => stringValue(tag));
+      payload.tags = message.tags.map((tag) => rawString(tag));
     }
     return `${socialMessageType}\n${JSON.stringify({ type: socialMessageType, message: payload })}`;
   }
@@ -863,7 +864,7 @@
     appendOptionalCanonicalField(payload, "replyTo", message.replyTo);
     appendOptionalCanonicalField(payload, "recipientFingerprint", message.recipientFingerprint);
     if (Array.isArray(message.tags) && message.tags.length > 0) {
-      payload.tags = message.tags.map((tag) => stringValue(tag));
+      payload.tags = message.tags.map((tag) => rawString(tag));
     }
     return JSON.stringify(payload);
   }
@@ -896,13 +897,13 @@
   }
 
   function requireBoundedText(value, maxLength, name) {
-    if (value === undefined || value === null) {
+    if (value === undefined) {
       return;
     }
     if (typeof value !== "string") {
       throw new Error(`Social message ${name} must be text.`);
     }
-    const text = stringValue(value);
+    const text = rawString(value);
     if (text.length > maxLength) {
       throw new Error(`Social message ${name} is too long.`);
     }
@@ -930,8 +931,8 @@
       throw new Error("Social message contains too many tags.");
     }
     for (const tag of tags) {
-      const text = stringValue(tag);
-      if (!text || text.length > maxTagLength) {
+      const text = rawString(tag);
+      if (!text.trim() || text.length > maxTagLength) {
         throw new Error("Social message tag is malformed.");
       }
       requireNoUnsafeControls(text, "tag", false);
@@ -1110,11 +1111,8 @@
             : response;
         state.trustScores[fingerprint] = normalizeTrustScore(result);
       } catch (error) {
-        state.trustScores[fingerprint] = {
-          status: "unscored",
-          summary: "Trust score unavailable / grant required.",
-        };
         await refreshTrustServiceStatus({ silent: true });
+        state.trustScores[fingerprint] = trustAnnotationFailure(error);
       }
     }
     renderInbox();
@@ -2117,6 +2115,23 @@
         summary,
       };
     }
+  }
+
+  function trustAnnotationFailure(error) {
+    const code = stringField(error, "code");
+    let summary;
+    if (["app_services_unavailable", "app_service_provider_unavailable", "app_service_dependency_unavailable", "app_service_not_found"].includes(code)) {
+      summary = "Trust score unavailable / provider unavailable.";
+    } else if (code === "app_service_grant_stale") {
+      summary = "Trust score unavailable / grant requires operator revalidation.";
+    } else if (code === "app_service_grant_required") {
+      summary = trustServiceUnavailableSummary();
+    } else if (code === "invalid_query_parameter" || code === "app_service_invalid_request") {
+      summary = "Trust score unavailable / invalid score request.";
+    } else {
+      summary = "Trust score unavailable / invocation failed.";
+    }
+    return { status: "unscored", summary };
   }
 
   function normalizeTrustScore(score) {
@@ -3151,9 +3166,40 @@
     return stringField(response, "contentText", "text", "content", "body");
   }
 
+  // JSON.parse supplies the grammar; this lexical pass rejects ambiguous members and
+  // excessive nesting before materialization. String tokens use the native JSON decoder.
+  function parseContentJson(text) {
+    const tokens = text.match(/"(?:[^"\\\x00-\x1f]|\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4}))*"|[{}\[\]:,]|[^\s{}\[\]:,"]+/g) || [];
+    const stack = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token === "{" || token === "[") {
+        stack.push(token === "{" ? new Set() : null);
+        if (stack.length > 16) throw new Error("Content JSON nesting exceeds limit.");
+      } else if (token === "}" || token === "]") {
+        stack.pop();
+      } else if (token.startsWith('"')) {
+        const value = JSON.parse(token);
+        for (let offset = 0; offset < value.length; offset += 1) {
+          const unit = value.charCodeAt(offset);
+          if (unit >= 0xd800 && unit <= 0xdbff) {
+            const low = value.charCodeAt(++offset);
+            if (!(low >= 0xdc00 && low <= 0xdfff)) throw new Error("Unpaired surrogate.");
+          } else if (unit >= 0xdc00 && unit <= 0xdfff) throw new Error("Unpaired surrogate.");
+        }
+        if (tokens[index + 1] === ":") {
+          const keys = stack[stack.length - 1];
+          if (keys && keys.has(value)) throw new Error("Duplicate content JSON field.");
+          if (keys) keys.add(value);
+        }
+      }
+    }
+    return JSON.parse(text);
+  }
+
   function parseJsonObject(value, description) {
     try {
-      return parsePlainObject(JSON.parse(value), description);
+      return parsePlainObject(parseContentJson(value), description);
     } catch (error) {
       throw new Error(`${description} must be a JSON object.`);
     }

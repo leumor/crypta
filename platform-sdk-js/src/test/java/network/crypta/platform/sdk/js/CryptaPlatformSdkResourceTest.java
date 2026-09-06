@@ -23,6 +23,32 @@ class CryptaPlatformSdkResourceTest {
   @TempDir private Path tempDir;
 
   @Test
+  void contentProfileConformance_whenProductionConsumersRun_expectPinnedCorpusAgreement()
+      throws Exception {
+    Assumptions.assumeTrue(nodeAvailable(), "Node.js is required for SDK behavior tests.");
+    Path root = Path.of("").toAbsolutePath();
+    while (root != null && !Files.isRegularFile(root.resolve("settings.gradle.kts"))) {
+      root = root.getParent();
+    }
+    assertNotNull(root, "Repository root is required for conformance execution.");
+    Process process =
+        new ProcessBuilder(
+                "node",
+                root.resolve("platform-sdk-js/src/test/resources/content-profile-conformance.cjs")
+                    .toString(),
+                root.toString())
+            .redirectErrorStream(true)
+            .start();
+    boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+    if (!finished) {
+      process.destroyForcibly();
+    }
+    String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    assertTrue(finished, output);
+    assertEquals(0, process.exitValue(), output);
+  }
+
+  @Test
   void classpathResource_whenSdkRequested_expectPublicBrowserSurface() throws IOException {
     String script = readSdkScript();
 
@@ -112,7 +138,11 @@ class CryptaPlatformSdkResourceTest {
     assertFalse(script.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(script.contains("localStorage"));
     assertFalse(script.contains("sessionStorage"));
-    assertFalse(script.contains("signatureBase64"));
+    // Public received signatures are confined to verification, not credential transport helpers.
+    String withoutProfileVerifier =
+        script.substring(0, script.indexOf("  async function verifyProfileDocument("))
+            + script.substring(script.indexOf("  function parseFeedSnapshot("));
+    assertFalse(withoutProfileVerifier.contains("signatureBase64"));
     assertFalse(script.contains("privateKey"));
   }
 

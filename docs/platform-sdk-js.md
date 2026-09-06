@@ -582,3 +582,11 @@ and conservative fragment sanitization.
 Site Publisher uses the same browser SDK content helpers for a content-oriented reference workflow:
 `CryptaPlatform.content.insertDirectory`, `CryptaPlatform.content.insertFile`, and
 `CryptaPlatform.queue.snapshot({ page: "uploads" })`.
+
+## Content profile verification
+
+`CryptaPlatform.profile.verifyDocument(value)` verifies a bounded signed profile locally using
+Web Crypto and returns the verified public document. It reconstructs the profile payload, AppVault
+frame and key fingerprint; failure rejects the promise. It grants no trust or fetch authority.
+See the [content profile review](trust-social-stable-profile-review.md) for field semantics and
+actual first-party consumer coverage. The helper does not expand the frozen Platform API baseline.

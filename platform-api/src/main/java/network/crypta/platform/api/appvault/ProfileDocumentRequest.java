@@ -307,14 +307,25 @@ record ProfileDocumentRequest(
   }
 
   /**
-   * Checks for any JSON-unsafe ASCII control character.
+   * Checks for ASCII controls or unpaired UTF-16 surrogates.
    *
    * @param value text value to scan without normalization
    * @return {@code true} when the value contains an ASCII control or delete character
    */
   private static boolean containsControlCharacter(String value) {
-    for (int index = 0; index < value.length(); index++) {
+    for (int index = 0;
+        index < value.length();
+        index += Character.isHighSurrogate(value.charAt(index)) ? 2 : 1) {
       char ch = value.charAt(index);
+      if (Character.isHighSurrogate(ch)) {
+        if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+          return true;
+        }
+        continue;
+      }
+      if (Character.isLowSurrogate(ch)) {
+        return true;
+      }
       if (ch < 0x20 || ch == 0x7f) {
         return true;
       }
@@ -323,14 +334,25 @@ record ProfileDocumentRequest(
   }
 
   /**
-   * Checks for controls other than carriage return and line feed.
+   * Checks for unpaired surrogates and controls other than carriage return and line feed.
    *
    * @param value multiline text value to scan without normalization
    * @return {@code true} when the value contains a disallowed control character
    */
   private static boolean containsControlCharacterExceptLineBreaks(String value) {
-    for (int index = 0; index < value.length(); index++) {
+    for (int index = 0;
+        index < value.length();
+        index += Character.isHighSurrogate(value.charAt(index)) ? 2 : 1) {
       char ch = value.charAt(index);
+      if (Character.isHighSurrogate(ch)) {
+        if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+          return true;
+        }
+        continue;
+      }
+      if (Character.isLowSurrogate(ch)) {
+        return true;
+      }
       if ((ch < 0x20 && ch != '\n' && ch != '\r') || ch == 0x7f) {
         return true;
       }

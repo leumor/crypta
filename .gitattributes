@@ -3,3 +3,9 @@
 # Keep the Gradle Windows launcher in its native command-shell form.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Conformance inputs and signed goldens require exact bytes on every checkout.
+/platform-api/src/test/resources/content-profile-conformance/** -text
+# These six boundary inputs intentionally pad JSON with trailing spaces.
+/platform-api/src/test/resources/content-profile-conformance/v1/feed/feed-ascii-bytes-6553[567].json whitespace=-blank-at-eol
+/platform-api/src/test/resources/content-profile-conformance/v1/feed/feed-multibyte-bytes-6553[567].json whitespace=-blank-at-eol

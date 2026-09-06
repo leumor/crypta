@@ -235,6 +235,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     platform_api_1x.add_argument("--self-test", action="store_true")
 
+    profile_review = subparsers.add_parser("stable-content-profile-review")
+    profile_review.add_argument("--mode", choices=("inspect", "review"), default="inspect")
+    profile_review.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    profile_review.add_argument("--self-test", action="store_true")
+
     legacy_pilot = subparsers.add_parser("stable-legacy-plugin-migration")
     legacy_pilot.add_argument(
         "--mode", choices=("preflight", "verify-migration", "verify-runtime", "closeout")
@@ -1416,6 +1421,10 @@ def _run_command(args: argparse.Namespace) -> int:
             args.out_dir,
             args.evidence_dir,
         )
+    if command == "stable-content-profile-review":
+        from .engines import stable_content_profile_review
+
+        return stable_content_profile_review.run(args.workspace_root.resolve(), args.mode)
     if command == "stable-legacy-plugin-migration":
         from .engines import stable_legacy_plugin_migration
 

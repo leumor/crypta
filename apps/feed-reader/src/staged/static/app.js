@@ -955,7 +955,7 @@
   }
 
   function parseCanonicalSnapshot(textValue) {
-    const sourceText = stringValue(textValue);
+    const sourceText = typeof textValue === "string" ? textValue : "";
     if (
       !sourceText ||
       !CryptaPlatform.feed ||
@@ -968,6 +968,7 @@
       return CryptaPlatform.feed.parseSnapshot(sourceText);
     } catch (error) {
       if (
+        error.code === "content_format_ambiguous_json" ||
         profileType === feedSnapshotFormat.type ||
         profileType.startsWith("crypta.feed.snapshot.")
       ) {
