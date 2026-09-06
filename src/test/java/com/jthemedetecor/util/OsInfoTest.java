@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 import network.crypta.fs.AppEnv;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -25,6 +26,12 @@ import static org.mockito.Mockito.mockStatic;
 @SuppressWarnings("java:S100")
 class OsInfoTest {
   private static final PlatformEnum CURRENT_PLATFORM = PlatformEnum.getCurrentPlatform();
+
+  @BeforeAll
+  static void initializeHostPlatformBeforeStaticMocks() {
+    // OsInfo caches its platform once; initialize it against the real host before any static mock.
+    assertTrue(OsInfo.hasType(CURRENT_PLATFORM));
+  }
 
   @ParameterizedTest
   @CsvSource({
