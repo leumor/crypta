@@ -50,16 +50,16 @@ jobs:
       contents: read
     steps:
       - name: Check out the exact protected source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.13'
+          python-version: '3.14.7'
 
       - name: Validate the protected dispatch and confine static evidence
         env:
@@ -287,7 +287,7 @@ jobs:
 
       - name: Upload immutable runtime observation
         id: observation
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.names.outputs.observation }}
           path: build/platform-api-1x-runtime-observation/platform-api-1.x-runtime-observation.json
@@ -314,7 +314,7 @@ jobs:
 
       - name: Upload bounded runtime failure status
         if: failure()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-platform-api-1x-runtime-failure-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/platform-api-1x-runtime-failure/status.txt

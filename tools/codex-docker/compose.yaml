@@ -3,6 +3,7 @@ name: codex-crypta
 services:
   latest-versions:
     build:
+      pull: true
       context: .
       dockerfile: Dockerfile.versions
       no_cache: true
@@ -12,6 +13,8 @@ services:
 
   tailscale-shell:
     build:
+      pull: true
+      no_cache: true
       context: tailscale-shell
       args:
         TAILSCALE_VERSION: ${TAILSCALE_VERSION:-latest}
@@ -46,6 +49,7 @@ services:
   codex:
     hostname: crypta-codex
     build:
+      pull: true
       context: .
       dockerfile: Dockerfile
       no_cache: true
@@ -53,7 +57,7 @@ services:
         latest_versions: service:latest-versions
       args:
         CODEX_SSH_AUTHORIZED_KEYS: ${CODEX_SSH_AUTHORIZED_KEYS:-}
-    image: codex-crypta:${CODEX_IMAGE_TAG:-0.140.0}
+    image: codex-crypta:${CODEX_IMAGE_TAG:-0.153.4}
     pull_policy: build
     container_name: codex-crypta-0
     restart: unless-stopped
@@ -90,6 +94,7 @@ services:
 
   playwright:
     build:
+      pull: true
       context: .
       dockerfile: Dockerfile.playwright
       no_cache: true

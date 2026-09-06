@@ -1455,6 +1455,33 @@ def _configure_publication_receipt(
     return receipt, receipt_path
 
 
+class StableProtectedToolchainTests(unittest.TestCase):
+    def test_checkout_matches_policy_and_rejects_gradle_coordinate_drift(self) -> None:
+        root = workspace_root()
+        policy = read_json(root / "tools/release-certification/stable-1.0-protected-release-policy.json")
+        settings = subprocess.CompletedProcess(
+            args=["java"], returncode=0, stdout="",
+            stderr=(
+                f"    java.version = {policy['toolchain']['setupJavaVersion'].split('+')[0]}\n"
+                "    java.vendor = Eclipse Adoptium\n"
+            ),
+        )
+        # Keep the real checkout's wrapper and build-logic checks; isolate only the host JVM.
+        with mock.patch.object(protected.subprocess, "run", return_value=settings):
+            self.assertEqual([], protected._toolchain_errors(root, policy))
+            for field, value in (
+                ("gradleVersion", "0.0.0"),
+                ("gradleDistributionSha256", "0" * 64),
+            ):
+                with self.subTest(field=field):
+                    drifted = copy.deepcopy(policy)
+                    drifted["toolchain"][field] = value
+                    self.assertEqual(
+                        ["Gradle wrapper version differs from protected release policy"],
+                        protected._toolchain_errors(root, drifted),
+                    )
+
+
 class StableProtectedReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -4610,8 +4637,8 @@ class StableProtectedReleaseTests(unittest.TestCase):
         self.assertIn("Authenticate exact prior protected GA evidence approval", ga)
         self.assertIn("Attest protected Stable GA evidence bytes", ga)
         self.assertIn('cmp --silent "$evidence" "$prior_evidence"', ga)
-        self.assertIn("java-version: '25.0.3+9'", rc)
-        self.assertIn("java-version: '25.0.3+9'", ga)
+        self.assertIn("java-version: '25.0.4.1+1'", rc)
+        self.assertIn("java-version: '25.0.4.1+1'", ga)
         self.assertLessEqual(dispatch_input_count(rc), 25)
         self.assertLessEqual(dispatch_input_count(ga), 25)
         self.assertEqual(7, dispatch_input_count(observation))

@@ -3,24 +3,69 @@ package com.jthemedetecor.util;
 import io.github.g00fy2.versioncompare.Version;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Stream;
+import network.crypta.fs.AppEnv;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import oshi.PlatformEnum;
 import oshi.SystemInfo;
 import oshi.software.os.OperatingSystem;
+import oshi.util.PlatformEnum;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockStatic;
 
 @SuppressWarnings("java:S100")
 class OsInfoTest {
-  private static final PlatformEnum CURRENT_PLATFORM = SystemInfo.getCurrentPlatform();
+  private static final PlatformEnum CURRENT_PLATFORM = PlatformEnum.getCurrentPlatform();
+
+  @BeforeAll
+  static void initializeHostPlatformBeforeStaticMocks() {
+    // OsInfo caches its platform once; initialize it against the real host before any static mock.
+    assertTrue(OsInfo.hasType(CURRENT_PLATFORM));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "Linux, LINUX",
+    "FreeBSD, FREEBSD",
+    "OpenBSD, OPENBSD",
+    "NetBSD, NETBSD",
+    "SunOS, SOLARIS",
+    "AIX, AIX",
+    "Unknown OS, UNKNOWN"
+  })
+  void detectPlatform_whenUnixOrUnknownHost_expectPreciseOshiPlatform(
+      String osName, PlatformEnum platform) {
+    AppEnv env = new AppEnv(Map.of(), osName);
+    try (var oshi = mockStatic(PlatformEnum.class)) {
+      oshi.when(PlatformEnum::getCurrentPlatform).thenReturn(platform);
+
+      PlatformEnum actual = OsInfo.detectPlatform(env);
+
+      assertEquals(platform, actual);
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({"Windows 11, WINDOWS", "Mac OS X, MACOS"})
+  void detectPlatform_whenWindowsOrMac_expectAppEnvPlatform(String osName, PlatformEnum platform) {
+    AppEnv env = new AppEnv(Map.of(), osName);
+    try (var oshi = mockStatic(PlatformEnum.class)) {
+      PlatformEnum actual = OsInfo.detectPlatform(env);
+
+      assertEquals(platform, actual);
+      oshi.verifyNoInteractions();
+    }
+  }
 
   @ParameterizedTest
   @EnumSource(PlatformEnum.class)

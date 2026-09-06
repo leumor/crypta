@@ -149,8 +149,11 @@ Notes
 
 ## Building
 
-We use the [Gradle Wrapper](https://docs.gradle.org/9.4.1/userguide/gradle_wrapper.html). If you trust the committed
+We use the [Gradle Wrapper](https://docs.gradle.org/9.7.1/userguide/gradle_wrapper.html). If you trust the committed
 wrapper, you can build immediately.
+
+See the [dependency baseline](docs/dependency-upgrade-9.7.1.md) for the reviewed library,
+build-tool, CI, and Docker versions and the compatibility checks for this upgrade.
 
 Prerequisites:
 
@@ -1259,7 +1262,7 @@ When Gradle dependency verification is strict, Spotless may fail to resolve form
 5. Validate:
    - `./gradlew spotlessApply`
 
-Tip: Keep the Spotless formatter at the intended version (currently `googleJavaFormat("1.28.0")`). If verification still blocks, re‑write metadata including `pgp` and ensure a group‑level trusted key entry. Commit updated verification keyring files as appropriate.
+Tip: Keep the Spotless formatter at the intended version (declared by `googleJavaFormat` in `gradle/libs.versions.toml`). If verification still blocks, re‑write metadata including `pgp` and ensure a group‑level trusted key entry. Commit updated verification keyring files as appropriate.
 
 ## Versioning
 

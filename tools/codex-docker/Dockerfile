@@ -1,11 +1,17 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
+FROM node:24.20.0-trixie-slim AS node_lts
+
 FROM docker.io/benyamin/codex-sandbox:latest
+
+COPY --from=node_lts /usr/local/bin/node /usr/local/bin/node
+COPY --from=node_lts /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 
 ARG CODEX_SSH_AUTHORIZED_KEYS=""
 
 COPY --from=latest_versions /latest/versions.env /usr/local/share/codex-docker-versions.env
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    NPM_CONFIG_PREFIX=/usr/local \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     VISUAL=nvim \
@@ -17,6 +23,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -eux; \
+    ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
+    ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
     set -a; \
     . /usr/local/share/codex-docker-versions.env; \
     set +a; \
@@ -63,7 +71,9 @@ RUN set -eux; \
     apt-get purge -y tmux libncurses-dev libncursesw5-dev || true; \
     apt-get autoremove -y; \
     ln -sf /usr/bin/fdfind /usr/local/bin/fd; \
-    npm install --global @ast-grep/cli; \
+    npm install --global "@ast-grep/cli@${AST_GREP_VERSION}" "@openai/codex@${CODEX_VERSION}"; \
+    test "$(node --version)" = "v24.20.0"; \
+    test "$(codex --version)" = "codex-cli ${CODEX_VERSION}"; \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --global \
       "playwright@${PLAYWRIGHT_VERSION}" \
       "@playwright/test@${PLAYWRIGHT_VERSION}"; \
@@ -159,7 +169,7 @@ RUN set -eux; \
     strings /usr/local/bin/mosh-server | grep -F "mosh-server (mosh ${MOSH_VERSION})"; \
     cd /tmp; \
     rm -rf "mosh-${MOSH_VERSION}" mosh.tar.gz; \
-    curl -LsSf https://astral.sh/uv/install.sh | sh; \
+    curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -198,7 +208,7 @@ RUN set -eux; \
     ssh-keygen -A; \
     sshd -t
 
-ENV NODE_PATH=/usr/local/share/npm-global/lib/node_modules
+ENV NODE_PATH=/usr/local/lib/node_modules
 
 WORKDIR /work
 

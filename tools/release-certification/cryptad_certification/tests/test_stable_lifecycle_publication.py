@@ -1928,7 +1928,7 @@ class StableLifecycleWorkflowTest(unittest.TestCase):
     def test_every_lifecycle_job_binds_workflow_and_checkout_to_source_commit(
         self,
     ) -> None:
-        checkout_marker = "uses: actions/checkout@v6"
+        checkout_marker = "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         binding_marker = "- name: Bind workflow and checkout to exact source"
         checkout_count = self.workflow.count(checkout_marker)
 

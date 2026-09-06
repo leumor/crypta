@@ -34,8 +34,9 @@ val platformSdkJsFile =
     .file("src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js")
 val launcherRelativePath = "bin/site-publisher.sh"
 val appDistPrivateKeyEnvironmentName = "CRYPTAD_APP_DIST_PRIVATE_KEY_BASE64"
-val stagedLauncher =
-  stageAppDir.map { stageDirectory -> stageDirectory.file(launcherRelativePath).asFile.toPath() }
+val stagedLauncher = stageAppDir.map { stageDirectory ->
+  stageDirectory.file(launcherRelativePath).asFile.toPath()
+}
 
 fun Project.optionalSigningInput(propertyName: String, environmentName: String): String? =
   providers

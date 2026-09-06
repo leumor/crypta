@@ -3809,7 +3809,7 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         self.assertIn("LEUMOR_GITHUB_TOKEN", workflow)
         self.assertIn("python3 tools/release-certification/certify.py stable-ga", workflow)
         self.assertIn(
-            "uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
+            "uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
             workflow,
         )
         self.assertIn('gh attestation verify "$evidence"', workflow)

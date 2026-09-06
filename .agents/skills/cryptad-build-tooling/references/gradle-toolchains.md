@@ -4,7 +4,7 @@ Read for Gradle wrapper and build-logic toolchains. Commands and unlinked source
 
 ## Gradle wrapper and build-logic toolchains
 - The wrapper is pinned in `gradle/wrapper/gradle-wrapper.properties` and currently uses Gradle
-  `9.4.1`.
+  `9.7.1`.
 - Convention plugins live in the included build `build-logic`; do not reintroduce `buildSrc`.
 - `build-logic/build.gradle.kts` must target Java 25 for both Java and Kotlin DSL compilation:
   Java toolchain `25`, `sourceCompatibility = JavaVersion.VERSION_25`,
