@@ -32,15 +32,18 @@ public class OsInfo {
     final OperatingSystem osInfo = systemInfo.getOperatingSystem();
     final OperatingSystem.OSVersionInfo osVersionInfo = osInfo.getVersionInfo();
 
-    PLATFORM_TYPE =
-        switch (new AppEnv().osKind()) {
-          case WINDOWS -> PlatformEnum.WINDOWS;
-          case MAC -> PlatformEnum.MACOS;
-          case LINUX -> PlatformEnum.LINUX;
-          case OTHER -> PlatformEnum.getCurrentPlatform();
-        };
+    PLATFORM_TYPE = detectPlatform(new AppEnv());
     FAMILY = osInfo.getFamily();
     VERSION = osVersionInfo.getVersion();
+  }
+
+  static PlatformEnum detectPlatform(AppEnv env) {
+    return switch (env.osKind()) {
+      case WINDOWS -> PlatformEnum.WINDOWS;
+      case MAC -> PlatformEnum.MACOS;
+      // AppEnv groups non-Windows/macOS hosts as Linux; retain OSHI's finer identities.
+      case LINUX, OTHER -> PlatformEnum.getCurrentPlatform();
+    };
   }
 
   /**
