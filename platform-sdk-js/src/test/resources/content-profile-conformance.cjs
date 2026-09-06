@@ -227,7 +227,9 @@ check('feed-xml-json-like-content-reaches-xml-fallback', () => {
 });
 check('profile-duplicate-and-envelope-rejection', async () => {
   const text = fs.readFileSync(path.join(corpus,'profile/document.json'),'utf8');
-  await assert.rejects(() => context.CryptaPlatform.profile.verifyDocument(text.replace('{','{"schema":"other",')));
+  assert.ok(text.startsWith('{'));
+  const duplicateRoot = '{"schema":"other",' + text.slice(1);
+  await assert.rejects(() => context.CryptaPlatform.profile.verifyDocument(duplicateRoot));
   for (const change of [d => d.schema = 'crypta.profile.v2', d => d.identity.publicKeyBase64 = 'AA==',
     d => d.signature.domainSeparatedPayload += 'x', d => d.profile.displayName = '\ud800']) {
     const document = JSON.parse(text); change(document);
