@@ -86,31 +86,31 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
 val sourceSets: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
-val additionalSonarMainSourceDirs: Provider<List<File>> =
-  providers.provider {
-    (project.findProperty("cryptad.additionalSonarMainSourceDirs") as? Iterable<*>)
-      ?.filterIsInstance<File>() ?: emptyList()
-  }
-val additionalSonarMainOutputDirs: Provider<List<File>> =
-  providers.provider {
-    (project.findProperty("cryptad.additionalSonarMainOutputDirs") as? Iterable<*>)
-      ?.filterIsInstance<File>() ?: emptyList()
-  }
+val additionalSonarMainSourceDirs: Provider<List<File>> = providers.provider {
+  (project.findProperty("cryptad.additionalSonarMainSourceDirs") as? Iterable<*>)?.filterIsInstance<
+    File
+  >() ?: emptyList()
+}
+val additionalSonarMainOutputDirs: Provider<List<File>> = providers.provider {
+  (project.findProperty("cryptad.additionalSonarMainOutputDirs") as? Iterable<*>)?.filterIsInstance<
+    File
+  >() ?: emptyList()
+}
 val kotlinTestReportDir: Provider<Directory> =
   layout.buildDirectory.dir("sonar-test-results/kotlin")
 val testExecutionReportFile: Provider<RegularFile> =
   layout.buildDirectory.file("sonar-test-results/test-execution.xml")
 val testResultsDir: Provider<Directory> = layout.buildDirectory.dir("test-results/test")
-val additionalSonarTestSourceDirs: Provider<List<File>> =
-  providers.provider {
-    (project.findProperty("cryptad.additionalSonarTestSourceDirs") as? Iterable<*>)
-      ?.filterIsInstance<File>() ?: emptyList()
-  }
-val additionalSonarTestResultDirs: Provider<List<File>> =
-  providers.provider {
-    (project.findProperty("cryptad.additionalSonarTestResultDirs") as? Iterable<*>)
-      ?.filterIsInstance<File>() ?: emptyList()
-  }
+val additionalSonarTestSourceDirs: Provider<List<File>> = providers.provider {
+  (project.findProperty("cryptad.additionalSonarTestSourceDirs") as? Iterable<*>)?.filterIsInstance<
+    File
+  >() ?: emptyList()
+}
+val additionalSonarTestResultDirs: Provider<List<File>> = providers.provider {
+  (project.findProperty("cryptad.additionalSonarTestResultDirs") as? Iterable<*>)?.filterIsInstance<
+    File
+  >() ?: emptyList()
+}
 
 tasks.register("prepareKotlinTestReports") {
   group = "verification"

@@ -76,12 +76,11 @@ val errorproneReportTask =
 
 errorproneReportTask.configure { dependsOn(tasks.withType<JavaCompile>()) }
 
-val errorproneReportEnabled =
-  providers.provider {
-    gradle.startParameter.taskNames.any { taskName ->
-      taskName == "errorproneReport" || taskName.endsWith(":errorproneReport")
-    }
+val errorproneReportEnabled = providers.provider {
+  gradle.startParameter.taskNames.any { taskName ->
+    taskName == "errorproneReport" || taskName.endsWith(":errorproneReport")
   }
+}
 
 spotbugs { ignoreFailures = true }
 

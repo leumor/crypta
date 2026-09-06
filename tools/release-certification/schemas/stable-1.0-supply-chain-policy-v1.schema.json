@@ -128,7 +128,7 @@
         "licenseRequired": {"const": true}, "subjectMappingRequired": {"const": true},
         "unknownBlocks": {"const": true},
         "distribution": {"const": "temurin"},
-        "setupJavaVersion": {"type": "string", "pattern": "^25\\.[0-9]+\\.[0-9]+\\+[0-9]+$", "maxLength": 64},
+        "setupJavaVersion": {"type": "string", "pattern": "^25\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?\\+[0-9]+$", "maxLength": 64},
         "installationDigestAlgorithm": {"const": "crypta-jdk-installed-tree-sha256-v1"},
         "requiredInstallations": {
           "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,

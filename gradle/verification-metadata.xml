@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.3.xsd">
+<verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.4.xsd">
    <configuration>
       <verify-metadata>true</verify-metadata>
       <verify-signatures>true</verify-signatures>
@@ -9,8 +9,6 @@
       </key-servers>
       <trusted-artifacts>
          <trust file="apache-4.pom"/>
-         <trust file="apache-4.pom"/>
-         <trust file="kxml2-2.3.0-sources.jar"/>
          <trust file="kxml2-2.3.0-sources.jar"/>
          <trust group="gradle" name="gradle"/>
          <trust file=".*-docs[.]zip" regex="true"/>
@@ -48,12 +46,14 @@
             <trusting group="org.gradle.kotlin" name="gradle-kotlin-dsl-plugins" version="6.4.1"/>
             <trusting group="org.gradle.kotlin" name="gradle-kotlin-dsl-plugins" version="6.4.2"/>
             <trusting group="org.gradle.kotlin" name="gradle-kotlin-dsl-plugins" version="6.5.2"/>
+            <trusting group="org.gradle.kotlin" name="gradle-kotlin-dsl-plugins" version="6.7.3"/>
             <trusting group="org.gradle.toolchains" name="foojay-resolver" version="0.9.0"/>
             <trusting group="org.gradle.toolchains" name="foojay-resolver" version="1.0.0"/>
          </trusted-key>
          <trusted-key id="1D2C7EF8ADA0F794B58C7C63436902AF59EDF60E">
             <trusting group="dev.equo.ide" name="solstice" version="1.7.5"/>
             <trusting group="dev.equo.ide" name="solstice" version="1.8.1"/>
+            <trusting group="dev.equo.ide" name="solstice" version="1.8.2"/>
          </trusted-key>
          <trusted-key id="206DF7C48E3D6CB145DDA835FF844A3256C7FB01" group="de.siegmar" name="fastcsv" version="3.7.0"/>
          <trusted-key id="28118C070CB22A0175A2E8D43D12CA2AC19F3181" group="^com[.]fasterxml($|([.].*))" regex="true"/>
@@ -66,9 +66,11 @@
             <trusting group="org.apache.commons"/>
          </trusted-key>
          <trusted-key id="2E3A1AFFE42B5F53AF19F780BCF4173966770193" group="org.jetbrains" name="annotations" version="13.0"/>
+         <trusted-key id="2E92113263FC31C74CCBAAB20E91C2DE43B72BB1" group="org.ec4j.core"/>
          <trusted-key id="33FD4BFD33554634053D73C0C2148900BCD3C2AF">
             <trusting group="org.jetbrains" name="annotations" version="22.0.0"/>
             <trusting group="org.jetbrains" name="annotations" version="23.0.0"/>
+            <trusting group="org.jetbrains" name="annotations" version="26.1.0"/>
          </trusted-key>
          <trusted-key id="34441E504A937F43EB0DAEF96A65176A0FB1CD0B" group="org.apache.groovy"/>
          <trusted-key id="3690C240CE51B4670D30AD1C38EE757D69184620" group="org.tukaani" name="xz" version="1.9"/>
@@ -81,6 +83,7 @@
          <trusted-key id="45DAD8AED069092BC7BE9843ECA081A9790D4FC4" group="org.eclipse.jdt.core.compiler" name="ecj" version="4.2.2"/>
          <trusted-key id="475F3B8E59E6E63AA78067482C7B12F2A511E325" group="org.slf4j"/>
          <trusted-key id="4797B4F5DCC46CEA61059071A1AE06236CA2BA62" group="^com[.]diffplug($|([.].*))" regex="true"/>
+         <trusted-key id="47FF105DF431FF5416B821FEAECDB81D38EA9C89" group="org.commonmark"/>
          <trusted-key id="48B086A7D843CFA258E83286928FBF39003C0425">
             <trusting group="io.micrometer"/>
             <trusting group="org.springframework"/>
@@ -88,6 +91,7 @@
          <trusted-key id="4AC55A85D30C3499A3219500B7E2662A7640A051">
             <trusting group="com.formdev" name="flatlaf" version="3.6.1"/>
             <trusting group="com.formdev" name="flatlaf" version="3.7"/>
+            <trusting group="com.formdev" name="flatlaf" version="3.7.2"/>
          </trusted-key>
          <trusted-key id="4C5F68D09D42BA7FAC888DF9A929EA2321FDBF8F">
             <trusting group="net.sf.saxon"/>
@@ -120,6 +124,7 @@
             <trusting group="org.jetbrains.intellij.deps" name="trove4j" version="1.0.20200330"/>
          </trusted-key>
          <trusted-key id="8F9A3C6D105B9F57844A721D79E193516BE7998F" group="org.dom4j" name="dom4j" version="2.2.0"/>
+         <trusted-key id="8FCD23073248F3C28EF9F80380EF47E549604C05" group="jaxen"/>
          <trusted-key id="90EE19787A7BCF6FD37A1E9180C08B1C29100955" group="com.squareup" name="javawriter" version="2.2.1"/>
          <trusted-key id="9D23533896A9784703585B6286E02C5A42196CA8" group="org.apache.commons" name="commons-compress" version="1.0"/>
          <trusted-key id="9E3044071B758EBCB7E45673700E4F39BC05364B">
@@ -127,6 +132,7 @@
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.23.100"/>
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.23.200"/>
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.24.0"/>
+            <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.24.200"/>
          </trusted-key>
          <trusted-key id="A31DDE881C3E3C4C985BD0D02C7F998F4272C851" group="com.diffplug.spotless"/>
          <trusted-key id="A33A0B49A4C1AB590B0A4DDC1364C5E2DF3E99C5" group="org.reactivestreams" name="reactive-streams" version="1.0.3"/>
@@ -145,6 +151,7 @@
             <trusting group="com.google.guava"/>
             <trusting group="com.google.j2objc" name="j2objc-annotations" version="3.0.0"/>
          </trusted-key>
+         <trusted-key id="C3259D20DAEC4ACE6D57CC83340B090F727518D8" group="com.google.j2objc" name="j2objc-annotations" version="3.1"/>
          <trusted-key id="C7BE5BCC9FEC15518CFDA882B0F3710FA64900E7">
             <trusting group="com.google.code.gson"/>
             <trusting group="^com[.]google[.]auto($|([.].*))" regex="true"/>
@@ -157,7 +164,10 @@
          <trusted-key id="D1436C0DBACEA48702AF97C363F1DD7753B8B315" group="^org[.]sonarsource($|([.].*))" regex="true"/>
          <trusted-key id="D196A5E3E70732EEB2E5007F1861C322C56014B2" group="commons-codec"/>
          <trusted-key id="D477D51812E692011DB11E66A6EA2E2BF22E0543" group="io.github.java-diff-utils"/>
-         <trusted-key id="D84B2A55CBE37E731816F18138DC6A61B99534FF" group="io.github.g00fy2" name="versioncompare" version="1.4.1"/>
+         <trusted-key id="D84B2A55CBE37E731816F18138DC6A61B99534FF">
+            <trusting group="io.github.g00fy2" name="versioncompare" version="1.4.1"/>
+            <trusting group="io.github.g00fy2" name="versioncompare" version="1.5.0"/>
+         </trusted-key>
          <trusted-key id="D878D4A823EAE731B729D1A8D2151178A123C97F" group="^com[.]github[.]spotbugs($|([.].*))" regex="true"/>
          <trusted-key id="D9E6E4CC8F66B2034995C7192189CA6247F3DEE5" group="^com[.]android[.]tools($|([.].*))" regex="true"/>
          <trusted-key id="DBD744ACE7ADE6AA50DD591F66B50994442D2D40" group="^com[.]squareup($|([.].*))" regex="true"/>
@@ -180,6 +190,11 @@
             <trusting group="com.google.googlejavaformat"/>
          </trusted-key>
          <trusted-key id="EF6AD6684034B0CB67A9B5714406B84C1661DCD1" group="io.r2dbc"/>
+         <trusted-key id="F4DD59C90148BDC52BEB90A4530AA5F25C25011F">
+            <trusting group="commons-codec"/>
+            <trusting group="org.apache.bcel"/>
+            <trusting group="org.apache.commons"/>
+         </trusted-key>
          <trusted-key id="F79157DB93697AA32CD4C46CC485C5A843FADB15" group="org.flywaydb"/>
          <trusted-key id="FA7929F83AD44C4590F6CC6815C71C0A4E0B8EDD" group="net.java.dev.jna"/>
          <trusted-key id="FF6E2C001948C5F2F38B0CC385911F425EC61B51">
@@ -652,6 +667,11 @@
             <sha256 value="8bf25572931be29f2fc4dc86372416669826717ba293b47e5bf25ef1b3310707" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
+      <component group="com.github.spotbugs" name="com.github.spotbugs.gradle.plugin" version="6.5.11">
+         <artifact name="com.github.spotbugs.gradle.plugin-6.5.11.pom">
+            <sha256 value="0c6a209a65316db979f32f5f3255c35f12e166583edb7862da414e0ee85998a6" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
       <component group="com.github.spotbugs.snom" name="spotbugs-gradle-plugin" version="6.4.8">
          <artifact name="spotbugs-gradle-plugin-6.4.8.jar">
             <sha256 value="b686e503e10a231658488cdc0d22767d0971c1c1ee7b36335897233a88eb654a" origin="Generated by Gradle"/>
@@ -949,6 +969,11 @@
             <sha256 value="aff645c58cd41ac5184d976ce8ee38de5694d99ab8764d6ee7f14f70ead5f98b" origin="Generated by Gradle"/>
          </artifact>
       </component>
+      <component group="commons-codec" name="commons-codec" version="1.22.0">
+         <artifact name="commons-codec-1.22.0.pom">
+            <pgp value="F4DD59C90148BDC52BEB90A4530AA5F25C25011F"/>
+         </artifact>
+      </component>
       <component group="commons-codec" name="commons-codec" version="1.4">
          <artifact name="commons-codec-1.4.jar">
             <sha256 value="6aa4234c74f3a1035751a25822545867c8c3727125a642b6e049665d1863631b" origin="Generated by Gradle because a key couldn't be downloaded"/>
@@ -1011,6 +1036,11 @@
          </artifact>
          <artifact name="solstice-1.8.1.module">
             <sha256 value="a676039ea6af08f257b46e07c2bf1571a46a4d4b5b9ccb86c3fc98d07fafea1b" origin="Generated by Gradle"/>
+         </artifact>
+      </component>
+      <component group="dev.equo.ide" name="solstice" version="1.8.2">
+         <artifact name="solstice-1.8.2.module">
+            <pgp value="1D2C7EF8ADA0F794B58C7C63436902AF59EDF60E"/>
          </artifact>
       </component>
       <component group="info.picocli" name="picocli" version="4.7.7">
@@ -1195,11 +1225,11 @@
          </artifact>
       </component>
       <component group="name.remal.gradle-plugins.sonarlint" name="sonarlint" version="7.1.6">
-         <artifact name="sonarlint-7.1.6.jar">
-            <sha256 value="fccec3c518a83ced6d8aa8db0dc52e968477aa3e5bbb74fe781ea41467fb5bd3" origin="Generated by Gradle" reason="Artifact is not signed"/>
-         </artifact>
          <artifact name="sonarlint-7.1.6-sources.jar">
             <sha256 value="4e13d5db5747c0f61a957948b0d625021a2fa13a0c51b786258b43ab48aa5ea5" origin="Added manually" reason="Artifact is not signed"/>
+         </artifact>
+         <artifact name="sonarlint-7.1.6.jar">
+            <sha256 value="fccec3c518a83ced6d8aa8db0dc52e968477aa3e5bbb74fe781ea41467fb5bd3" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
          <artifact name="sonarlint-7.1.6.pom">
             <sha256 value="acd66489ec5fdcccccc80938de4dab496bc3b4597180e3204f919535af0f67d9" origin="Generated by Gradle" reason="Artifact is not signed"/>
@@ -1355,6 +1385,11 @@
             <sha256 value="8acacf47cb86492a5e1514dc83aa50decc4ee6a5a19ac65dff0e2a30627f1c49" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
+      <component group="net.ltgt.errorprone" name="net.ltgt.errorprone.gradle.plugin" version="5.1.1">
+         <artifact name="net.ltgt.errorprone.gradle.plugin-5.1.1.pom">
+            <sha256 value="2c303a020bc17e186d444f1f76d10396a81f05a5278f8a89a18148a38544678a" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
       <component group="net.ltgt.gradle" name="gradle-errorprone-plugin" version="4.3.0">
          <artifact name="gradle-errorprone-plugin-4.3.0.jar">
             <sha256 value="42f89c1f582ecd09459586d3d19c0fa92a332035e4a70b5699a8ec6a81aec32c" origin="Generated by Gradle" reason="Artifact is not signed"/>
@@ -1380,6 +1415,14 @@
          </artifact>
          <artifact name="gradle-errorprone-plugin-5.0.0.module">
             <sha256 value="0ca324271a58f2c250183a67b10f7e9b521495a309afc3183cfe9873ebf029f7" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
+      <component group="net.ltgt.gradle" name="gradle-errorprone-plugin" version="5.1.1">
+         <artifact name="gradle-errorprone-plugin-5.1.1.jar">
+            <sha256 value="d0304e11d0b41230550e44b8dffdbdd55835908405c29371735837ed916bcb05" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+         <artifact name="gradle-errorprone-plugin-5.1.1.module">
+            <sha256 value="fb173283ff00913ef63de016ad35db086f524182f4dfd9461f87438aa6c59eb5" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
       <component group="net.sf.kxml" name="kxml2" version="2.3.0">
@@ -1835,6 +1878,11 @@
             <sha256 value="a24d9d906a478e126b219a9d24518b833b66da4b103f963e20b9050bebe2ae15" origin="Generated by Gradle"/>
          </artifact>
       </component>
+      <component group="org.eclipse.platform" name="org.eclipse.osgi" version="3.24.200">
+         <artifact name="org.eclipse.osgi-3.24.200.pom">
+            <pgp value="9E3044071B758EBCB7E45673700E4F39BC05364B"/>
+         </artifact>
+      </component>
       <component group="org.freenetproject" name="freenet-ext" version="29">
          <artifact name="freenet-ext-29.jar">
             <sha256 value="32f2b3d6beedf54137ea2f9a3ebef67666d769f0966b08cd17fd7db59ba4d79f" origin="Generated by Gradle because artifact wasn't signed" reason="Artifact is not signed"/>
@@ -1874,6 +1922,11 @@
       <component group="org.gradle.kotlin.kotlin-dsl" name="org.gradle.kotlin.kotlin-dsl.gradle.plugin" version="6.5.2">
          <artifact name="org.gradle.kotlin.kotlin-dsl.gradle.plugin-6.5.2.pom">
             <sha256 value="e5a6af17b58560d746cab42c795fe3a42a1ebe4050e55a4f00d8cf54cf31f1ea" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
+      <component group="org.gradle.kotlin.kotlin-dsl" name="org.gradle.kotlin.kotlin-dsl.gradle.plugin" version="6.7.3">
+         <artifact name="org.gradle.kotlin.kotlin-dsl.gradle.plugin-6.7.3.pom">
+            <sha256 value="1d1b62a1dd8af85ef21808361197da4649393d5cea7efa422ab9a8016f5e6dd1" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
       <component group="org.gradle.toolchains" name="foojay-resolver" version="1.0.0">
@@ -2328,6 +2381,11 @@
             <sha256 value="db408de6dba6690795bc53a4a0f85b33c7a7d6accb67de1902640faf541f2f5b" origin="Verified"/>
          </artifact>
       </component>
+      <component group="org.jetbrains.kotlin" name="kotlin-script-runtime" version="2.4.0">
+         <artifact name="kotlin-script-runtime-2.4.0.pom">
+            <sha256 value="ce705c50e7e0afb22298acff0a983cdb6ea0f7fe2d1b473cee42b38405bc357f" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
       <component group="org.jetbrains.kotlin" name="kotlin-scripting-common" version="2.3.0">
          <artifact name="kotlin-scripting-common-2.3.0.jar">
             <sha256 value="4252b782cda53fcbfd953b90af03250e2197ffef6e55abd9b0a2e48f93eff253" origin="Verified"/>
@@ -2350,6 +2408,11 @@
          </artifact>
          <artifact name="kotlin-scripting-compiler-impl-embeddable-2.3.0.pom">
             <sha256 value="4cf1b9bf9ae69c76f3ea75a7856dc66de44678a7c741715ae9c15db40ecd7efd" origin="Verified"/>
+         </artifact>
+      </component>
+      <component group="org.jetbrains.kotlin" name="kotlin-scripting-compiler-impl-embeddable" version="2.4.0">
+         <artifact name="kotlin-scripting-compiler-impl-embeddable-2.4.0.pom">
+            <sha256 value="c73a0ec6e92692de02ccb64691c7b7dca3008b42c6b17c56e281954d56f5f453" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
       <component group="org.jetbrains.kotlin" name="kotlin-scripting-jvm" version="2.3.0">
@@ -3034,6 +3097,11 @@
       <component group="org.sonarqube" name="org.sonarqube.gradle.plugin" version="7.4.0.8496">
          <artifact name="org.sonarqube.gradle.plugin-7.4.0.8496.pom">
             <sha256 value="a812121b3ada10ddfa0eebbc0c5b754d4f401db8088e9798355ba44724a23050" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
+      <component group="org.sonarqube" name="org.sonarqube.gradle.plugin" version="7.5.0.8588">
+         <artifact name="org.sonarqube.gradle.plugin-7.5.0.8588.pom">
+            <sha256 value="4c5a9ff5f276fa6ff5f42ece3725684d74780ed846cef96be0718fbbf3a8b3c1" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
       <component group="org.sonarsource.api.plugin" name="sonar-plugin-api" version="12.0.0.2960">

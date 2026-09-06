@@ -36,6 +36,7 @@ from ..engines.stable_1_0_supply_chain_core import (
     build_material_errors,
     builder_observation_errors,
     canonical_json_bytes,
+    canonical_java_runtime_build,
     component_inventory_errors,
     component_reverse_index_errors,
     configured_directory,
@@ -361,14 +362,14 @@ def _jdk_component(
     module: str, subject_keys: list[str], distribution_digest: str
 ) -> dict:
     component = _component(subject_keys)
-    component_id = f"pkg:generic/openjdk-module/{module}@25.0.3+9"
+    component_id = f"pkg:generic/openjdk-module/{module}@25.0.4.1+1"
     license_digest = _digest((REPOSITORY / "LICENSE").read_bytes())
     component.update(
         {
             "componentId": component_id,
             "componentKind": "jdk-module",
             "name": module,
-            "version": "25.0.3+9",
+            "version": "25.0.4.1+1",
             "namespace": "openjdk",
             "purl": component_id,
             "digest": distribution_digest,
@@ -379,7 +380,7 @@ def _jdk_component(
                 "provenanceDigest": distribution_digest,
             },
             "resolved": {
-                "coordinates": f"openjdk:{module}:25.0.3+9",
+                "coordinates": f"openjdk:{module}:25.0.4.1+1",
                 "selectedVariant": "jlink-runtime-module",
                 "attributes": [],
             },
@@ -828,9 +829,9 @@ class SupplyChainFixture:
                 "jdk": {
                     "vendor": "Eclipse Adoptium",
                     "version": "25",
-                    "build": "25.0.3+9",
+                    "build": "25.0.4.1+1",
                     "distribution": "temurin",
-                    "setupJavaVersion": "25.0.3+9",
+                    "setupJavaVersion": "25.0.4.1+1",
                     "installationDigestAlgorithm": "crypta-jdk-installed-tree-sha256-v1",
                     "distributionDigest": self.jdk_distribution_digest,
                     "installations": self.jdk_installations,
@@ -1156,6 +1157,20 @@ class SupplyChainFixture:
 
 
 class StableSupplyChainTest(unittest.TestCase):
+    def test_runtime_build_accepts_lts_patch_versions_without_losing_components(self) -> None:
+        for version in ("25.0.3+9", "25.0.4.1+1"):
+            with self.subTest(version=version):
+                self.assertEqual(canonical_java_runtime_build(version), version)
+                self.assertEqual(canonical_java_runtime_build(version + "-LTS"), version)
+
+    def test_runtime_build_rejects_other_java_lines_and_incomplete_builds(self) -> None:
+        for version in (
+            "26.0.1+1", "25.0.4.1", "25.0.4.1+1-ea", "25.0.4.1.2+1",
+            "25.0.4.1+1-LTS-extra", "25.0.4.1+1\n",
+        ):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                canonical_java_runtime_build(version)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.policy = read_json(POLICY_PATH)
@@ -3068,7 +3083,7 @@ class StableSupplyChainTest(unittest.TestCase):
                 {
                     "java.vendor": "Eclipse Adoptium",
                     "java.specification.version": "25",
-                    "java.runtime.version": "25.0.3+9-LTS",
+                    "java.runtime.version": "25.0.4.1+1-LTS",
                     "file.encoding": "UTF-8",
                     "os.arch": "x86_64",
                 },
@@ -3080,7 +3095,7 @@ class StableSupplyChainTest(unittest.TestCase):
                 "SOURCE_DATE_EPOCH": "1785801600",
                 "TZ": "UTC",
             }
-            self.assertEqual(java["javaBuild"], "25.0.3+9")
+            self.assertEqual(java["javaBuild"], "25.0.4.1+1")
             self.assertEqual(
                 builder_observation_errors(
                     java, environment, fixture.materials, "linux"
@@ -3116,7 +3131,7 @@ class StableSupplyChainTest(unittest.TestCase):
                     {
                         "java.vendor": "Eclipse Adoptium",
                         "java.specification.version": "25",
-                        "java.runtime.version": "25.0.3+9",
+                        "java.runtime.version": "25.0.4.1+1",
                         "file.encoding": "UTF-8",
                         "os.arch": "sparc",
                     },
@@ -3127,7 +3142,7 @@ class StableSupplyChainTest(unittest.TestCase):
                     {
                         "java.vendor": "Eclipse Adoptium",
                         "java.specification.version": "25",
-                        "java.runtime.version": "25.0.3+9-vendor-modified",
+                        "java.runtime.version": "25.0.4.1+1-vendor-modified",
                         "file.encoding": "UTF-8",
                         "os.arch": "x86_64",
                     },
@@ -3703,7 +3718,7 @@ class StableSupplyChainTest(unittest.TestCase):
             text.index("\n  aggregate-builder-handoff:")
         ]
         self.assertEqual(platform.count("python_cmd: python3"), 2)
-        self.assertEqual(platform.count("python_cmd: py -3.12"), 1)
+        self.assertEqual(platform.count("python_cmd: py -3.14"), 1)
         self.assertEqual(platform.count("${{ matrix.python_cmd }} -"), 5)
         self.assertNotIn("python3 -", platform)
 
@@ -3931,13 +3946,13 @@ class StableSupplyChainTest(unittest.TestCase):
             if not reference.startswith("./")
         ]
         expected_actions = {
-            "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803": 9,
-            "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1": 8,
-            "actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961": 4,
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": 9,
+            "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97": 8,
+            "actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c": 4,
             "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c": 13,
-            "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f": 9,
-            "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373": 9,
-            "gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884": 4,
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a": 9,
+            "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8": 9,
+            "gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb": 4,
         }
 
         self.assertEqual(
@@ -3946,7 +3961,7 @@ class StableSupplyChainTest(unittest.TestCase):
         )
         for reference in external_actions:
             self.assertRegex(reference, r"^[^@\s]+@[0-9a-f]{40}$")
-        self.assertEqual(text.count("java-version: '25.0.3+9'"), 4)
+        self.assertEqual(text.count("java-version: '25.0.4.1+1'"), 4)
         self.assertNotIn("java-version: '25'", text)
         self.assertIn("./gradlew exportStableSupplyChainResolution", text)
         self.assertIn("phase bundle contains an unreferenced entry", text)

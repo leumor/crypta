@@ -52,7 +52,7 @@ Optional but recommended:
 ```
 
 Notes:
-- Keep Spotless config at the intended formatter version (currently `googleJavaFormat("1.28.0")`).
+- Keep Spotless config at the intended formatter version (declared by `googleJavaFormat` in `gradle/libs.versions.toml`).
 - Commit updated `gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys` so new environments verify without re-fetching keys.
 
 ## JUnit 6 + dependency verification

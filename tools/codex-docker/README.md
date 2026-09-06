@@ -22,9 +22,9 @@ Edit `../../.env` for local values only. Tool versions are not configured in `.e
 resolved during Docker build by the `latest-versions` build-only image and written to
 `/usr/local/share/codex-docker-versions.env` in both runtime images.
 
-The default local Codex-derived image tag is `codex-crypta:0.140.0`, matching the upstream stable
-Codex CLI version used as the current baseline. Set `CODEX_IMAGE_TAG` in `../../.env` only when you
-need a different local image tag.
+The default local Codex-derived image tag is `codex-crypta:0.153.4`, identifying the reviewed
+Codex CLI baseline. The build resolves and installs the latest stable CLI, which may be newer.
+Set `CODEX_IMAGE_TAG` in `../../.env` only when you need a different local image tag.
 
 The Codex container permits root SSH login with password `root`. It also supports key-based login:
 set `CODEX_SSH_AUTHORIZED_KEYS` to one or more public keys in `../../.env`. Public key values may
@@ -36,17 +36,20 @@ Interactive SSH login shells start in `/work/cryptad`.
 ## Version resolution
 
 Compose builds a local `latest-versions` image first. That image resolves the stable latest releases
-for GitHub MCP server, actionlint, Mosh, tmux, Playwright, and ncurses, then emits a shared
-`versions.env` file. The Codex and Playwright images both copy that file so a single build uses one
-consistent version set.
+for Codex CLI, ast-grep, uv, GitHub MCP server, actionlint, Mosh, tmux, Playwright, and ncurses,
+then emits a shared `versions.env` file. The Codex and Playwright images both copy that file so a
+single build uses one consistent version set.
 
 The Codex image builds ncurses, tmux, and Mosh from source. It does not install apt `tmux` or apt
 `libncurses-dev`; `libevent-dev` remains an apt build dependency for tmux. The Playwright browser
 server is a local image that installs the matching Playwright npm package and browser binaries.
 
-The Compose build configuration uses `no_cache: true` for `latest-versions`, `codex`, and
-`playwright`. This makes builds slower, but it ensures each build re-resolves latest upstream
-versions instead of reusing a cached resolver layer.
+The Compose build configuration uses `no_cache: true` for all four images. This makes builds slower,
+but it ensures each build re-resolves latest upstream versions instead of reusing a cached resolver
+layer. All builds also pull their base images.
+The resolver uses Debian 13 (trixie), and both runtime images use Node.js 24.20.0 LTS.
+The Codex image installs the resolved CLI version and checks the command on PATH; its local
+image tag is a label, while `versions.env` records the installed tool versions.
 
 ## Start the stack
 
@@ -179,7 +182,7 @@ Use the root project test commands only when a code change also touches Java or 
 - If a test cannot reach a local server, check whether the server is on the host, the Codex
   container, or the Playwright container and use the matching target URL rule above.
 - If `docker compose` ignores values from `../../.env`, pass `--env-file ../../.env` explicitly.
-- If the Codex image tag is not `codex-crypta:0.140.0`, check whether `CODEX_IMAGE_TAG` is set in
+- If the Codex image tag is not `codex-crypta:0.153.4`, check whether `CODEX_IMAGE_TAG` is set in
   `../../.env`.
 - If Mosh authenticates over SSH but cannot attach, confirm that the client accepts the Tailscale
   subnet route and that UDP `60000-61000` can reach the Codex container address.

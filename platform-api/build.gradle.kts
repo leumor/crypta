@@ -28,7 +28,6 @@ dependencies {
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.mockitoCore)
   testImplementation(libs.mockitoJunitJupiter)
-  testImplementation(libs.mockitoInline)
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }

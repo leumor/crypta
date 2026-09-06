@@ -114,7 +114,7 @@ jobs:
       contents: read
     steps:
       - name: Check out exact protected workflow source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.workflow_source_commit }}
           fetch-depth: 0
@@ -319,7 +319,7 @@ jobs:
           git diff-files --quiet --
 
       - name: Upload encrypted protected review authorization
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: >-
             stable-1.0-backport-review-${{ inputs.fix_id }}-${{ inputs.candidate_fix_commit }}

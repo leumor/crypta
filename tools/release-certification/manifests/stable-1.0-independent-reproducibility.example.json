@@ -44,7 +44,7 @@
     }
   },
   "policies": {
-    "stableSupplyChainPolicyDigest": "sha256:af0a2481826fd757b6cfd8495fad0556896798d25f9ded124d0af27e1a9a94bd",
+    "stableSupplyChainPolicyDigest": "sha256:ec01663150dea51b49f017655037aa19f05f7512da9ae4dd1bfdb7f1b9dfd192",
     "independentReproducibilityPolicyDigest": "sha256:f4a252db2378b0c355e1324eddc9891cc447bcaa803b3785b7a4ba359ae1e1ba",
     "comparisonPlanSchemaDigest": "sha256:1341c3a1325f4993834e4efbba0e6a51d510f5e98c9e3da3f869f1f1cf1f7180",
     "reproducibilityResultSchemaDigest": "sha256:20a2203da1d64b995644f2d80fbd6ae794fe9a3328d2a203a83aaf36b4355b37"
@@ -324,5 +324,5 @@
     "publicVerification": "not-performed"
   },
   "blockedReason": null,
-  "executionContractDigest": "sha256:c5bb2b4b1bcca88c247c9921d6c6b56858e604aa71c1dfe97f0eec69b01bbacd"
+  "executionContractDigest": "sha256:63ea5c4e62dc23ba21e0b4e23e7bd5250e4b57bc88b75379452e1759756a4b54"
 }
