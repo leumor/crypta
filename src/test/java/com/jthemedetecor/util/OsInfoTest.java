@@ -8,9 +8,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import oshi.PlatformEnum;
 import oshi.SystemInfo;
 import oshi.software.os.OperatingSystem;
+import oshi.util.PlatformEnum;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class OsInfoTest {
-  private static final PlatformEnum CURRENT_PLATFORM = SystemInfo.getCurrentPlatform();
+  private static final PlatformEnum CURRENT_PLATFORM = PlatformEnum.getCurrentPlatform();
 
   @ParameterizedTest
   @EnumSource(PlatformEnum.class)

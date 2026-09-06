@@ -898,7 +898,7 @@ class StableMaintenanceRegistrationTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         for required in (
             "Cryptographically attest every exact package producer asset",
-            "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
+            "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
             "subject-path: build/stable-maintenance-package-output/",
             "Independently verify and bind every exact package producer attestation",
             'signingMethod: "sigstore-github-attestation"',

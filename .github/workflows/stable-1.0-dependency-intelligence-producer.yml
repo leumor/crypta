@@ -48,7 +48,7 @@ jobs:
       SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
     steps:
       - name: Check out exact protected producer source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.SOURCE_COMMIT }}
           fetch-depth: 0
@@ -80,9 +80,9 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_COMMIT" "$remote_tip"
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.13'
+          python-version: '3.14.7'
 
       - name: Read exact retention-independent PR-289 OSV inventory anchor
         if: matrix.source_id == 'osv-public'
@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload exact protected producer bundle
         id: upload
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-dependency-intelligence-${{ env.SOURCE_ID }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/dependency-intelligence
@@ -205,7 +205,7 @@ jobs:
             --out "$RUNNER_TEMP/dependency-intelligence-activation-proposal/stable-1.0-dependency-intelligence-activation-proposal.json"
 
       - name: Upload exact source-lineage activation proposal
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-dependency-intelligence-activation-proposal-${{ env.SOURCE_ID }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/dependency-intelligence-activation-proposal

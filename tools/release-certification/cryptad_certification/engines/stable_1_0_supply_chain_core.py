@@ -123,7 +123,7 @@ COMPONENT_ID_RE = re.compile(r"pkg:[a-z0-9.+-]+/[A-Za-z0-9._~%+@/?=&-]+\Z")
 MUTABLE_VERSION_RE = re.compile(
     r"(?i)(?:snapshot|\+|\*|\bx\b|\A(?:latest(?:\.(?:release|integration))?|release)\Z)"
 )
-JDK_BUILD_RE = re.compile(r"25\.[0-9]+\.[0-9]+\+[0-9]+\Z")
+JDK_BUILD_RE = re.compile(r"25\.[0-9]+\.[0-9]+(?:\.[0-9]+)?\+[0-9]+\Z")
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -181,7 +181,7 @@ def parse_timestamp(value: Any, label: str) -> dt.datetime:
 def canonical_java_runtime_build(reported_version: str) -> str:
     """Return the policy coordinate for one observed Temurin runtime build."""
 
-    match = re.fullmatch(r"(25\.[0-9]+\.[0-9]+\+[0-9]+)(?:-LTS)?", reported_version)
+    match = re.fullmatch(r"(25\.[0-9]+\.[0-9]+(?:\.[0-9]+)?\+[0-9]+)(?:-LTS)?", reported_version)
     if match is None:
         raise ValueError("observed Java runtime version is not a canonical Stable JDK build")
     return match.group(1)

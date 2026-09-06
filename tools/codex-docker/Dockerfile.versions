@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1.7
-FROM debian:bookworm-slim
+# syntax=docker/dockerfile:1
+FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -7,6 +7,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -eux; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
       ca-certificates \
       coreutils \
@@ -28,6 +29,13 @@ RUN set -eux; \
       fi; \
       printf '%s\n' "${tag}"; \
     }; \
+    npm_latest_version() { \
+      curl -fsSL "https://registry.npmjs.org/$1/latest" \
+        | jq -er '.version | select(test("^[0-9]+[.][0-9]+[.][0-9]+$"))'; \
+    }; \
+    CODEX_VERSION="$(npm_latest_version @openai/codex)"; \
+    AST_GREP_VERSION="$(npm_latest_version @ast-grep/cli)"; \
+    UV_VERSION="$(github_latest_tag astral-sh/uv)"; \
     GITHUB_MCP_VERSION="$(github_latest_tag github/github-mcp-server)"; \
     ACTIONLINT_TAG="$(github_latest_tag rhysd/actionlint)"; \
     ACTIONLINT_VERSION="${ACTIONLINT_TAG#v}"; \
@@ -44,7 +52,7 @@ RUN set -eux; \
       exit 1; \
     fi; \
     TMUX_TARBALL_URL="https://github.com/tmux/tmux/releases/download/${TMUX_VERSION}/tmux-${TMUX_VERSION}.tar.gz"; \
-    PLAYWRIGHT_VERSION="$(curl -fsSL https://registry.npmjs.org/playwright/latest | jq -r '.version // empty')"; \
+    PLAYWRIGHT_VERSION="$(npm_latest_version playwright)"; \
     if [ -z "${PLAYWRIGHT_VERSION}" ] || [ "${PLAYWRIGHT_VERSION}" = "null" ]; then \
       echo "Could not resolve playwright latest npm version." >&2; \
       exit 1; \
@@ -52,7 +60,7 @@ RUN set -eux; \
     NCURSES_VERSION="$( \
       curl -fsSL https://ftp.gnu.org/pub/gnu/ncurses/ \
         | sed -n 's/.*href="ncurses-\([^"]*\)\.tar\.gz".*/\1/p' \
-        | grep -E '^[0-9]+(\.[0-9]+)+[A-Za-z0-9._-]*$' \
+        | grep -E '^[0-9]+(\.[0-9]+)+$' \
         | sort -V \
         | tail -n 1 \
     )"; \
@@ -67,6 +75,9 @@ RUN set -eux; \
     curl -fsSIL "${NCURSES_TARBALL_URL}" >/dev/null; \
     curl -fsSIL "${NCURSES_SIG_URL}" >/dev/null; \
     { \
+      printf 'CODEX_VERSION=%s\n' "${CODEX_VERSION}"; \
+      printf 'AST_GREP_VERSION=%s\n' "${AST_GREP_VERSION}"; \
+      printf 'UV_VERSION=%s\n' "${UV_VERSION}"; \
       printf 'GITHUB_MCP_VERSION=%s\n' "${GITHUB_MCP_VERSION}"; \
       printf 'ACTIONLINT_VERSION=%s\n' "${ACTIONLINT_VERSION}"; \
       printf 'MOSH_VERSION=%s\n' "${MOSH_VERSION}"; \

@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1.7
-FROM node:24-bookworm-slim
+# syntax=docker/dockerfile:1
+FROM node:24.20.0-trixie-slim
 
 COPY --from=latest_versions /latest/versions.env /usr/local/share/codex-docker-versions.env
 
@@ -13,6 +13,7 @@ RUN set -eux; \
     . /usr/local/share/codex-docker-versions.env; \
     set +a; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends ca-certificates; \
     npm install --global "playwright@${PLAYWRIGHT_VERSION}"; \
     playwright install --with-deps; \

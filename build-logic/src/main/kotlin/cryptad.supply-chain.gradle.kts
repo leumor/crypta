@@ -106,10 +106,9 @@ val publicationBackendHeadTreePaths =
     }
     .standardOutput
     .asBytes
-val publicationBackendMaterialFiles =
-  publicationBackendHeadTreePaths.map { encodedPaths ->
-    StableTrackedMaterialPaths.selectPublicationBackendFiles(rootDir, encodedPaths)
-  }
+val publicationBackendMaterialFiles = publicationBackendHeadTreePaths.map { encodedPaths ->
+  StableTrackedMaterialPaths.selectPublicationBackendFiles(rootDir, encodedPaths)
+}
 
 val stableMaterialFiles =
   files(
@@ -209,65 +208,64 @@ val immutableWindowsWrapperUrl =
     "^https://github\\.com/crypta-network/wrapper-windows-build/releases/download/" +
       "[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._+-]*\\.(?:zip|tar\\.gz)$"
   )
-val stableDirectInputs =
-  providers.provider {
-    val wrapperProperties =
-      java.util.Properties().apply {
-        file("gradle/wrapper/gradle-wrapper.properties").inputStream().use(::load)
-      }
-    listOf(
-      StableDirectInput(
-          name = "gradle-wrapper-distribution",
-          url = wrapperProperties.getProperty("distributionUrl"),
-          immutabilityClass = "versioned-url",
-          expectedSha256 = wrapperProperties.getProperty("distributionSha256Sum").orEmpty(),
-          localPath = "build/stable-supply-chain/gradle-wrapper-distribution.bin",
-        )
-        .encoded,
-      StableDirectInput(
-          name = "tanuki-wrapper-delta-pack",
-          url = wrapperDeltaPackUrl,
-          immutabilityClass = "versioned-url",
-          expectedSha256 = providers.gradleProperty("wrapperDeltaPackSha256").orNull.orEmpty(),
-          localPath = "build/wrapper/$wrapperDeltaPackName",
-        )
-        .encoded,
-      StableDirectInput(
-          name = "seedrefs-source-archive",
-          url = seedrefsUrl.get(),
-          immutabilityClass =
-            if (immutableSeedrefsUrl.matches(seedrefsUrl.get())) "immutable-git-archive"
-            else "mutable-branch",
-          expectedSha256 = providers.gradleProperty("seedrefsSha256").orNull.orEmpty(),
-          localPath = "build/seedrefs/seedrefs.zip",
-        )
-        .encoded,
-      StableDirectInput(
-          name = "windows-wrapper-amd64",
-          url = wrapperWindowsAmd64Url.get().ifBlank { wrapperWindowsApiUrl.get() },
-          immutabilityClass =
-            if (immutableWindowsWrapperUrl.matches(wrapperWindowsAmd64Url.get()))
-              "immutable-release-asset"
-            else if (wrapperWindowsAmd64Url.get().isBlank()) "mutable-release-api"
-            else "explicit-url",
-          expectedSha256 = providers.gradleProperty("wrapperWinAmd64Sha256").orNull.orEmpty(),
-          localPath = "build/wrapper/windows/windows-amd64.bin",
-        )
-        .encoded,
-      StableDirectInput(
-          name = "windows-wrapper-arm64",
-          url = wrapperWindowsArm64Url.get().ifBlank { wrapperWindowsApiUrl.get() },
-          immutabilityClass =
-            if (immutableWindowsWrapperUrl.matches(wrapperWindowsArm64Url.get()))
-              "immutable-release-asset"
-            else if (wrapperWindowsArm64Url.get().isBlank()) "mutable-release-api"
-            else "explicit-url",
-          expectedSha256 = providers.gradleProperty("wrapperWinArm64Sha256").orNull.orEmpty(),
-          localPath = "build/wrapper/windows/windows-arm64.bin",
-        )
-        .encoded,
-    )
-  }
+val stableDirectInputs = providers.provider {
+  val wrapperProperties =
+    java.util.Properties().apply {
+      file("gradle/wrapper/gradle-wrapper.properties").inputStream().use(::load)
+    }
+  listOf(
+    StableDirectInput(
+        name = "gradle-wrapper-distribution",
+        url = wrapperProperties.getProperty("distributionUrl"),
+        immutabilityClass = "versioned-url",
+        expectedSha256 = wrapperProperties.getProperty("distributionSha256Sum").orEmpty(),
+        localPath = "build/stable-supply-chain/gradle-wrapper-distribution.bin",
+      )
+      .encoded,
+    StableDirectInput(
+        name = "tanuki-wrapper-delta-pack",
+        url = wrapperDeltaPackUrl,
+        immutabilityClass = "versioned-url",
+        expectedSha256 = providers.gradleProperty("wrapperDeltaPackSha256").orNull.orEmpty(),
+        localPath = "build/wrapper/$wrapperDeltaPackName",
+      )
+      .encoded,
+    StableDirectInput(
+        name = "seedrefs-source-archive",
+        url = seedrefsUrl.get(),
+        immutabilityClass =
+          if (immutableSeedrefsUrl.matches(seedrefsUrl.get())) "immutable-git-archive"
+          else "mutable-branch",
+        expectedSha256 = providers.gradleProperty("seedrefsSha256").orNull.orEmpty(),
+        localPath = "build/seedrefs/seedrefs.zip",
+      )
+      .encoded,
+    StableDirectInput(
+        name = "windows-wrapper-amd64",
+        url = wrapperWindowsAmd64Url.get().ifBlank { wrapperWindowsApiUrl.get() },
+        immutabilityClass =
+          if (immutableWindowsWrapperUrl.matches(wrapperWindowsAmd64Url.get()))
+            "immutable-release-asset"
+          else if (wrapperWindowsAmd64Url.get().isBlank()) "mutable-release-api"
+          else "explicit-url",
+        expectedSha256 = providers.gradleProperty("wrapperWinAmd64Sha256").orNull.orEmpty(),
+        localPath = "build/wrapper/windows/windows-amd64.bin",
+      )
+      .encoded,
+    StableDirectInput(
+        name = "windows-wrapper-arm64",
+        url = wrapperWindowsArm64Url.get().ifBlank { wrapperWindowsApiUrl.get() },
+        immutabilityClass =
+          if (immutableWindowsWrapperUrl.matches(wrapperWindowsArm64Url.get()))
+            "immutable-release-asset"
+          else if (wrapperWindowsArm64Url.get().isBlank()) "mutable-release-api"
+          else "explicit-url",
+        expectedSha256 = providers.gradleProperty("wrapperWinArm64Sha256").orNull.orEmpty(),
+        localPath = "build/wrapper/windows/windows-arm64.bin",
+      )
+      .encoded,
+  )
+}
 
 val stableReleaseTasks =
   listOf(
@@ -319,10 +317,9 @@ fun StableSupplyChainResolutionTask.configureStableInputs(
   )
   gradleVersion.set(GradleVersion.current().version)
   if (includeRootMaterials) {
-    val jdkInstallationIdentity =
-      java25.map { launcher ->
-        StableJdkFingerprint.identity(launcher.metadata.installationPath.asFile.toPath())
-      }
+    val jdkInstallationIdentity = java25.map { launcher ->
+      StableJdkFingerprint.identity(launcher.metadata.installationPath.asFile.toPath())
+    }
     jdkIdentity.put("languageVersion", java25.map { it.metadata.languageVersion.toString() })
     jdkIdentity.put("vendor", java25.map { it.metadata.vendor })
     jdkIdentity.put(
@@ -442,32 +439,29 @@ gradle.projectsEvaluated {
   }
   val fragmentTasks =
     rootProject.allprojects.sortedBy(Project::getPath).map { owner ->
-      val ownerConfigurations =
-        providers.provider {
-          owner.configurations
-            .filter { configuration ->
-              configuration.isCanBeResolved &&
-                stableConfigurationRoles.containsKey(configuration.name)
-            }
-            .sortedBy(Configuration::getName)
-        }
-      val ownerDescriptors =
-        ownerConfigurations.map { configurations ->
-          configurations.map { configuration ->
-            StableConfigurationSpec(
-                projectPath = owner.path,
-                configurationName = configuration.name,
-                role = stableConfigurationRoles.getValue(configuration.name),
-              )
-              .encoded
+      val ownerConfigurations = providers.provider {
+        owner.configurations
+          .filter { configuration ->
+            configuration.isCanBeResolved &&
+              stableConfigurationRoles.containsKey(configuration.name)
           }
+          .sortedBy(Configuration::getName)
+      }
+      val ownerDescriptors = ownerConfigurations.map { configurations ->
+        configurations.map { configuration ->
+          StableConfigurationSpec(
+              projectPath = owner.path,
+              configurationName = configuration.name,
+              role = stableConfigurationRoles.getValue(configuration.name),
+            )
+            .encoded
         }
-      val ownerArtifactBuildDependencies =
-        ownerConfigurations.map { configurations ->
-          configurations.map { configuration ->
-            configuration.incoming.artifactView { isLenient = false }.files.buildDependencies
-          }
+      }
+      val ownerArtifactBuildDependencies = ownerConfigurations.map { configurations ->
+        configurations.map { configuration ->
+          configuration.incoming.artifactView { isLenient = false }.files.buildDependencies
         }
+      }
       owner.tasks.register<ExportStableSupplyChainResolutionFragment>(
         "exportStableSupplyChainResolutionFragment"
       ) {

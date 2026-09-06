@@ -2094,7 +2094,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
         for value in (
             "stable-1.0-maintenance-publication-backend",
             "cryptad_stable_maintenance_backend:factory",
-            "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
+            "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
             "artifact-metadata: write",
             '"${#first_rows[@]}" -ne 1',
             '"${#second_rows[@]}" -ne 1',
@@ -2125,7 +2125,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             '"timestampStatus": "pass"',
             "stable-1.0-maintenance-windows-package-producer.json",
             "actions/attest@",
-            "actions/upload-artifact@v6",
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         )
         for value in required:
             self.assertIn(value, text)
@@ -2167,11 +2167,11 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             "phase bundle contains an unreferenced input",
             "stable-1.0-maintenance.json",
             "stable-1.0-maintenance-authorization.json",
-            "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
+            "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
             "Attest every exact supply-chain phase file",
-            "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373",
+            "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
             "supply-chain prebuild recipe is not the exact receipt-free input set",
-            "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         )
         for value in required:
             self.assertIn(value, text)
@@ -2191,11 +2191,11 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
-                "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
-                "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
-                "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373",
-                "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+                "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+                "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+                "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
+                "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
+                "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
             },
             set(external_actions),
         )

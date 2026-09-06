@@ -20,9 +20,11 @@ val kotlinGradleTargets =
     }
   }
 
+val libs: VersionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
+
 spotless {
   java {
-    googleJavaFormat("1.28.0").reflowLongStrings()
+    googleJavaFormat(libs.findVersion("googleJavaFormat").get().requiredVersion).reflowLongStrings()
     target("src/**/*.java")
     removeUnusedImports()
     importOrder("module ", "", "\\#").wildcardsLast(false)
@@ -34,7 +36,7 @@ spotless {
     // Restrict to source trees rather than scanning entire repo to avoid special FS entries
     // created by Flatpak builder (e.g., .flatpak-builder/**/host/proc/**/map_files).
     target("src/**/*.kt")
-    ktfmt("0.58").googleStyle()
+    ktfmt(libs.findVersion("ktfmt").get().requiredVersion).googleStyle()
     trimTrailingWhitespace()
     endWithNewline()
   }
@@ -43,7 +45,7 @@ spotless {
     // generated build-logic outputs into the root target set, which is both wasted work and can
     // destabilize Spotless path validation on non-clean worktrees.
     target(kotlinGradleTargets)
-    ktfmt("0.58").googleStyle()
+    ktfmt(libs.findVersion("ktfmt").get().requiredVersion).googleStyle()
   }
 }
 

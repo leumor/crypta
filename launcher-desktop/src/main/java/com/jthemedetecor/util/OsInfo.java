@@ -2,24 +2,25 @@ package com.jthemedetecor.util;
 
 import io.github.g00fy2.versioncompare.Version;
 import java.util.Locale;
+import network.crypta.fs.AppEnv;
 import org.jetbrains.annotations.NotNull;
-import oshi.PlatformEnum;
 import oshi.SystemInfo;
 import oshi.software.os.OperatingSystem;
+import oshi.util.PlatformEnum;
 
 /**
  * Static helpers describing the current operating system and desktop environment.
  *
- * <p>This utility snapshots a small amount of OSHI-derived platform metadata during class
+ * <p>This utility snapshots platform metadata from {@link AppEnv} and OSHI during class
  * initialization and exposes convenience predicates used by the vendored theme detectors. The
  * cached values keep repeated platform checks cheap and stable for the lifetime of the process,
  * which is enough for launcher theme-detection logic because the host operating system family and
  * version do not change while the JVM is running.
  *
  * <p>The helper focuses on detector selection rather than exhaustive platform introspection. It
- * combines OSHI platform information with simple environment-variable checks for Linux desktop
- * environments and version comparisons for operating systems whose theme APIs changed across major
- * releases.
+ * combines AppEnv platform detection and OSHI version information with environment-variable checks
+ * for Linux desktop environments and version comparisons for operating systems whose theme APIs
+ * changed across major releases.
  */
 public class OsInfo {
   private static final PlatformEnum PLATFORM_TYPE;
@@ -31,7 +32,13 @@ public class OsInfo {
     final OperatingSystem osInfo = systemInfo.getOperatingSystem();
     final OperatingSystem.OSVersionInfo osVersionInfo = osInfo.getVersionInfo();
 
-    PLATFORM_TYPE = SystemInfo.getCurrentPlatform();
+    PLATFORM_TYPE =
+        switch (new AppEnv().osKind()) {
+          case WINDOWS -> PlatformEnum.WINDOWS;
+          case MAC -> PlatformEnum.MACOS;
+          case LINUX -> PlatformEnum.LINUX;
+          case OTHER -> PlatformEnum.getCurrentPlatform();
+        };
     FAMILY = osInfo.getFamily();
     VERSION = osVersionInfo.getVersion();
   }

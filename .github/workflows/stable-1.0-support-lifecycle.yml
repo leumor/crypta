@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           fetch-depth: 0
@@ -228,7 +228,7 @@ jobs:
       attestations: read
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           persist-credentials: false
@@ -244,11 +244,11 @@ jobs:
             exit 1
           fi
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
       - name: Download exact lifecycle input bundle
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.bundle_run_id }}
@@ -335,7 +335,7 @@ jobs:
             exit 1
           fi
       - name: Upload side-effect-free lifecycle result
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-lifecycle-${{ inputs.operation }}-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/stable-lifecycle-stage/
@@ -363,7 +363,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           persist-credentials: false
@@ -379,11 +379,11 @@ jobs:
             exit 1
           fi
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
       - name: Download exact attested genesis request
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.bundle_run_id }}
@@ -487,11 +487,11 @@ jobs:
             --out build/stable-1.0-support-lifecycle-genesis-proof.json \
             --no-side-effects
       - name: Attest exact genesis proof
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: build/stable-1.0-support-lifecycle-genesis-proof.json
       - name: Upload exact genesis proof
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-lifecycle-genesis-proof-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/stable-1.0-support-lifecycle-genesis-proof.json
@@ -515,7 +515,7 @@ jobs:
       attestations: write
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           persist-credentials: false
@@ -531,11 +531,11 @@ jobs:
             exit 1
           fi
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
       - name: Download exact authorization bundle
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.bundle_run_id }}
@@ -605,14 +605,14 @@ jobs:
           cp build/stable-lifecycle-authorization-validation.json "$stage/"
       - name: Upload authorized lifecycle bundle
         id: upload-authorized
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-lifecycle-authorized-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/stable-lifecycle-authorized-stage/
           if-no-files-found: error
           retention-days: 90
       - name: Attest authorization, plan, descriptor, and transition set
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             build/stable-lifecycle-authorized-stage/component/summary.json
@@ -639,7 +639,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           fetch-depth: 0
@@ -696,11 +696,11 @@ jobs:
             exit 1
           fi
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
       - name: Download exact authorized lifecycle bundle
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.bundle_run_id }}
@@ -921,7 +921,7 @@ jobs:
           fi
       - name: Upload complete post-publication lifecycle bundle
         if: steps.publish.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-lifecycle-published-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/stable-lifecycle-published-stage/
@@ -929,7 +929,7 @@ jobs:
           retention-days: 365
       - name: Attest the independently verified publication receipt
         if: steps.publish.outcome == 'success'
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: build/stable-lifecycle-published-stage/stable-1.0-support-lifecycle-publication-receipt.json
       - name: Retain truthful redacted publication result
@@ -978,7 +978,7 @@ jobs:
           fi
       - name: Upload lifecycle publication receipt or failure audit
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-lifecycle-publication-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/stable-lifecycle-publication-audit/
@@ -1006,7 +1006,7 @@ jobs:
       attestations: read
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           persist-credentials: false
@@ -1022,11 +1022,11 @@ jobs:
             exit 1
           fi
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
       - name: Download exact published lifecycle bundle
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.bundle_run_id }}
@@ -1172,7 +1172,7 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY"
           echo "This job received no lifecycle insert URI or publication credential." >> "$GITHUB_STEP_SUMMARY"
       - name: Upload independently verified lifecycle receipt
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-lifecycle-verification-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

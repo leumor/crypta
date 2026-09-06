@@ -2927,7 +2927,7 @@ class WorkflowIntegrationTest(unittest.TestCase):
         self.assertIn("(.id | tostring) == $run_id", release)
         self.assertIn('and .operation == "evaluate-promotion"', release)
         self.assertIn('and .caseOpaqueId == "ledger-wide"', release)
-        self.assertIn("uses: actions/download-artifact@v8", release)
+        self.assertIn("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", release)
         self.assertIn(
             "name: ${{ env.STABLE_VULNERABILITY_ARTIFACT_NAME }}",
             release,

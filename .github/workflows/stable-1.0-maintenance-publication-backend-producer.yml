@@ -45,16 +45,16 @@ jobs:
           fi
 
       - name: Check out exact reviewed provider source
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
 
       - name: Build and independently compare deterministic wheels
         env:
@@ -129,13 +129,13 @@ jobs:
           PY
 
       - name: Attest exact provider wheel
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: build/stable-maintenance-publication-backend/*.whl
 
       - name: Upload exact provider wheel
         id: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1.0-maintenance-publication-backend
           path: build/stable-maintenance-publication-backend/*.whl

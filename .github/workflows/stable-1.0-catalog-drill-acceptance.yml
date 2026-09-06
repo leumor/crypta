@@ -43,7 +43,7 @@ jobs:
       contents: read
     steps:
       - name: Check out exact protected source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -202,7 +202,7 @@ jobs:
       contents: read
     steps:
       - name: Check out exact protected receipt implementation
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -306,7 +306,7 @@ jobs:
           ).write_bytes(raw)
           PY
       - name: Upload only canonical protected drill receipts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stable-1-0-catalog-drill-acceptance-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/catalog-drill-acceptance-output/stable-1.0-catalog-drill-receipts.json

@@ -46,7 +46,7 @@
     "security-drills": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/security-drills-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "production-security-response", "component": "security-response/drill-verify-all"},
     "stable-dependency-vulnerability": {"authorityClass": "protected-producer", "schema": "stable-1.0-dependency-vulnerability-promotion-summary-v1.schema.json", "kind": "stable-1.0-dependency-vulnerability-promotion-summary", "workflowPath": ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml", "environment": "stable-1.0-dependency-vulnerability-evaluation"},
     "stable-readiness": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "stable-1.0-readiness", "component": "stable-readiness"},
-    "stable-supply-chain": {"authorityClass": "protected-producer", "schema": "stable-1.0-supply-chain-promotion-summary-v1.schema.json", "kind": "stable-1.0-supply-chain-promotion-summary", "workflowPath": ".github/workflows/stable-1.0-supply-chain.yml", "environment": "stable-1.0-supply-chain-evidence", "policyDigest": "sha256:af0a2481826fd757b6cfd8495fad0556896798d25f9ded124d0af27e1a9a94bd"},
+    "stable-supply-chain": {"authorityClass": "protected-producer", "schema": "stable-1.0-supply-chain-promotion-summary-v1.schema.json", "kind": "stable-1.0-supply-chain-promotion-summary", "workflowPath": ".github/workflows/stable-1.0-supply-chain.yml", "environment": "stable-1.0-supply-chain-evidence", "policyDigest": "sha256:ec01663150dea51b49f017655037aa19f05f7512da9ae4dd1bfdb7f1b9dfd192"},
     "stable-vulnerability": {"authorityClass": "protected-producer", "schema": "stable-1.0-vulnerability-summary-v1.schema.json", "kind": "stable-1.0-vulnerability-summary", "workflowPath": ".github/workflows/stable-1.0-vulnerability-intake.yml", "environment": "stable-1.0-vulnerability-case"},
     "third-party-intake": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "production-beta-release", "component": "production-beta"}
   },
@@ -62,11 +62,11 @@
     "rc": ".github/workflows/stable-1.0-rc-release.yml"
   },
   "toolchain": {
-    "gradleVersion": "9.4.1",
-    "gradleDistributionSha256": "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb",
+    "gradleVersion": "9.7.1",
+    "gradleDistributionSha256": "acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a",
     "javaDistribution": "temurin",
     "javaFeatureVersion": 25,
-    "setupJavaVersion": "25.0.3+9"
+    "setupJavaVersion": "25.0.4.1+1"
   },
   "workflowPolicy": {
     "gaEvidenceEnvironment": "stable-1-0-ga-evidence",

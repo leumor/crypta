@@ -51,17 +51,18 @@ val internalLeafProjects =
     project(":launcher-desktop"),
   )
 
-val internalLeafMainJavaSourceDirs =
-  internalLeafProjects.map { leaf -> leaf.layout.projectDirectory.dir("src/main/java") }
+val internalLeafMainJavaSourceDirs = internalLeafProjects.map { leaf ->
+  leaf.layout.projectDirectory.dir("src/main/java")
+}
 
-val internalLeafMainClassDirs =
-  internalLeafProjects.map { leaf -> leaf.layout.buildDirectory.dir("classes/java/main") }
+val internalLeafMainClassDirs = internalLeafProjects.map { leaf ->
+  leaf.layout.buildDirectory.dir("classes/java/main")
+}
 
-val internalLeafProjectsWithLocalTests =
-  internalLeafProjects.filter { leaf ->
-    leaf.layout.projectDirectory.dir("src/test/java").asFile.isDirectory ||
-      leaf.layout.projectDirectory.dir("src/test/kotlin").asFile.isDirectory
-  }
+val internalLeafProjectsWithLocalTests = internalLeafProjects.filter { leaf ->
+  leaf.layout.projectDirectory.dir("src/test/java").asFile.isDirectory ||
+    leaf.layout.projectDirectory.dir("src/test/kotlin").asFile.isDirectory
+}
 
 val internalLeafTestSourceDirs =
   internalLeafProjectsWithLocalTests
@@ -82,15 +83,13 @@ val rootSonarTestSourceDirs =
     .map { it.asFile }
     .filter { it.isDirectory }
 
-val internalLeafTestResultDirs =
-  internalLeafProjectsWithLocalTests.map { leaf ->
-    leaf.layout.buildDirectory.dir("test-results/test").get().asFile
-  }
+val internalLeafTestResultDirs = internalLeafProjectsWithLocalTests.map { leaf ->
+  leaf.layout.buildDirectory.dir("test-results/test").get().asFile
+}
 
-val internalLeafJacocoExecFiles =
-  internalLeafProjectsWithLocalTests.map { leaf ->
-    leaf.layout.buildDirectory.file("jacoco/test.exec")
-  }
+val internalLeafJacocoExecFiles = internalLeafProjectsWithLocalTests.map { leaf ->
+  leaf.layout.buildDirectory.file("jacoco/test.exec")
+}
 
 configurations.named("testCompileOnly") { extendsFrom(configurations.compileOnly.get()) }
 
@@ -164,7 +163,6 @@ dependencies {
   testImplementation(libs.junitPlatformSuite)
   testImplementation(libs.mockitoCore)
   testImplementation(libs.mockitoJunitJupiter)
-  testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
 
@@ -196,10 +194,9 @@ val aggregatedSonarTestInclusions =
 
 val aggregatedSonarLibraryFiles = sourceSets.main.get().compileClasspath.filter { it.isFile }
 
-val internalLeafJarNames =
-  providers.provider {
-    internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
-  }
+val internalLeafJarNames = providers.provider {
+  internalLeafProjects.map { leaf -> "${leaf.name}-${project.version}.jar" }.toSet()
+}
 
 data class AggregatedMainOutputProducer(val project: Project) {
   val mainClassesDir = project.layout.buildDirectory.dir("classes/java/main")
@@ -221,10 +218,9 @@ data class SelectiveLeafOutputOwnership(
       "OwnedOutputsFromNonOwners"
 }
 
-fun parseOwnedOutputPatterns(metadataFile: File): List<String> =
-  metadataFile.useLines { lines ->
-    lines.map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.toList()
-  }
+fun parseOwnedOutputPatterns(metadataFile: File): List<String> = metadataFile.useLines { lines ->
+  lines.map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.toList()
+}
 
 val selectiveLeafOwnershipMetadataRelativePath = "gradle/owned-output-patterns.txt"
 
@@ -238,89 +234,85 @@ val aggregatedMainOutputProducers =
 // switches.
 // Root packaging/runtime aggregation still consumes the root main output and every internal leaf
 // main output.
-val selectiveLeafOutputOwnerships =
-  internalLeafProjects.map { leaf ->
-    val metadataFile =
-      leaf.layout.projectDirectory.file(selectiveLeafOwnershipMetadataRelativePath).asFile
-    if (!metadataFile.isFile) {
-      throw GradleException(
-        "Missing ${relativePath(leaf.projectDir)}/$selectiveLeafOwnershipMetadataRelativePath " +
-          "for ${leaf.path}. Add leaf-owned aggregated main-output ownership metadata before " +
-          "extracting root or leaf outputs into this leaf."
-      )
-    }
-    SelectiveLeafOutputOwnership(
-      leaf = leaf,
-      metadataFile = metadataFile,
-      patterns = parseOwnedOutputPatterns(metadataFile),
+val selectiveLeafOutputOwnerships = internalLeafProjects.map { leaf ->
+  val metadataFile =
+    leaf.layout.projectDirectory.file(selectiveLeafOwnershipMetadataRelativePath).asFile
+  if (!metadataFile.isFile) {
+    throw GradleException(
+      "Missing ${relativePath(leaf.projectDir)}/$selectiveLeafOwnershipMetadataRelativePath " +
+        "for ${leaf.path}. Add leaf-owned aggregated main-output ownership metadata before " +
+        "extracting root or leaf outputs into this leaf."
     )
   }
+  SelectiveLeafOutputOwnership(
+    leaf = leaf,
+    metadataFile = metadataFile,
+    patterns = parseOwnedOutputPatterns(metadataFile),
+  )
+}
 
-val verifySelectiveLeafOwnershipMetadata by
-  tasks.registering {
-    group = "verification"
-    description =
-      "Verifies leaf-owned aggregated main-output ownership metadata for selective extractions"
-    doLast {
-      val currentOwnerships =
-        selectiveLeafOutputOwnerships.map { ownership ->
-          ownership.copy(patterns = parseOwnedOutputPatterns(ownership.metadataFile))
-        }
+val verifySelectiveLeafOwnershipMetadata by tasks.registering {
+  group = "verification"
+  description =
+    "Verifies leaf-owned aggregated main-output ownership metadata for selective extractions"
+  doLast {
+    val currentOwnerships = selectiveLeafOutputOwnerships.map { ownership ->
+      ownership.copy(patterns = parseOwnedOutputPatterns(ownership.metadataFile))
+    }
 
-      val emptyMetadataFiles =
-        currentOwnerships.filter { it.patterns.isEmpty() }.map { relativePath(it.metadataFile) }
-      if (emptyMetadataFiles.isNotEmpty()) {
-        throw GradleException(
-          "Selective leaf aggregated main-output ownership metadata must not be empty: " +
-            emptyMetadataFiles.sorted().joinToString(", ")
-        )
-      }
+    val emptyMetadataFiles =
+      currentOwnerships.filter { it.patterns.isEmpty() }.map { relativePath(it.metadataFile) }
+    if (emptyMetadataFiles.isNotEmpty()) {
+      throw GradleException(
+        "Selective leaf aggregated main-output ownership metadata must not be empty: " +
+          emptyMetadataFiles.sorted().joinToString(", ")
+      )
+    }
 
-      val duplicatePatternsWithinFile =
-        currentOwnerships.mapNotNull { ownership ->
-          val duplicatePatterns =
-            ownership.patterns.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
-          if (duplicatePatterns.isEmpty()) {
-            null
-          } else {
-            relativePath(ownership.metadataFile) to duplicatePatterns
-          }
-        }
-      if (duplicatePatternsWithinFile.isNotEmpty()) {
-        throw GradleException(
-          buildString {
-            appendLine(
-              "Duplicate patterns found within selective leaf aggregated main-output ownership metadata:"
-            )
-            duplicatePatternsWithinFile.forEach { (metadataPath, duplicatePatterns) ->
-              appendLine("$metadataPath: ${duplicatePatterns.joinToString(", ")}")
-            }
-          }
-        )
-      }
-
-      val duplicatePatternsAcrossLeaves =
-        currentOwnerships
-          .flatMap { ownership ->
-            ownership.patterns.map { pattern -> pattern to ownership.leaf.path }
-          }
-          .groupBy(keySelector = { it.first }, valueTransform = { it.second })
-          .mapValues { (_, owningLeaves) -> owningLeaves.distinct().sorted() }
-          .filterValues { it.size > 1 }
-      if (duplicatePatternsAcrossLeaves.isNotEmpty()) {
-        throw GradleException(
-          buildString {
-            appendLine(
-              "Duplicate aggregated main-output ownership patterns claimed by multiple selective leaf projects:"
-            )
-            duplicatePatternsAcrossLeaves.toSortedMap().forEach { (pattern, owningLeaves) ->
-              appendLine("$pattern: ${owningLeaves.joinToString(", ")}")
-            }
-          }
-        )
+    val duplicatePatternsWithinFile = currentOwnerships.mapNotNull { ownership ->
+      val duplicatePatterns =
+        ownership.patterns.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
+      if (duplicatePatterns.isEmpty()) {
+        null
+      } else {
+        relativePath(ownership.metadataFile) to duplicatePatterns
       }
     }
+    if (duplicatePatternsWithinFile.isNotEmpty()) {
+      throw GradleException(
+        buildString {
+          appendLine(
+            "Duplicate patterns found within selective leaf aggregated main-output ownership metadata:"
+          )
+          duplicatePatternsWithinFile.forEach { (metadataPath, duplicatePatterns) ->
+            appendLine("$metadataPath: ${duplicatePatterns.joinToString(", ")}")
+          }
+        }
+      )
+    }
+
+    val duplicatePatternsAcrossLeaves =
+      currentOwnerships
+        .flatMap { ownership ->
+          ownership.patterns.map { pattern -> pattern to ownership.leaf.path }
+        }
+        .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+        .mapValues { (_, owningLeaves) -> owningLeaves.distinct().sorted() }
+        .filterValues { it.size > 1 }
+    if (duplicatePatternsAcrossLeaves.isNotEmpty()) {
+      throw GradleException(
+        buildString {
+          appendLine(
+            "Duplicate aggregated main-output ownership patterns claimed by multiple selective leaf projects:"
+          )
+          duplicatePatternsAcrossLeaves.toSortedMap().forEach { (pattern, owningLeaves) ->
+            appendLine("$pattern: ${owningLeaves.joinToString(", ")}")
+          }
+        }
+      )
+    }
   }
+}
 
 fun ownedOutputTreesFor(producer: AggregatedMainOutputProducer, patterns: List<String>) =
   listOf(
@@ -328,31 +320,29 @@ fun ownedOutputTreesFor(producer: AggregatedMainOutputProducer, patterns: List<S
     fileTree(producer.mainResourcesDir) { include(*patterns.toTypedArray()) },
   )
 
-val selectiveLeafOutputPruneTasks =
-  selectiveLeafOutputOwnerships.associate { ownership ->
-    ownership.leaf.path to
-      tasks.register<Delete>(ownership.pruneTaskName) {
-        val staleOutputTrees =
-          aggregatedMainOutputProducers
-            .filter { producer -> producer.project != ownership.leaf }
-            .flatMap { producer -> ownedOutputTreesFor(producer, ownership.patterns) }
-        group = "build"
-        description =
-          "Removes stale non-owner aggregated main outputs for paths owned by ${ownership.leaf.path} on non-clean builds"
-        dependsOn(verifySelectiveLeafOwnershipMetadata)
-        outputs.upToDateWhen { false }
-        delete(staleOutputTrees)
-      }
-  }
+val selectiveLeafOutputPruneTasks = selectiveLeafOutputOwnerships.associate { ownership ->
+  ownership.leaf.path to
+    tasks.register<Delete>(ownership.pruneTaskName) {
+      val staleOutputTrees =
+        aggregatedMainOutputProducers
+          .filter { producer -> producer.project != ownership.leaf }
+          .flatMap { producer -> ownedOutputTreesFor(producer, ownership.patterns) }
+      group = "build"
+      description =
+        "Removes stale non-owner aggregated main outputs for paths owned by ${ownership.leaf.path} on non-clean builds"
+      dependsOn(verifySelectiveLeafOwnershipMetadata)
+      outputs.upToDateWhen { false }
+      delete(staleOutputTrees)
+    }
+}
 
-val pruneSelectiveLeafOutputs by
-  tasks.registering {
-    group = "build"
-    description =
-      "Removes stale aggregated main outputs claimed by selectively extracted leaf projects on non-clean builds"
-    dependsOn(verifySelectiveLeafOwnershipMetadata)
-    dependsOn(selectiveLeafOutputPruneTasks.values)
-  }
+val pruneSelectiveLeafOutputs by tasks.registering {
+  group = "build"
+  description =
+    "Removes stale aggregated main outputs claimed by selectively extracted leaf projects on non-clean builds"
+  dependsOn(verifySelectiveLeafOwnershipMetadata)
+  dependsOn(selectiveLeafOutputPruneTasks.values)
+}
 
 fun Project.wireSelectiveLeafOutputPruning(
   pruneTask: TaskProvider<out Task>,
@@ -449,10 +439,14 @@ extensions.extraProperties["cryptad.additionalSonarTestSourceDirs"] = internalLe
 extensions.extraProperties["cryptad.additionalSonarTestResultDirs"] = internalLeafTestResultDirs
 
 extensions.extraProperties["cryptad.additionalSonarMainSourceDirs"] =
-  internalLeafMainJavaSourceDirs.map { it.asFile }
+  internalLeafMainJavaSourceDirs.map {
+    it.asFile
+  }
 
 extensions.extraProperties["cryptad.additionalSonarMainOutputDirs"] =
-  internalLeafMainClassDirs.map { it.get().asFile }
+  internalLeafMainClassDirs.map {
+    it.get().asFile
+  }
 
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
   dependsOn(pruneSelectiveLeafOutputs)

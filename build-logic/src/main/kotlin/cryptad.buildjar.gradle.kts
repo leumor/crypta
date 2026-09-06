@@ -52,34 +52,31 @@ if (gradle.startParameter.taskNames.any { it == "jar" || it.endsWith(":jar") }) 
   throw GradleException("Task 'jar' is disabled. Use ':buildJar' to build cryptad.jar.")
 }
 
-val printHashTask by
-  tasks.registering {
-    description = "Prints SHA-256 hashes of built JAR files"
-    group = "verification"
+val printHashTask by tasks.registering {
+  description = "Prints SHA-256 hashes of built JAR files"
+  group = "verification"
 
-    inputs.file(buildJar.flatMap { it.archiveFile })
-    outputs.upToDateWhen { false }
+  inputs.file(buildJar.flatMap { it.archiveFile })
+  outputs.upToDateWhen { false }
 
-    doLast {
-      fun hash(file: File) {
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-          val buffer = ByteArray(4096)
-          while (true) {
-            val read = input.read(buffer)
-            if (read == -1) break
-            sha256.update(buffer, 0, read)
-          }
+  doLast {
+    fun hash(file: File) {
+      val sha256 = MessageDigest.getInstance("SHA-256")
+      file.inputStream().use { input ->
+        val buffer = ByteArray(4096)
+        while (true) {
+          val read = input.read(buffer)
+          if (read == -1) break
+          sha256.update(buffer, 0, read)
         }
-        println(
-          "SHA-256 of ${file.name}: " + sha256.digest().joinToString("") { "%02x".format(it) }
-        )
       }
-
-      val jarFile = buildJar.get().archiveFile.get().asFile
-      if (jarFile.exists()) hash(jarFile)
+      println("SHA-256 of ${file.name}: " + sha256.digest().joinToString("") { "%02x".format(it) })
     }
+
+    val jarFile = buildJar.get().archiveFile.get().asFile
+    if (jarFile.exists()) hash(jarFile)
   }
+}
 
 buildJar { finalizedBy(printHashTask) }
 

@@ -27,18 +27,16 @@ repositories {
   mavenCentral()
 }
 
-val rootSettingsPluginClasspath by
-  configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-    description = "Authenticated plugin classpath executed by the root settings script."
-  }
-val buildLogicSettingsPluginClasspath by
-  configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-    description = "Authenticated plugin classpath executed by the included-build settings script."
-  }
+val rootSettingsPluginClasspath by configurations.creating {
+  isCanBeConsumed = false
+  isCanBeResolved = true
+  description = "Authenticated plugin classpath executed by the root settings script."
+}
+val buildLogicSettingsPluginClasspath by configurations.creating {
+  isCanBeConsumed = false
+  isCanBeResolved = true
+  description = "Authenticated plugin classpath executed by the included-build settings script."
+}
 
 dependencies {
   // Portable archive normalization runs inside Gradle so distribution tasks remain Java-only.
