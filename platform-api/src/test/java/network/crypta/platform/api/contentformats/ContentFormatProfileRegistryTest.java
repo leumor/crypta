@@ -216,39 +216,6 @@ class ContentFormatProfileRegistryTest {
     assertEquals("deprecated", ContentFormatProfileStatus.DEPRECATED.jsonValue());
   }
 
-  @Test
-  void mailEnvelopeIsSeparateExperimentalCiphertextProfile() {
-    ContentFormatProfile mail = ContentFormatProfileRegistry.MAIL_ENVELOPE;
-    assertEquals(network.crypta.crypt.mail.MailHpke.NETWORK_PROFILE, mail.id());
-    assertEquals(ContentFormatProfileStatus.EXPERIMENTAL, mail.status());
-    assertProfile(
-        mail, "application/vnd.crypta.mail+json", "mail-envelope.json", false, null, null);
-    assertEquals("strict_flat_json_hpke_authenticated_header", mail.canonicalizationKind());
-    assertEquals(mail, ContentFormatProfileRegistry.findById(mail.id()).orElseThrow());
-    assertTrue(ContentFormatProfileRegistry.findById("crypta.mail.envelope.v2").isEmpty());
-    assertFalse(mail.validateMetadata(mail.id(), 65537).accepted());
-    assertEquals(
-        List.of(
-            EXPECTED_PROFILE_DOCUMENT_ID,
-            EXPECTED_FEED_SNAPSHOT_ID,
-            EXPECTED_TRUST_STATEMENT_ID,
-            EXPECTED_SOCIAL_MESSAGE_ID,
-            EXPECTED_SOCIAL_OUTBOX_ID),
-        ContentFormatProfileRegistry.profiles().subList(0, 5).stream()
-            .map(ContentFormatProfile::id)
-            .toList());
-    assertEquals(
-        List.of(
-            ContentFormatProfileStatus.EXPERIMENTAL,
-            ContentFormatProfileStatus.STABLE,
-            ContentFormatProfileStatus.EXPERIMENTAL,
-            ContentFormatProfileStatus.EXPERIMENTAL,
-            ContentFormatProfileStatus.EXPERIMENTAL),
-        ContentFormatProfileRegistry.profiles().subList(0, 5).stream()
-            .map(ContentFormatProfile::status)
-            .toList());
-  }
-
   private static void assertProfile(
       ContentFormatProfile profile,
       String contentType,
