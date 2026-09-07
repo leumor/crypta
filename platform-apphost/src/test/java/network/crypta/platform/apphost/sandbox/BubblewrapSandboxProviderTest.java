@@ -161,6 +161,40 @@ class BubblewrapSandboxProviderTest {
   }
 
   @Test
+  void commandBuilder_whenDebianJavaSecuritySymlinked_expectOnlyPublicFilesMountedReadOnly()
+      throws IOException {
+    Path javaHome = tempDir.resolve("usr/lib/jvm/java-25");
+    Path configuration = tempDir.resolve("etc/java-25-openjdk");
+    Files.createDirectories(javaHome.resolve("conf/security"));
+    Files.createDirectories(configuration.resolve("security"));
+    Path security =
+        Files.writeString(
+            configuration.resolve("security/java.security"), "crypto.policy=unlimited\n");
+    Files.createSymbolicLink(
+        javaHome.resolve("conf/security/java.security"), security.toAbsolutePath());
+    Files.createDirectories(configuration.resolve("management"));
+    Path password =
+        Files.writeString(configuration.resolve("management/jmxremote.password"), "PRIVATE_CANARY");
+    Files.createDirectories(javaHome.resolve("conf/management"));
+    Files.createSymbolicLink(
+        javaHome.resolve("conf/management/jmxremote.password"), password.toAbsolutePath());
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    var plan =
+        new BubblewrapCommandBuilder(List.of(tempDir.resolve("usr")), javaHome)
+            .build("bwrap", context);
+
+    assertMount(plan, security.toRealPath(), BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertFalse(plan.bindMounts().stream().anyMatch(mount -> mount.source().equals(configuration)));
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(mount -> mount.source().equals(configuration.getParent())));
+    assertFalse(plan.bindMounts().stream().anyMatch(mount -> mount.source().equals(password)));
+    assertFalse(plan.command().toString().contains("PRIVATE_CANARY"));
+  }
+
+  @Test
   void commandBuilder_whenAlternativesDirectoryAvailable_expectReadOnlyMountWithoutEtcBind()
       throws IOException {
     Path alternatives = tempDir.resolve("etc").resolve("alternatives");

@@ -170,6 +170,21 @@ public final class AppEnv {
   }
 
   /**
+   * Returns the current JVM installation root for host-owned runtime integration.
+   *
+   * <p>This private filesystem location must not be copied into public diagnostics. Callers choose
+   * explicit public runtime resources beneath this root; it is not app-selected path authority.
+   *
+   * @return normalized absolute Java runtime installation root
+   * @throws IllegalStateException if the JVM does not provide its installation location
+   */
+  public Path javaHome() {
+    String location = systemPropertyOrEmpty("java.home");
+    if (location.isBlank()) throw new IllegalStateException("Java runtime location unavailable");
+    return Path.of(location).toAbsolutePath().normalize();
+  }
+
+  /**
    * Reports whether the runtime OS name matches Windows-family identifiers.
    *
    * @return {@code true} when {@code os.name} contains a Windows marker, otherwise {@code false}

@@ -272,3 +272,14 @@ unless the operating system or operator environment limits them outside AppHost.
 Future sandbox work may add stronger platform-specific controls such as network restrictions,
 syscall filters, CPU/memory limits, or real WASM execution. Those are out of scope for the current
 runtime hardening layer.
+
+### Java security configuration in restricted launches
+
+Bubblewrap resolves the host JVM installation through `AppEnv.javaHome()` and adds individual
+read-only mounts for its fixed public `conf/security/java.security` and limited/unlimited policy
+files when their real targets are outside the already mounted system runtime paths. This supports
+Debian-style JDK symlinks into the host's system Java configuration directory without mounting that
+directory or its parent configuration tree.
+JMX management passwords, app configuration and arbitrary files are not part of this allowlist.
+The resolved host paths remain private launch metadata. The integration assumes the app's Java
+launcher uses the host's configured runtime; it does not export JVM options or weaken Java policy.
