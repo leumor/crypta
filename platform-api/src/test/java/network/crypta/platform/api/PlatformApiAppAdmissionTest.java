@@ -77,7 +77,13 @@ class PlatformApiAppAdmissionTest {
   void requireCurrentCompatibility_whenLegacyRangeLacksStability_expectBehaviorPreserved() {
     AppApiCompatibilityMetadata metadata =
         new AppApiCompatibilityMetadata(
-            19, 24, List.of(), TargetStability.EXPERIMENTAL, false, false, false);
+            19,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION,
+            List.of(),
+            TargetStability.EXPERIMENTAL,
+            false,
+            false,
+            false);
 
     assertDoesNotThrow(
         () ->

@@ -34,7 +34,8 @@ public record PlatformApiPrincipal(
     String appId,
     List<String> permissions,
     String expectedOrigin,
-    AppUiOriginMode originMode) {
+    AppUiOriginMode originMode,
+    String launchId) {
   /**
    * Creates a validated token-free principal.
    *
@@ -53,6 +54,30 @@ public record PlatformApiPrincipal(
       String appId,
       List<String> permissions) {
     this(type, authSource, appId, permissions, null, compatibilityOriginMode(type, authSource));
+  }
+
+  /** Creates a principal without a process launch binding for existing callers. */
+  public PlatformApiPrincipal(
+      PlatformApiPrincipalType type,
+      PlatformApiAuthSource authSource,
+      String appId,
+      List<String> permissions,
+      String expectedOrigin,
+      AppUiOriginMode originMode) {
+    this(type, authSource, appId, permissions, expectedOrigin, originMode, null);
+  }
+
+  /** Carries the verified token-free current process launch identity. */
+  public static PlatformApiPrincipal appToken(
+      String appId, Collection<String> permissions, String launchId) {
+    return new PlatformApiPrincipal(
+        PlatformApiPrincipalType.APP,
+        PlatformApiAuthSource.APP_TOKEN,
+        appId,
+        List.copyOf(permissions),
+        null,
+        null,
+        launchId);
   }
 
   public PlatformApiPrincipal {

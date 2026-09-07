@@ -31,6 +31,7 @@ import network.crypta.runtime.admin.queue.page.QueuePageUploadFileView;
 import network.crypta.runtime.admin.queue.page.QueuePageUploadView;
 import network.crypta.runtime.admin.queue.page.QueueProgressCellContext;
 import network.crypta.runtime.admin.queue.page.QueueProgressCellRenderer;
+import network.crypta.runtime.spi.QueueInsertStatus;
 import network.crypta.runtime.spi.QueuePagePort;
 import network.crypta.runtime.spi.QueuePageRequest;
 import network.crypta.runtime.spi.QueuePageSnapshot;
@@ -238,6 +239,25 @@ final class LegacyQueuePagePort implements QueuePagePort {
       }
     }
     return sb.toString();
+  }
+
+  @Override
+  public QueueInsertStatus readInsertStatus(String identifier)
+      throws RequestQueueUnavailableException {
+    for (QueuePageRequestView request : globalRequests()) {
+      if (request instanceof QueuePageUploadView upload
+          && identifier.equals(upload.getIdentifier())) {
+        if (upload.hasSucceeded()) {
+          FreenetURI uri = upload.getFinalUri();
+          if (uri != null && uri.isCHK()) {
+            return new QueueInsertStatus("inserted", uri.toString());
+          }
+          return new QueueInsertStatus("failed", null);
+        }
+        return new QueueInsertStatus(upload.hasFinished() ? "failed" : "pending", null);
+      }
+    }
+    return new QueueInsertStatus("missing", null);
   }
 
   /**

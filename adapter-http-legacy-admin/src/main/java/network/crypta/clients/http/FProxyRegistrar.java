@@ -326,6 +326,15 @@ final class FProxyRegistrar {
             true,
             webShellPrimary));
 
+    if (dependencies.appHost()
+        instanceof network.crypta.platform.apphost.runtime.LocalProcessAppHost localHost) {
+      java.net.URI mailEndpoint = java.net.URI.create(server.getLocalAdminURL()).resolve("/api/v1");
+      if ("http".equals(mailEndpoint.getScheme())
+          && java.util.Set.of("127.0.0.1", "[::1]", "::1").contains(mailEndpoint.getHost())) {
+        localHost.setMailPlatformApiEndpoint(mailEndpoint);
+      }
+    }
+
     AppBrowserSessionStore appBrowserSessionStore =
         new AppBrowserSessionStore(dependencies.appHost());
     AppUiLoopbackOriginServer appUiOriginServer =

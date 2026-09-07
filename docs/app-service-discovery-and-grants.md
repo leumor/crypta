@@ -398,3 +398,10 @@ annotations behind this app-service grant path, stops score lookups when the gra
 requires revalidation, and documents its degraded but usable unscored state. The evidence also
 checks that Trust Graph import preview and anchor lifecycle actions do not become an ambient
 localhost trust channel for Social Inbox.
+
+## Mail prototype boundary
+
+Mail's own UI uses a fixed transient process channel, described in
+[Mail worker channel](mail-worker-channel.md). The Mail process owns mailbox behavior and state.
+No external Mail provider service or consumer proposal route is implemented or advertised; that
+interface remains closed. Existing `trust.score` and its grants remain unchanged.

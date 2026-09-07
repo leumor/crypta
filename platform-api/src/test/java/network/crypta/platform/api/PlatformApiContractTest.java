@@ -48,10 +48,12 @@ class PlatformApiContractTest {
           Map.entry("/app-vault/identities/{identityId}/social-message", 11),
           Map.entry("/app-vault/identities/{identityId}/trust-statement", 7),
           Map.entry("/queue/inserts/app-document", 5),
+          Map.entry("/queue/app-document-status", 25),
           Map.entry("/app-vault/identities/{identityId}/profile-document", 5),
           Map.entry("/content/fetch", 6));
   private static final List<RouteVersionPrefix> SINCE_VERSION_BY_ROUTE_PREFIX =
       List.of(
+          new RouteVersionPrefix("/mail/", 25),
           new RouteVersionPrefix(ROUTE_PREFIX_CONSENT, 21),
           new RouteVersionPrefix("/trust-graph/anchors/{fingerprint}/", 22),
           new RouteVersionPrefix("/trust-graph/statements/{fingerprint}/", 15),
@@ -69,8 +71,8 @@ class PlatformApiContractTest {
           new RouteVersionPrefix("/apps/{appId}/updates", 2));
 
   @Test
-  void current_whenNamedBaselineMetadataIsPublished_expectContractVersion24() {
-    assertEquals(24, PlatformApiContract.CURRENT_CONTRACT_VERSION);
+  void current_whenNamedBaselineMetadataIsPublished_expectContractVersion25() {
+    assertEquals(25, PlatformApiContract.CURRENT_CONTRACT_VERSION);
   }
 
   @Test
@@ -916,6 +918,10 @@ class PlatformApiContractTest {
 
   private static PlatformApiStabilityLevel expectedStability(
       PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().startsWith("/mail/")
+        || endpoint.routeTemplate().equals("/queue/app-document-status")) {
+      return PlatformApiStabilityLevel.EXPERIMENTAL;
+    }
     if (endpoint.routeTemplate().equals("/updates/support-lifecycle")) {
       return PlatformApiStabilityLevel.OPERATOR_ONLY;
     }

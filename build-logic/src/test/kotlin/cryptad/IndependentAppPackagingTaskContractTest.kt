@@ -44,7 +44,7 @@ class IndependentAppPackagingTaskContractTest {
 
   @Test
   fun appTasks_whenInspected_expectUnsignedSecretFreeIsolatedPackagingContract() {
-    for (appProject in appProjects) {
+    for (appProject in appProjects + "mail-prototype") {
       val buildFile =
         Files.readString(repositoryRoot().resolve("apps/$appProject/build.gradle.kts"))
       val block =

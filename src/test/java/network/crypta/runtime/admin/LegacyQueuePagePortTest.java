@@ -178,6 +178,23 @@ class LegacyQueuePagePortTest {
     verify(queueBackend).getGlobalRequests();
   }
 
+  @Test
+  void typedInsertStatusUsesExactUploadAndOnlySuccessfulFinalChk() throws Exception {
+    QueuePageUploadFileView upload = org.mockito.Mockito.mock(QueuePageUploadFileView.class);
+    when(upload.getIdentifier()).thenReturn("owned-operation");
+    when(queueBackend.getGlobalRequests()).thenReturn(new QueuePageRequestView[] {upload});
+    assertEquals("missing", port.readInsertStatus("different-operation").state());
+    assertEquals("pending", port.readInsertStatus("owned-operation").state());
+    when(upload.hasFinished()).thenReturn(true);
+    assertEquals("failed", port.readInsertStatus("owned-operation").state());
+    when(upload.hasSucceeded()).thenReturn(true);
+    when(upload.getFinalUri()).thenReturn(sampleUri());
+    var status = port.readInsertStatus("owned-operation");
+    assertEquals("inserted", status.state());
+    assertEquals(sampleUri().toString(), status.reference());
+    assertTrue(!status.toString().contains(sampleUri().toString()));
+  }
+
   private FreenetURI sampleUri() {
     try {
       return new FreenetURI(

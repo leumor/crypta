@@ -590,3 +590,10 @@ Web Crypto and returns the verified public document. It reconstructs the profile
 frame and key fingerprint; failure rejects the promise. It grants no trust or fetch authority.
 See the [content profile review](trust-social-stable-profile-review.md) for field semantics and
 actual first-party consumer coverage. The helper does not expand the frozen Platform API baseline.
+
+## Experimental Mail control
+
+`CryptaPlatform.mail.command(command, payload)` submits a fixed own-app command and consumes its
+bounded worker reply. It uses the origin-bound browser session in memory and never receives a
+process token. Opening the UI, importing contacts and reading messages do not initiate message
+transport. Fetch and send are explicit commands. The helper is experimental contract 25.

@@ -265,3 +265,11 @@ form passwords, app process tokens, or browser session tokens.
 Release evidence should use route names, capability labels, record counts, namespace counts, byte
 counts, schema versions, booleans, sanitized error codes, and digests. It must not include raw
 app-data values unless the owning app receives them through the app-data read API.
+
+## Experimental Mail dataset
+
+Mail stores one protected `mail-state/dataset` record with schema 1. The worker owns contacts,
+drafts, outbox, accepted messages and replay evidence inside that encrypted dataset. A single CAS
+publication commits acceptance and replay together. The combined plaintext cap is 112 KiB and the
+encoded stored record must fit 262144 bytes; limits on individual messages do not override it.
+See [Mail design](mail-app-service-prototype.md) for bounds and full-restore replay limitations.

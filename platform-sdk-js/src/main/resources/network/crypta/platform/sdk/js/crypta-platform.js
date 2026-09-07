@@ -14,6 +14,15 @@
   const urlAttributeNames = new Set(["href", "src", "action", "formaction"]);
   const appIdPattern = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
   const contentFormats = Object.freeze({
+    mailEnvelope: Object.freeze({
+      id: "crypta.mail.envelope.v1", majorVersion: 1, status: "experimental",
+      contentType: "application/vnd.crypta.mail+json", defaultFilename: "mail-envelope.json",
+      maxDocumentBytes: 65536, signed: false, encrypted: true,
+      canonicalization: "strict_flat_json_hpke_authenticated_header",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
     profileDocument: Object.freeze({
       id: "crypta.profile.v1",
       schema: "crypta.profile.v1",
@@ -220,6 +229,27 @@
     const params = new URLSearchParams(value.startsWith("#") ? value.substring(1) : value);
     const nonce = params.get(bootstrapNonceFragmentParameter);
     return typeof nonce === "string" ? nonce.trim() : "";
+  }
+
+  async function mailCommand(command, payload) {
+    const allowed = ["initialize", "export-contact", "import-contact", "approve-contact", "revoke-contact", "save-draft", "preview-send", "confirm-send", "import-reference", "retry", "read", "status", "backup", "restore"];
+    if (!allowed.includes(command)) throw new Error("Unsupported Mail command.");
+    const bytes = new TextEncoder().encode(JSON.stringify(payload || {}));
+    if (bytes.length > 280000) throw new Error("Mail request is too large.");
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const submitted = await apiPostForm("mail/command", { command, payloadBase64: btoa(binary) });
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      const response = await apiPostForm("mail/result", { requestId: submitted.mail.requestId });
+      if (response.mail.status === "complete") {
+        if (response.mail.payloadBase64.length > 393216) throw new Error("Mail response is too large.");
+        const raw = atob(response.mail.payloadBase64);
+        return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    throw new Error("Mail worker timed out. Check operation status before retrying.");
   }
 
   async function apiGet(path, options) {
@@ -2749,6 +2779,7 @@
         getJson: getAppDataJson,
       }),
     }),
+    mail: Object.freeze({ command: mailCommand }),
     services: Object.freeze({
       list: listAppServices,
       get: getAppService,

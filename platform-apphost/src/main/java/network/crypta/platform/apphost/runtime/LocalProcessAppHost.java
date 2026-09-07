@@ -163,6 +163,43 @@ public final class LocalProcessAppHost implements AppHost {
   private final int restartStormMaxInWindow;
   private boolean persistentMutationsRecovered;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
+  private final Map<String, String> launchIds = new ConcurrentHashMap<>();
+  private java.net.URI mailPlatformApiEndpoint;
+
+  /**
+   * Sets the host-selected Mail API endpoint before launching Mail.
+   *
+   * @param endpoint HTTP loopback endpoint ending in /api/v1
+   */
+  public synchronized void setMailPlatformApiEndpoint(java.net.URI endpoint) {
+    java.util.Objects.requireNonNull(endpoint, "endpoint");
+    if (!"http".equals(endpoint.getScheme())
+        || !java.util.Set.of("127.0.0.1", "[::1]", "::1").contains(endpoint.getHost())
+        || endpoint.getPort() < 1
+        || endpoint.getPort() > 65535
+        || !"/api/v1".equals(endpoint.getPath())
+        || endpoint.getQuery() != null
+        || endpoint.getFragment() != null
+        || endpoint.getUserInfo() != null
+        || runningApps.containsKey("mail-prototype")) {
+      throw new IllegalArgumentException("invalid_mail_endpoint");
+    }
+    mailPlatformApiEndpoint = endpoint;
+  }
+
+  @Override
+  public synchronized Optional<AppTokenPrincipal> currentLaunch(String appId) {
+    RunningProcess process = liveRunningProcess(appId);
+    if (process == null || !launchIds.containsKey(appId)) return Optional.empty();
+    RunningAppSnapshot snapshot = process.snapshot();
+    return Optional.of(
+        new AppTokenPrincipal(
+            appId,
+            snapshot.manifest().permissions(),
+            launchIds.get(appId),
+            snapshot.manifest().appVersion()));
+  }
+
   private final Map<String, RuntimeRecord> runtimeRecords = new ConcurrentHashMap<>();
   private final Map<String, Deque<Instant>> automaticRestartAttempts = new ConcurrentHashMap<>();
   private final Set<String> explicitStopRequests = ConcurrentHashMap.newKeySet();
@@ -1099,6 +1136,10 @@ public final class LocalProcessAppHost implements AppHost {
     List<String> command = launchCommand(executable);
     Map<String, String> launchEnvironment = new LinkedHashMap<>();
     populateEnvironment(launchEnvironment, installation.manifest(), paths, token, appEnv);
+    if ("mail-prototype".equals(normalizedAppId)) {
+      if (mailPlatformApiEndpoint == null) throw new AppHostException("mail_endpoint_unavailable");
+      launchEnvironment.put("CRYPTAD_MAIL_API_ENDPOINT", mailPlatformApiEndpoint.toASCIIString());
+    }
     AppSandboxLaunchPlan launchPlan;
     try {
       launchPlan =
@@ -1174,6 +1215,7 @@ public final class LocalProcessAppHost implements AppHost {
             restartCount,
             currentRestartAttempt,
             startupRepresentativeProcessHandoff(process, startupProcessTree));
+    launchIds.put(normalizedAppId, java.util.UUID.randomUUID().toString());
     runningApps.put(normalizedAppId, runningProcess);
     runtimeRecords.compute(
         normalizedAppId,
@@ -1309,7 +1351,11 @@ public final class LocalProcessAppHost implements AppHost {
       if (runningProcess != null && token.equals(runningProcess.snapshot().token())) {
         RunningAppSnapshot snapshot = runningProcess.snapshot();
         return Optional.of(
-            new AppTokenPrincipal(snapshot.appId(), snapshot.manifest().permissions()));
+            new AppTokenPrincipal(
+                snapshot.appId(),
+                snapshot.manifest().permissions(),
+                launchIds.getOrDefault(snapshot.appId(), ""),
+                snapshot.manifest().appVersion()));
       }
     }
     return Optional.empty();

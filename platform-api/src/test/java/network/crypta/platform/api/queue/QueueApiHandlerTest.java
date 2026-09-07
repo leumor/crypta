@@ -6,6 +6,8 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import network.crypta.crypt.mail.MailHpke;
+import network.crypta.crypt.mail.MailWire;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueCompletionPort;
@@ -1075,10 +1077,138 @@ class QueueApiHandlerTest {
     return parameters;
   }
 
+  @Test
+  void mailInsertionAcceptsOnlyBoundedNetworkEnvelopesBeforeStaging() throws Exception {
+    RecordingQueueInsertPort port = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            port,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    byte[] key = MailHpke.publicKey(MailHpke.generatePrivateKey());
+    byte[] storage =
+        MailHpke.seal("storage", MailWire.fingerprint("storage", key), key, new byte[0]);
+    var parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry(
+                "identifier",
+                List.of("app-document-mail-prototype-0123456789abcdef0123456789abcdef")),
+            Map.entry("contentType", List.of("application/vnd.crypta.mail+json")));
+    for (byte[] invalid :
+        List.of(
+            storage,
+            "public synthetic plaintext".getBytes(StandardCharsets.UTF_8),
+            "{}".getBytes(StandardCharsets.UTF_8))) {
+      parameters.put("documentBase64", List.of(MailWire.base64(invalid)));
+      var failure =
+          assertThrows(
+              PlatformApiException.class,
+              () -> handler.createAppDocumentInsert("mail-prototype", parameters));
+      assertEquals("mail_envelope_rejected", failure.errorCode());
+      assertNull(port.lastBrowserUploadRequest);
+    }
+    byte[] network =
+        MailHpke.seal("network", MailWire.fingerprint("recipient", key), key, new byte[0]);
+    parameters.put("documentBase64", List.of(MailWire.base64(network)));
+
+    handler.createAppDocumentInsert("mail-prototype", parameters);
+
+    try (var input = port.lastBrowserUploadRequest.upload().openStream()) {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(network, input.readAllBytes());
+    }
+  }
+
+  @Test
+  void existingUnrelatedAppDocumentIdentifierRemainsAccepted() {
+    RecordingQueueInsertPort port = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            port,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    var parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("app-document-draft-1")),
+            Map.entry("contentType", List.of("text/plain")),
+            Map.entry("documentBase64", List.of("cHVibGljIHN5bnRoZXRpYw==")));
+
+    handler.createAppDocumentInsert("unrelated-app", parameters);
+
+    assertEquals("app-document-draft-1", port.lastBrowserUploadRequest.identifier());
+  }
+
+  @Test
+  void unrelatedAppCannotClaimReservedMailOperationIdentifier() {
+    RecordingQueueInsertPort port = new RecordingQueueInsertPort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            port,
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    var parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry(
+                "identifier",
+                List.of("app-document-mail-prototype-0123456789abcdef0123456789abcdef")),
+            Map.entry("contentType", List.of("text/plain")),
+            Map.entry("documentBase64", List.of("cHVibGljIHN5bnRoZXRpYw==")));
+
+    var failure =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.createAppDocumentInsert("unrelated-app", parameters));
+
+    assertEquals("app_document_identifier_denied", failure.errorCode());
+    assertNull(port.lastBrowserUploadRequest);
+  }
+
+  @Test
+  void appDocumentStatusChecksNamespaceAndReturnsTypedCompletion() {
+    RecordingQueuePagePort page = new RecordingQueuePagePort();
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            page,
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    String identifier = "app-document-mail-prototype-0123456789abcdef0123456789abcdef";
+    var status =
+        handler.appDocumentStatus("mail-prototype", Map.of("identifier", List.of(identifier)));
+    assertEquals("inserted", status.get("state"));
+    assertEquals("CHK@public-synthetic", status.get("reference"));
+    assertThrows(
+        PlatformApiException.class,
+        () ->
+            handler.appDocumentStatus("unrelated-app", Map.of("identifier", List.of(identifier))));
+    assertThrows(
+        PlatformApiException.class,
+        () ->
+            handler.appDocumentStatus("mail-prototype", Map.of("identifier", List.of("unscoped"))));
+  }
+
   private static final class RecordingQueuePagePort implements QueuePagePort {
     private QueuePageSnapshot pageSnapshot = new QueuePageSnapshot("Queue", "<div></div>");
     private QueuePageRequest lastPageRequest;
     private int countPageRequests;
+
+    @Override
+    public network.crypta.runtime.spi.QueueInsertStatus readInsertStatus(String identifier) {
+      return new network.crypta.runtime.spi.QueueInsertStatus("inserted", "CHK@public-synthetic");
+    }
 
     @Override
     public QueuePageSnapshot renderPage(QueuePageRequest request) {

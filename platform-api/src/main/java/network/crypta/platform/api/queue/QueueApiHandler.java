@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import network.crypta.crypt.mail.MailHpke;
 import network.crypta.keys.FreenetURI;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
@@ -571,7 +572,23 @@ public final class QueueApiHandler {
     String insertUri = PlatformApiParameters.requireString(queryParameters, PARAMETER_INSERT_URI);
     FreenetURI parsedInsertUri = requireInsertUri(insertUri);
     String identifier = PlatformApiParameters.requireString(queryParameters, PARAMETER_IDENTIFIER);
+    if ("mail-prototype".equals(appId) || identifier.startsWith("app-document-mail-prototype-")) {
+      requireAppDocumentIdentifier(appId, identifier);
+    }
+    if ("mail-prototype".equals(appId)) {
+      if (!"CHK@".equals(insertUri)) {
+        throw new PlatformApiException(
+            400, "mail_insert_target_invalid", "Mail inserts require CHK.");
+      }
+    }
     byte[] document = decodeAppDocument(queryParameters);
+    if ("mail-prototype".equals(appId)) {
+      try {
+        MailHpke.validateNetworkEnvelope(document);
+      } catch (IllegalArgumentException failure) {
+        throw new PlatformApiException(400, "mail_envelope_rejected", "Mail envelope rejected.");
+      }
+    }
     String contentType = resolveAppDocumentContentType(queryParameters);
     validateJsonDocumentIfNeeded(contentType, document);
     String targetFilename =
@@ -617,6 +634,39 @@ public final class QueueApiHandler {
     if (!queueSupportPort.isQueueBackendEnabled()) {
       throw new PlatformApiException(
           409, "queue_backend_disabled", "Queue backend is currently disabled.");
+    }
+  }
+
+  /**
+   * Reads typed completion state for an app-namespaced generated-document operation.
+   *
+   * @param appId authenticated owning app id
+   * @param parameters exact identifier parameter
+   * @return bounded state and successful CHK reference, never a delivery/read receipt
+   */
+  public Map<String, Object> appDocumentStatus(String appId, Map<String, List<String>> parameters) {
+    String identifier = PlatformApiParameters.requireString(parameters, PARAMETER_IDENTIFIER);
+    requireAppDocumentIdentifier(appId, identifier);
+    ensureQueueBackendEnabled();
+    try {
+      var status = queuePagePort.readInsertStatus(identifier);
+      Map<String, Object> result = new LinkedHashMap<>();
+      result.put("state", status.state());
+      result.put("reference", status.reference());
+      return result;
+    } catch (RequestQueueUnavailableException failure) {
+      throw queueUnavailable();
+    }
+  }
+
+  private static void requireAppDocumentIdentifier(String appId, String identifier) {
+    String prefix = "app-document-" + appId + "-";
+    if (!identifier.startsWith(prefix)
+        || !identifier.substring(prefix.length()).matches("[0-9a-f]{32}")) {
+      throw new PlatformApiException(
+          403,
+          "app_document_identifier_denied",
+          "Generated-document identifier is not scoped to this app.");
     }
   }
 

@@ -1109,7 +1109,9 @@ public final class PlatformApiToadlet extends Toadlet {
 
   private static PrincipalResolution appTokenPrincipal(AppTokenPrincipal principal) {
     return new PrincipalResolution(
-        PlatformApiPrincipal.appToken(principal.appId(), principal.permissions()), null);
+        PlatformApiPrincipal.appToken(
+            principal.appId(), principal.permissions(), principal.launchId()),
+        null);
   }
 
   private PrincipalResolution authenticateBrowserSession(String token, CorsRequest cors) {

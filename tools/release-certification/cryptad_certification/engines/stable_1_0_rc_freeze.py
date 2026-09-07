@@ -15,6 +15,7 @@ from cryptad_certification.io import read_json, write_json
 from cryptad_certification.models import RunContext
 from cryptad_certification.schema_validation import validate_schema
 
+from .content_profile_selection import select_trust_social_v1
 from .stable_1_0_rc_core import (
     CONTENT_PROFILE_IDS,
     DIGEST_RE,
@@ -375,19 +376,7 @@ def export_content_profiles(
         ["api", "content-formats", "--output", str(export_path)],
     )
     value = read_json(export_path)
-    if not isinstance(value, dict) or value.get("schemaVersion") != 1 or value.get("kind") != "content-format-profile-registry":
-        raise ValueError("candidate content-format profile export is malformed")
-    profiles = value.get("profiles")
-    if not isinstance(profiles, list):
-        raise ValueError("candidate content-format profile export omits profiles")
-    identifiers = [row.get("id") for row in profiles if isinstance(row, dict)]
-    if tuple(identifiers) != CONTENT_PROFILE_IDS or not all_unique(str(item) for item in identifiers):
-        state.block(
-            "stable-1.0-rc.content-format-set",
-            "stable-1.0-rc.content-format-freeze",
-            "The authoritative content-format profile set is missing, duplicated, reordered, or unexpected.",
-            "Restore the reviewed five-profile registry before cutting the RC.",
-        )
+    profiles = select_trust_social_v1(value)
     evidence = evidence_by_id(app_platform_summary).get(
         "app-platform.trust-social-content-format-profiles",
         {},

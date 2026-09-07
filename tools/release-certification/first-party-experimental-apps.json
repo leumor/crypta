@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "selection": "additive-experimental-prototypes",
+  "apps": {
+    "mail-prototype": {
+      "channel": "beta",
+      "experimentalOptInRequired": true,
+      "automaticInstall": false,
+      "stableEligible": false,
+      "readiness": "experimental-unreviewed",
+      "owner": "crypta-core",
+      "supportUri": "https://github.com/crypta-network/cryptad/issues",
+      "supportLevel": "prototype",
+      "dataSchema": 1,
+      "backupRestore": "same-compatible-vault-retained-identities-only",
+      "securityReview": "unobserved",
+      "liveTwoNodeObservation": "unobserved",
+      "diagnostics": "redacted-summary-only",
+      "stageTask": ":apps:mail-prototype:stageApp",
+      "packageTask": ":apps:mail-prototype:packageApp",
+      "independentPayloadTask": ":apps:mail-prototype:packageUnsignedAppForIndependentReproducibility"
+    }
+  }
+}
