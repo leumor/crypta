@@ -514,7 +514,7 @@ record SocialMessageRequest(
   }
 
   /**
-   * Checks for any ASCII control character.
+   * Checks for ASCII controls or unpaired UTF-16 surrogates.
    *
    * <p>This stricter helper is used for single-line public metadata such as channel, subject, reply
    * references, recipient fingerprints, and tags. It rejects line breaks and tabs because those
@@ -524,8 +524,19 @@ record SocialMessageRequest(
    * @return {@code true} when the value contains a disallowed control character
    */
   private static boolean containsControlCharacter(String value) {
-    for (int index = 0; index < value.length(); index++) {
+    for (int index = 0;
+        index < value.length();
+        index += Character.isHighSurrogate(value.charAt(index)) ? 2 : 1) {
       char ch = value.charAt(index);
+      if (Character.isHighSurrogate(ch)) {
+        if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+          return true;
+        }
+        continue;
+      }
+      if (Character.isLowSurrogate(ch)) {
+        return true;
+      }
       if (ch < 0x20 || ch == 0x7f) {
         return true;
       }
@@ -534,7 +545,7 @@ record SocialMessageRequest(
   }
 
   /**
-   * Checks for ASCII control characters while allowing normal text-area whitespace.
+   * Checks for unpaired surrogates and ASCII controls while allowing normal text-area whitespace.
    *
    * <p>The body path uses this helper so users can compose multiline plain text. NUL, delete, and
    * other non-rendering controls still fail validation before the payload is signed.
@@ -543,8 +554,19 @@ record SocialMessageRequest(
    * @return {@code true} when the value contains a control character other than LF, CR, or tab
    */
   private static boolean containsControlCharacterExceptNormalWhitespace(String value) {
-    for (int index = 0; index < value.length(); index++) {
+    for (int index = 0;
+        index < value.length();
+        index += Character.isHighSurrogate(value.charAt(index)) ? 2 : 1) {
       char ch = value.charAt(index);
+      if (Character.isHighSurrogate(ch)) {
+        if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+          return true;
+        }
+        continue;
+      }
+      if (Character.isLowSurrogate(ch)) {
+        return true;
+      }
       if ((ch < 0x20 || ch == 0x7f) && ch != '\n' && ch != '\r' && ch != '\t') {
         return true;
       }

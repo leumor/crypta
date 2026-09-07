@@ -95,6 +95,9 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_platform_api_1x",
         "cryptad_certification.tests.test_stable_platform_api_1x_workflow",
     ],
+    "stable-content-profile-review": [
+        "cryptad_certification.tests.test_stable_content_profile_review",
+    ],
     "stable-legacy-plugin-migration": [
         "cryptad_certification.tests.test_stable_legacy_plugin_migration",
     ],

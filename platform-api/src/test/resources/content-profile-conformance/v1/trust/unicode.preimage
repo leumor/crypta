@@ -1,0 +1,2 @@
+crypta.trust.statement.v1
+{"issuer":{"identityId":"synthetic-rfc8032-test1","publicKeyFingerprint":"06e3fd8fda29bb60ab59557de61edb0aecdb231134be30e75b455f8e1b792fa9","publicKeyBase64":"MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="},"subject":{"kind":"identity","uri":"synthetic-public-subject"},"context":"message-author","score":100,"confidence":100,"reason":"Café 😀 é \"quoted\" \\ path","tags":["second","first","second"],"issuedAt":"2026-05-16T00:00:00Z"}

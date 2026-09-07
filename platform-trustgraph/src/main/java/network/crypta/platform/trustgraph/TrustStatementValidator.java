@@ -116,6 +116,7 @@ public final class TrustStatementValidator {
       return null;
     }
     String text = value.trim();
+    requireWellFormedUnicode(text);
     if (text.length() > maxLength) {
       throw new TrustGraphException(
           "invalid_trust_statement", "Field '" + fieldName + "' is too long.");
@@ -190,6 +191,22 @@ public final class TrustStatementValidator {
       }
     }
     return false;
+  }
+
+  /** Rejects unpaired UTF-16 surrogates before UTF-8 signature encoding can replace them. */
+  static void requireWellFormedUnicode(String value) {
+    for (int index = 0;
+        index < value.length();
+        index += Character.isHighSurrogate(value.charAt(index)) ? 2 : 1) {
+      char ch = value.charAt(index);
+      if (Character.isHighSurrogate(ch)) {
+        if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+          throw new TrustGraphException("invalid_trust_statement", "Malformed Unicode text.");
+        }
+      } else if (Character.isLowSurrogate(ch)) {
+        throw new TrustGraphException("invalid_trust_statement", "Malformed Unicode text.");
+      }
+    }
   }
 
   private static void requireRangeWithSharedMaximum(String fieldName, int value, int min) {

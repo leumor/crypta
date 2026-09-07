@@ -202,6 +202,7 @@ final class TrustJson {
       while (index < text.length()) {
         char ch = text.charAt(index++);
         if (ch == '"') {
+          TrustStatementValidator.requireWellFormedUnicode(value.toString());
           return value.toString();
         }
         if (ch == '\\') {

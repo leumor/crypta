@@ -10,6 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -95,6 +96,59 @@ class TrustStatementVerifierTest {
     boolean verified = TrustStatementVerifier.isSignatureVerified(malformedSignature);
 
     assertFalse(verified);
+  }
+
+  @Test
+  void parse_whenLoneSurrogateInSignedReason_expectRejectedBeforeUtf8Replacement()
+      throws GeneralSecurityException {
+    SignedFixture fixture = signedFixture();
+    String json = TrustJson.write(fixture.document().toJson());
+    String malformed = json.replace("known publisher", "\\uD800");
+
+    assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(malformed));
+  }
+
+  @Test
+  void construct_whenLoneSurrogateInReason_expectRejectedBeforeSigning()
+      throws GeneralSecurityException {
+    TrustStatementPayload payload = signedFixture().document().payload();
+    TrustIssuer issuer = payload.issuer();
+    TrustSubject subject = payload.subject();
+    String context = payload.context();
+    int score = payload.score();
+    int confidence = payload.confidence();
+    String malformedReason = String.valueOf((char) 0xD800);
+    List<String> tags = payload.tags();
+    Instant issuedAt = payload.issuedAt();
+    Instant expiresAt = payload.expiresAt();
+
+    assertThrows(
+        TrustGraphException.class,
+        () ->
+            new TrustStatementPayload(
+                issuer,
+                subject,
+                context,
+                score,
+                confidence,
+                malformedReason,
+                tags,
+                issuedAt,
+                expiresAt));
+  }
+
+  @Test
+  void parse_whenHistoricalWhitespaceAndTimestampAliasesUsed_expectCanonicalSignatureStillValid()
+      throws GeneralSecurityException {
+    SignedFixture fixture = signedFixture();
+    String lexicalAlias =
+        TrustJson.write(fixture.document().toJson())
+            .replace("known publisher", " known publisher ")
+            .replace("2026-05-16T00:00:00Z", "2026-05-16T01:00:00+01:00");
+
+    TrustStatementDocument parsed = TrustStatementParser.parse(lexicalAlias);
+
+    assertTrue(TrustStatementVerifier.isSignatureVerified(parsed));
   }
 
   private static SignedFixture signedFixture() throws GeneralSecurityException {

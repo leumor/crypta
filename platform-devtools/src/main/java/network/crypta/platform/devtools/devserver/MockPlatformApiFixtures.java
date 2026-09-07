@@ -5,6 +5,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
+import java.security.MessageDigest;
+import java.security.Signature;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -13,6 +22,7 @@ import network.crypta.platform.api.PlatformApiBaselineRegistry;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.PlatformApiEndpointDescriptor;
+import network.crypta.platform.api.contentformats.CanonicalJson;
 import network.crypta.platform.appdist.AppDistributionException;
 
 /**
@@ -30,6 +40,7 @@ import network.crypta.platform.appdist.AppDistributionException;
  * browser-visible responses or app test reports.
  */
 final class MockPlatformApiFixtures {
+  private static final String PROFILE_SIGNATURE_ALGORITHM = "Ed25519";
   private static final String PLATFORM_CONTRACT_FIXTURE = "platform-contract.json";
   private static final Pattern QUOTED_UNIX_ABSOLUTE_PATH = Pattern.compile("\"(/[^\"]*)\"");
   private static final Pattern QUOTED_WINDOWS_ABSOLUTE_PATH =
@@ -283,19 +294,67 @@ final class MockPlatformApiFixtures {
   }
 
   /**
-   * Builds a deterministic profile document preview response for a mock identity.
+   * Builds a deterministic signed profile preview using a publicly known test identity.
+   *
+   * <p>The signature binds the configured app and requested identity using the v1 AppVault frame.
+   * It supports local SDK verification only and conveys no operational identity or trust. No
+   * persistent signing key is created.
    *
    * @param identityId identity id segment supplied in the route
    * @return compact JSON response with path-free, token-free profile document metadata
    */
   String profileDocument(String identityId) {
-    String escapedIdentityId = Json.escape(identityId);
-    return "{\"profileDocument\":{\"schema\":\"crypta.profile.v1\",\"identityId\":\""
-        + escapedIdentityId
-        + "\",\"profile\":{\"displayName\":\"Local Profile\",\"bio\":\"Mock profile"
-        + " document\",\"tags\":[\"local\",\"mock\"]},\"identity\":{\"identityId\":\""
-        + escapedIdentityId
-        + "\",\"fingerprint\":\"mock-profile-fingerprint\",\"algorithm\":\"Ed25519\"}},\"mock\":true,\"action\":\"app-vault.identities.profile-document\"}";
+    // RFC 8032 section 7.1 test-1 public seed: deliberately public, never an operational key.
+    byte[] privateKey =
+        HexFormat.of()
+            .parseHex(
+                "302e020100300506032b6570042204209d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+    byte[] publicKey =
+        HexFormat.of()
+            .parseHex(
+                "302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+    Map<String, Object> profile = new LinkedHashMap<>();
+    profile.put("schema", "crypta.profile.v1");
+    profile.put("appId", appId);
+    profile.put("identityId", identityId);
+    profile.put("displayName", "Local Profile");
+    profile.put("bio", "Mock profile document");
+    profile.put("tags", List.of("local", "mock"));
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      String payloadHash = HexFormat.of().formatHex(digest.digest(CanonicalJson.bytes(profile)));
+      String fingerprint = HexFormat.of().formatHex(digest.digest(publicKey));
+      String preimage =
+          "CryptaAppVault:v1:" + appId + ":" + identityId + ":profile.publish.v1:" + payloadHash;
+      Signature signer = Signature.getInstance(PROFILE_SIGNATURE_ALGORITHM);
+      signer.initSign(
+          KeyFactory.getInstance(PROFILE_SIGNATURE_ALGORITHM)
+              .generatePrivate(new PKCS8EncodedKeySpec(privateKey)));
+      signer.update(preimage.getBytes(StandardCharsets.UTF_8));
+      Map<String, Object> identity = new LinkedHashMap<>();
+      identity.put("identityId", identityId);
+      identity.put("fingerprint", fingerprint);
+      identity.put("algorithm", PROFILE_SIGNATURE_ALGORITHM);
+      identity.put("publicKeyBase64", Base64.getEncoder().encodeToString(publicKey));
+      Map<String, Object> signature = new LinkedHashMap<>();
+      signature.put("scope", "sign.domain-separated");
+      signature.put("purpose", "profile.publish.v1");
+      signature.put("payloadSha256", payloadHash);
+      signature.put("domainSeparatedPayload", preimage);
+      signature.put("signatureBase64", Base64.getEncoder().encodeToString(signer.sign()));
+      Map<String, Object> document = new LinkedHashMap<>();
+      document.put("schema", "crypta.profile.v1");
+      document.put("profile", profile);
+      document.put("identity", identity);
+      document.put("signature", signature);
+      Map<String, Object> response = new LinkedHashMap<>();
+      response.put("profileDocument", document);
+      response.put("mock", true);
+      response.put("action", "app-vault.identities.profile-document");
+      return new String(CanonicalJson.bytes(response), StandardCharsets.UTF_8);
+    } catch (GeneralSecurityException exception) {
+      throw new IllegalStateException("Mock profile signing is unavailable.", exception);
+    }
   }
 
   /**

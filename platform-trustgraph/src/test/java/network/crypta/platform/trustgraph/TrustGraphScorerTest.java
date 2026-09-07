@@ -21,6 +21,35 @@ class TrustGraphScorerTest {
   private static final Instant NOW = Instant.parse("2026-05-17T00:00:00Z");
 
   @Test
+  void score_whenAnchoredZeroExists_expectMixedAndContributingInsteadOfUnknown() {
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
+    TrustStatementDocument document = signedStatement(0, 100, "2026-05-16T00:00:00Z", null);
+    store.addAnchor(fingerprint(document), "Synthetic", "manual");
+    store.importStatement(document, "manual", null, null);
+
+    TrustGraphScore score = scorer(store).score(query());
+
+    assertEquals("mixed", score.status());
+    assertEquals(0, score.score());
+    assertEquals(1, score.contributingEvidenceCount());
+  }
+
+  @Test
+  void score_whenExpiryEqualsClock_expectNonContributingAtExactBoundary() {
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
+    TrustStatementDocument document =
+        signedStatement(100, 100, "2026-05-16T00:00:00Z", NOW.toString());
+    store.addAnchor(fingerprint(document), "Synthetic", "manual");
+    store.importStatement(document, "manual", null, null);
+
+    TrustGraphScore score = scorer(store).score(query());
+
+    assertEquals("unknown", score.status());
+    assertEquals(0, score.contributingEvidenceCount());
+    assertTrue(score.evidence().getFirst().expired());
+  }
+
+  @Test
   void score_whenNoAnchorEvidenceExists_expectUnknownWithNonContributingEvidence() {
     InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
     store.importStatement(

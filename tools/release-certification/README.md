@@ -1799,3 +1799,14 @@ also retains `pr296-protected-subject-projection-pending`. A local self-digest, 
 receipt cannot bypass those prerequisites. No protected workflow or new release authority is
 introduced. See [the pilot runbook](../../docs/real-legacy-plugin-migration-pilot.md) for conversion,
 consent, identity, private-data recovery and the four evidence levels.
+
+### Executable content profile review
+
+`python3 tools/release-certification/certify.py stable-content-profile-review --mode review`
+executes the policy-selected production Java/JavaScript conformance suites and exports the actual
+five-profile registry through `crypta-app api content-formats`. `--mode inspect` only inspects
+source/corpus identity; `--self-test` exercises review validation, not content interoperability.
+See [the scoped review](../../docs/trust-social-stable-profile-review.md). Local outputs do not
+promote profiles, authenticate remote runners, or satisfy PR-296/297 operational prerequisites.
+Upload only the bounded public summary; execution logs can contain synthetic assertion payloads
+and remain private. Historical RC/GA digest semantics and frozen bytes remain unchanged.

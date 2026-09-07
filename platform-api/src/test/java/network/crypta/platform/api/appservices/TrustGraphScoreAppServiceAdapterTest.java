@@ -1,10 +1,16 @@
 package network.crypta.platform.api.appservices;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
+import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
+import network.crypta.platform.trustgraph.TrustStatementDocument;
+import network.crypta.platform.trustgraph.TrustStatementParser;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -102,6 +108,49 @@ class TrustGraphScoreAppServiceAdapterTest {
 
     assertEquals(400, exception.statusCode());
     assertEquals("app_service_context_unsupported", exception.errorCode());
+  }
+
+  @Test
+  void invoke_whenSignedAnchoredZeroComparedToEmptyStore_expectDistinctEvidenceStatus()
+      throws Exception {
+    Clock clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC);
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(clock);
+    TrustGraphScoreAppServiceAdapter adapter =
+        new TrustGraphScoreAppServiceAdapter(new TrustGraphApiHandler(store, clock));
+    Map<String, List<String>> params = invokeParams("synthetic-public-subject");
+    Map<String, Object> absent = adapter.invoke(descriptor(), activeGrant(), params);
+    TrustStatementDocument document;
+    try (var resource =
+        getClass().getResourceAsStream("/content-profile-conformance/v1/trust/minimal.json")) {
+      document =
+          TrustStatementParser.parse(
+              new String(
+                  java.util.Objects.requireNonNull(resource).readAllBytes(),
+                  StandardCharsets.UTF_8));
+    }
+    store.addAnchor(document.payload().issuer().publicKeyFingerprint(), "Synthetic", "manual");
+    store.importStatement(document, "manual", null, null);
+
+    Map<String, Object> zero = adapter.invoke(descriptor(), activeGrant(), params);
+
+    assertEquals("unknown", absent.get("status"));
+    assertEquals(0, absent.get("contributingEvidenceCount"));
+    assertEquals("mixed", zero.get("status"));
+    assertEquals(0, zero.get("score"));
+    assertEquals(1, zero.get("contributingEvidenceCount"));
+    assertEquals(absent.get("subjectUriHash"), zero.get("subjectUriHash"));
+    assertEquals(
+        java.util.Set.of(
+            "subjectKind",
+            "subjectUriHash",
+            "context",
+            "status",
+            "score",
+            "confidence",
+            "evidenceCount",
+            "contributingEvidenceCount",
+            "completeWot"),
+        zero.keySet());
   }
 
   private static AppServiceDescriptor descriptor() {

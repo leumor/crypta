@@ -1042,11 +1042,85 @@
     }),
   });
 
+  async function verifyProfileDocument(value) {
+    let text;
+    try {
+      text = typeof value === "string" ? value : JSON.stringify(value);
+    } catch (error) {
+      throw new Error("Profile must be JSON-serializable.");
+    }
+    if (typeof text !== "string") throw new Error("Profile must be JSON-serializable.");
+    if (jsonDocumentByteLength(text, "Profile") > contentFormats.profileDocument.maxDocumentBytes) {
+      throw new Error("Profile document is too large.");
+    }
+    const document = requireJsonObject(parseContentJson(text), "Profile");
+    const profile = requireJsonObject(document.profile, "Profile payload");
+    const identity = requireJsonObject(document.identity, "Profile identity");
+    const signature = requireJsonObject(document.signature, "Profile signature");
+    const fields = ["schema", "appId", "identityId", "displayName", "bio", "website", "avatarUri", "contactUri", "tags"];
+    rejectUnexpectedFields(document, ["schema", "profile", "identity", "signature"], "Profile");
+    rejectUnexpectedFields(profile, fields, "Profile payload");
+    rejectUnexpectedFields(identity, ["identityId", "fingerprint", "algorithm", "publicKeyBase64"], "Profile identity");
+    rejectUnexpectedFields(signature, ["scope", "purpose", "payloadSha256", "domainSeparatedPayload", "signatureBase64"], "Profile signature");
+    if (document.schema !== "crypta.profile.v1" || profile.schema !== document.schema ||
+        identity.identityId !== profile.identityId || identity.algorithm !== "Ed25519" ||
+        signature.scope !== "sign.domain-separated" || signature.purpose !== "profile.publish.v1") {
+      throw new Error("Profile identity or signing claims do not match.");
+    }
+    const payload = {};
+    for (const field of fields) {
+      if (!Object.hasOwn(profile, field)) continue;
+      const entry = profile[field];
+      if (field === "tags") {
+        if (!Array.isArray(entry) || entry.length === 0 || entry.length > 16 ||
+            entry.some((tag) => typeof tag !== "string" || /^[\x00-\x20]*$/.test(tag) || tag.length > 32 || /[\x00-\x1f\x7f]/.test(tag))) {
+          throw new Error("Invalid profile tags.");
+        }
+      } else if (typeof entry !== "string" || entry.length > (field === "displayName" ? 80 : 512)) {
+        throw new Error("Invalid profile field.");
+      }
+      if (field !== "tags" && (field === "bio" ? /[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/ : /[\x00-\x1f\x7f]/).test(entry)) {
+        throw new Error("Invalid profile control character.");
+      }
+      payload[field] = entry;
+    }
+    for (const field of ["appId", "identityId", "displayName"]) {
+      if (!payload[field] || (field !== "displayName" && !/^[a-zA-Z0-9._-]+$/.test(payload[field]))) {
+        throw new Error("Invalid profile binding.");
+      }
+    }
+    const canonical = JSON.stringify(payload);
+    // Validate scalar Unicode even for callers passing already parsed objects.
+    parseContentJson(canonical);
+    const subtle = window.crypto && window.crypto.subtle;
+    if (!subtle) throw new Error("Profile signature verification unavailable.");
+    const hex = async (bytes) => Array.from(new Uint8Array(await subtle.digest("SHA-256", bytes)),
+      (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const decode = (text) => {
+      if (typeof text !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text)) {
+        throw new Error("Invalid profile signature encoding.");
+      }
+      return Uint8Array.from(window.atob(text), (character) => character.charCodeAt(0));
+    };
+    const digest = await hex(new TextEncoder().encode(canonical));
+    const preimage = `CryptaAppVault:v1:${profile.appId}:${profile.identityId}:profile.publish.v1:${digest}`;
+    const publicBytes = decode(identity.publicKeyBase64);
+    if (signature.payloadSha256 !== digest || signature.domainSeparatedPayload !== preimage ||
+        identity.fingerprint !== await hex(publicBytes)) {
+      throw new Error("Profile payload or public key binding does not match.");
+    }
+    const key = await subtle.importKey("spki", publicBytes, { name: "Ed25519" }, false, ["verify"]);
+    if (!await subtle.verify("Ed25519", key, decode(signature.signatureBase64), new TextEncoder().encode(preimage))) {
+      throw new Error("Profile signature did not verify.");
+    }
+    return document;
+  }
+
   function parseFeedSnapshot(value) {
     if (jsonDocumentByteLength(value, "Feed snapshot") > feedSnapshotMaxDocumentBytes) {
       throw new Error("Feed snapshot document is too large.");
     }
-    const source = parseJsonObject(value, "Feed snapshot");
+    const source = requireJsonObject(typeof value === "string" ? parseContentJson(value) : value, "Feed snapshot");
     rejectUnexpectedFields(
       source,
       ["type", "source", "author", "title", "updatedAt", "items", "entries"],
@@ -2076,10 +2150,56 @@
 
   function parseJsonObject(value, description) {
     const source = typeof value === "string" ? parseJsonString(value, description) : value;
+    return requireJsonObject(source, description);
+  }
+
+  function requireJsonObject(source, description) {
     if (!source || typeof source !== "object" || Array.isArray(source)) {
       throw new Error(`${description} must be a JSON object.`);
     }
     return source;
+  }
+
+  // JSON.parse supplies the grammar; this lexical pass rejects ambiguous members and
+  // excessive nesting before materialization. String tokens use the native JSON decoder.
+  function contentJsonError(message) {
+    const error = new Error(message);
+    error.code = "content_format_ambiguous_json";
+    return error;
+  }
+
+  function parseContentJson(text) {
+    const tokens = text.match(/"(?:[^"\\\x00-\x1f]|\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4}))*"|[{}\[\]:,]|[^\s{}\[\]:,"]+/g) || [];
+    const stack = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token === "{" || token === "[") {
+        stack.push(token === "{" ? new Set() : null);
+        if (stack.length > 16) throw contentJsonError("Content JSON nesting exceeds limit.");
+      } else if (token === "}" || token === "]") {
+        stack.pop();
+      } else if (token.startsWith('"')) {
+        const value = JSON.parse(token);
+        for (let offset = 0; offset < value.length; offset += 1) {
+          const unit = value.charCodeAt(offset);
+          if (unit >= 0xd800 && unit <= 0xdbff) {
+            const low = value.charCodeAt(++offset);
+            if (!(low >= 0xdc00 && low <= 0xdfff)) throw contentJsonError("Unpaired surrogate.");
+          } else if (unit >= 0xdc00 && unit <= 0xdfff) throw contentJsonError("Unpaired surrogate.");
+        }
+        if (tokens[index + 1] === ":") {
+          const keys = stack[stack.length - 1];
+          if (keys && keys.has(value)) throw contentJsonError("Duplicate content JSON field.");
+          if (keys) keys.add(value);
+        }
+      }
+    }
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      if (text.trim().startsWith("{")) throw contentJsonError("Invalid content JSON.");
+      throw error;
+    }
   }
 
   function parseJsonString(value, description) {
@@ -2091,6 +2211,9 @@
   }
 
   function feedSnapshotItems(source) {
+    if (Object.hasOwn(source, "items") && Object.hasOwn(source, "entries")) {
+      throw new Error("Feed snapshot cannot contain both items and entries.");
+    }
     if (Array.isArray(source.items)) {
       return source.items;
     }
@@ -2101,7 +2224,7 @@
   }
 
   function normalizeFeedSource(source) {
-    const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+    const value = source === undefined ? {} : requireJsonObject(source, "Feed snapshot source");
     rejectUnexpectedFields(value, ["uri", "resolvedUri"], "Feed snapshot source");
     const normalized = {};
     copyFeedStringField(value, normalized, "uri");
@@ -2110,7 +2233,7 @@
   }
 
   function normalizeFeedAuthor(author) {
-    const value = author && typeof author === "object" && !Array.isArray(author) ? author : {};
+    const value = author === undefined ? {} : requireJsonObject(author, "Feed snapshot author");
     rejectUnexpectedFields(value, ["name", "profileUri"], "Feed snapshot author");
     const normalized = {};
     copyFeedStringField(value, normalized, "name");
@@ -2156,6 +2279,9 @@
   }
 
   function copyFeedStringField(source, target, name) {
+    if (Object.hasOwn(source, name) && typeof source[name] !== "string") {
+      throw new Error(`Feed snapshot ${name} must be text.`);
+    }
     const value = trimmedString(source[name]);
     if (value) {
       target[name] = value;
@@ -2659,6 +2785,7 @@
       }),
     }),
     profile: Object.freeze({
+      verifyDocument: verifyProfileDocument,
       publish: publishProfile,
     }),
     feed: Object.freeze({

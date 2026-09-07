@@ -1,0 +1,289 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "source",
+    "corpus",
+    "policyDigest",
+    "registryExactFileDigest",
+    "normativeSpecDigest",
+    "serviceDefinitionDigest",
+    "profiles",
+    "serviceContracts",
+    "results",
+    "evidenceLevel",
+    "reviewDecision",
+    "independentImplementation",
+    "priorRuntime",
+    "humanSecuritySignoff",
+    "operationalCloseout",
+    "evaluationTime",
+    "limitations",
+    "redaction",
+    "javascript"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "content-profile-review"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "implementationDigest"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "implementationDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "caseCount"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "caseCount": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 10000
+        }
+      }
+    },
+    "policyDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "registryExactFileDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "normativeSpecDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "serviceDefinitionDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profileId",
+          "version",
+          "effectiveStatus",
+          "recommendedStatus",
+          "decision",
+          "descriptorDigest"
+        ],
+        "properties": {
+          "profileId": {
+            "enum": [
+              "crypta.profile.v1",
+              "crypta.feed.snapshot.v1",
+              "crypta.trust.statement.v1",
+              "crypta.social.message.v1",
+              "crypta.social.outbox.v1"
+            ]
+          },
+          "version": {
+            "const": 1
+          },
+          "effectiveStatus": {
+            "enum": [
+              "stable",
+              "beta",
+              "experimental"
+            ]
+          },
+          "recommendedStatus": {
+            "enum": [
+              "stable",
+              "beta",
+              "experimental"
+            ]
+          },
+          "decision": {
+            "enum": [
+              "retain-stable",
+              "retain-beta",
+              "retain-experimental"
+            ]
+          },
+          "descriptorDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "serviceContracts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "serviceId",
+          "version",
+          "effectiveStatus",
+          "recommendedStatus",
+          "decision",
+          "provider",
+          "consumer",
+          "scope"
+        ],
+        "properties": {
+          "serviceId": {
+            "const": "trust.score"
+          },
+          "version": {
+            "const": 1
+          },
+          "effectiveStatus": {
+            "const": "experimental"
+          },
+          "recommendedStatus": {
+            "const": "experimental"
+          },
+          "decision": {
+            "const": "retain-experimental"
+          },
+          "provider": {
+            "const": "trust-graph"
+          },
+          "consumer": {
+            "const": "social-inbox"
+          },
+          "scope": {
+            "const": "score.read"
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "className",
+          "caseCount",
+          "resultDigest"
+        ],
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "caseCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "resultDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "evidenceLevel": {
+      "const": "local-executable-conformance"
+    },
+    "reviewDecision": {
+      "const": "retain-current-statuses"
+    },
+    "independentImplementation": {
+      "const": "not-observed"
+    },
+    "priorRuntime": {
+      "const": "not-observed"
+    },
+    "humanSecuritySignoff": {
+      "const": "not-observed"
+    },
+    "operationalCloseout": {
+      "const": "not-assessed"
+    },
+    "evaluationTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]{1,100}$"
+      }
+    },
+    "redaction": {
+      "const": "pass"
+    },
+    "javascript": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime",
+        "caseCount",
+        "resultDigest",
+        "productionByteIngress",
+        "referenceTrustVerifier"
+      ],
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "caseCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "resultDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "productionByteIngress": {
+          "const": "not-observed"
+        },
+        "referenceTrustVerifier": {
+          "const": "first-party-only"
+        }
+      }
+    },
+    "integrityDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
