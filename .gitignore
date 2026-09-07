@@ -50,6 +50,7 @@ debian/seednodes.fref
 output.*
 /split-file-inserter-storage-test
 .DS_Store
+.stfolder
 /.env
 qodana*
 /.claude
