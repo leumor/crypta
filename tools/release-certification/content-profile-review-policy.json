@@ -252,6 +252,24 @@
       "testCases": [
         "drafts_whenConvertedImportedEditedAndRecovered_expectDurablePrivateGuardedBehavior()"
       ]
+    },
+    {
+      "module": "platform-devtools",
+      "className": "network.crypta.platform.devtools.devserver.MockPlatformApiFixturesTest",
+      "resultFile": "platform-devtools/build/test-results/test/TEST-network.crypta.platform.devtools.devserver.MockPlatformApiFixturesTest.xml",
+      "testCases": [
+        "appVaultAndDocumentMocks_whenDefaultsRequested_expectDeterministicSafeResponses()",
+        "appsCurrent_whenFixtureMissing_expectDefaultWithEscapedAppPlaceholders()",
+        "node_whenFixtureContainsAbsoluteUnixPath_expectRejected()",
+        "platformContract_whenFixtureContainsNonRouteAbsolutePath_expectRejected()",
+        "platformContract_whenFixtureContainsRouteTemplates_expectAccepted()",
+        "platformContract_whenFixtureMissing_expectCurrentContractEnvelope()",
+        "platformContract_whenFixtureRouteTemplateContainsLocalPath_expectRejected()",
+        "profileRoute_whenVerifiedBySdk_expectSignedAppAndIdentityBinding()",
+        "queue_whenFixtureDirectoryIsSymlink_expectRejected()",
+        "socialMessagePost_whenBodyMissing_expectDeterministicBadRequest()",
+        "trustGraphMocks_whenDefaultsRequested_expectDeterministicPreviewResponses()"
+      ]
     }
   ],
   "serviceContracts": [

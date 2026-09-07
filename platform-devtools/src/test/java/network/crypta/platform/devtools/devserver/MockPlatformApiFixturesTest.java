@@ -18,10 +18,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import network.crypta.platform.api.PlatformApiBaselineRegistry;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.appdist.AppDistributionException;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,6 +35,71 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class MockPlatformApiFixturesTest {
   @TempDir private Path tempDir;
+
+  @Test
+  void profileRoute_whenVerifiedBySdk_expectSignedAppAndIdentityBinding() throws Exception {
+    boolean nodeAvailable;
+    try {
+      Process probe = new ProcessBuilder("node", "--version").start();
+      nodeAvailable = probe.waitFor(5, TimeUnit.SECONDS) && probe.exitValue() == 0;
+      if (probe.isAlive()) probe.destroyForcibly();
+    } catch (IOException _) {
+      nodeAvailable = false;
+    }
+    Assumptions.assumeTrue(nodeAvailable, "Node.js is required for SDK behavior tests.");
+    Path sdk = tempDir.resolve("sdk.js");
+    try (InputStream resource =
+        getClass().getResourceAsStream("/network/crypta/platform/sdk/js/crypta-platform.js")) {
+      Files.copy(java.util.Objects.requireNonNull(resource), sdk);
+    }
+    Path script = tempDir.resolve("verify.cjs");
+    Files.writeString(
+        script,
+        """
+        const fs = require('node:fs');
+        const vm = require('node:vm');
+        const assert = require('node:assert/strict');
+        const {webcrypto} = require('node:crypto');
+        const context = {TextEncoder, TextDecoder, Uint8Array,
+          window: {crypto: webcrypto, atob, TextEncoder}};
+        vm.createContext(context);
+        vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
+        (async () => {
+          const response = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+          assert.equal(response.mock, true);
+          const document = await context.window.CryptaPlatform.profile.verifyDocument(response.profileDocument);
+          assert.equal(document.profile.appId, process.argv[4]);
+          assert.equal(document.profile.identityId, 'local-profile');
+          assert.equal(document.profile.displayName, 'Local Profile');
+          document.profile.displayName = 'Not signed';
+          await assert.rejects(() => context.window.CryptaPlatform.profile.verifyDocument(document));
+        })().catch(error => { console.error(error); process.exitCode = 1; });
+        """);
+    for (String appId : java.util.List.of("profile-publisher", "social-inbox")) {
+      MockPlatformApiFixtures fixtures =
+          new MockPlatformApiFixtures(tempDir, appId, "Synthetic App", "1.0");
+      MockPlatformApi api = new MockPlatformApi("mock-session"::equals, fixtures);
+      TestHttpExchange exchange =
+          TestHttpExchange.post(
+              "/api/v1/app-vault/identities/local-profile/profile-document",
+              "displayName=Local+Profile");
+      api.handle(exchange);
+      assertEquals(200, exchange.responseCode());
+      assertEquals(fixtures.profileDocument("local-profile"), exchange.responseBody());
+      Path response = tempDir.resolve(appId + ".json");
+      Files.writeString(response, exchange.responseBody());
+      Path log = tempDir.resolve(appId + ".log");
+      Process process =
+          new ProcessBuilder("node", script.toString(), sdk.toString(), response.toString(), appId)
+              .redirectErrorStream(true)
+              .redirectOutput(log.toFile())
+              .start();
+      boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+      if (!finished) process.destroyForcibly();
+      assertTrue(finished, "SDK verification timed out.");
+      assertEquals(0, process.exitValue(), Files.readString(log));
+    }
+  }
 
   @Test
   void appsCurrent_whenFixtureMissing_expectDefaultWithEscapedAppPlaceholders() throws Exception {
@@ -159,7 +226,9 @@ class MockPlatformApiFixturesTest {
     assertTrue(createdIdentityBody.contains("\"identityId\":\"mock-created-profile\""));
     assertTrue(profileDocument.contains("\"action\":\"app-vault.identities.profile-document\""));
     assertTrue(profileDocument.contains("\"identityId\":\"local-profile\""));
-    assertTrue(profileDocument.contains("\"fingerprint\":\"mock-profile-fingerprint\""));
+    assertTrue(
+        profileDocument.contains(
+            "\"fingerprint\":\"06e3fd8fda29bb60ab59557de61edb0aecdb231134be30e75b455f8e1b792fa9\""));
     assertTrue(socialMessage.contains("\"action\":\"app-vault.identities.social-message\""));
     assertTrue(socialMessage.contains("\"type\":\"crypta.social.message.v1\""));
     assertTrue(socialMessage.contains("\"identityId\":\"local-profile\""));
