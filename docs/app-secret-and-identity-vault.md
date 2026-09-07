@@ -202,3 +202,12 @@ shared identities for profiles or contact-level signing, and mail apps can use v
 account identities or per-recipient secrets. New content, social, or mail routes should add their
 own capability checks while keeping the same process/browser restrictions, grant lifecycle, audit,
 and redaction rules.
+
+## Experimental Mail identities
+
+Mail adds independently generated `mail-signing-v1`, `mail-recipient-v1` and `mail-storage-v1`
+identities. Existing generic signing grants authorize none of their private operations. The fixed
+process-only Mail operations enforce owner, account, role, current grants and bounded wire inputs;
+keys remain in the existing encrypted vault. See [Mail vault boundary](mail-vault-boundary.md).
+Default uninstall deletes these identities even with preserved app data. A data-only backup cannot
+restore them or make retained ciphertext readable after key loss.

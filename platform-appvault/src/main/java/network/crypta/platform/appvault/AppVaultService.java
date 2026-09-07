@@ -802,9 +802,10 @@ public final class AppVaultService {
    * Disables or narrows active grants for permissions an updated manifest no longer declares.
    *
    * <p>App updates call this after the new manifest is committed. Metadata-read scopes are retained
-   * only when {@code vault.identities.read} remains declared, and use scopes are retained only when
-   * {@code vault.identities.use} remains declared. Mixed-scope grants are narrowed instead of fully
-   * disabled when at least one scope is still allowed.
+   * only when {@code vault.identities.read} remains declared. Generic use scopes require {@code
+   * vault.identities.use}; Mail scopes require their exact {@code vault.mail.*} capabilities.
+   * Mixed-scope grants are narrowed instead of fully disabled when at least one scope is still
+   * allowed.
    *
    * @param appId updated app id
    * @param newManifestPermissions permissions declared by the newly installed manifest
@@ -812,14 +813,12 @@ public final class AppVaultService {
   public synchronized void disableGrantsForRemovedVaultPermissions(
       String appId, Set<String> newManifestPermissions) {
     String normalizedAppId = AppVaultPaths.normalizeAppId(appId);
-    boolean identitiesUsePresent = newManifestPermissions.contains("vault.identities.use");
-    boolean identitiesReadPresent = newManifestPermissions.contains("vault.identities.read");
     for (AppIdentityGrant grant : listGrantsForApp(normalizedAppId)) {
       if (grant.status() != AppIdentityGrantStatus.ACTIVE) {
         continue;
       }
       Set<AppIdentityGrantScope> retainedScopes =
-          scopesAllowedByManifest(grant.scopes(), identitiesReadPresent, identitiesUsePresent);
+          scopesAllowedByManifest(grant.scopes(), newManifestPermissions);
       if (retainedScopes.isEmpty()) {
         updateGrantStatus(grant.grantId(), AppIdentityGrantStatus.INACTIVE);
       } else if (!retainedScopes.equals(grant.scopes())) {
@@ -994,6 +993,71 @@ public final class AppVaultService {
     return List.copyOf(matches);
   }
 
+  /**
+   * Creates an independently generated experimental Mail identity with its narrow self-grant.
+   * Central API authorization must restrict this entry point to the live Mail process.
+   *
+   * @param appId authenticated owning app
+   * @param kind dedicated Mail signing, recipient or storage kind
+   * @return public metadata, never private material
+   */
+  public synchronized AppIdentityRecord createMailIdentity(String appId, AppIdentityKind kind) {
+    return mailOperations().create(appId, kind);
+  }
+
+  /**
+   * Signs a validated contact or message payload with the dedicated Mail signing identity.
+   *
+   * @param appId authenticated owning app
+   * @param identityId retained signing identity
+   * @param payload canonical unsigned Mail payload
+   * @return complete signed wrapper
+   */
+  public synchronized byte[] signMail(String appId, String identityId, byte[] payload) {
+    return mailOperations().sign(appId, identityId, payload);
+  }
+
+  /**
+   * Authenticates and opens a bounded network envelope for the retained recipient identity. The
+   * worker must still verify the inner sender signature, recipient binding and contact policy.
+   *
+   * @param appId authenticated owning app
+   * @param identityId retained recipient identity
+   * @param envelope complete encrypted network envelope
+   * @return authenticated plaintext for the authorized process
+   */
+  public synchronized byte[] openMail(String appId, String identityId, byte[] envelope) {
+    return mailOperations().open(appId, identityId, envelope, false);
+  }
+
+  /**
+   * Protects bounded app-owned state with the separate retained local-storage identity.
+   *
+   * @param appId authenticated owning app
+   * @param identityId retained storage identity
+   * @param plaintext complete bounded state
+   * @return storage envelope, never valid as a network Mail envelope
+   */
+  public synchronized byte[] sealStorage(String appId, String identityId, byte[] plaintext) {
+    return mailOperations().sealStorage(appId, identityId, plaintext);
+  }
+
+  /**
+   * Authenticates and opens state under the separate local-storage purpose and identity.
+   *
+   * @param appId authenticated owning app
+   * @param identityId retained storage identity
+   * @param envelope complete encrypted storage envelope
+   * @return authenticated private app state
+   */
+  public synchronized byte[] openStorage(String appId, String identityId, byte[] envelope) {
+    return mailOperations().open(appId, identityId, envelope, true);
+  }
+
+  private MailVaultOperations mailOperations() {
+    return new MailVaultOperations(this, store, keyProvider, secureRandom);
+  }
+
   private AppIdentityRecord createIdentity(
       AppIdentityKind kind,
       String label,
@@ -1130,10 +1194,6 @@ public final class AppVaultService {
     return normalizedScopes;
   }
 
-  private static boolean requiresIdentityUseCapability(AppIdentityGrantScope scope) {
-    return scope != AppIdentityGrantScope.METADATA_READ;
-  }
-
   private void updateGrantScopes(AppIdentityGrant grant, Set<AppIdentityGrantScope> scopes) {
     AppIdentityGrant updated = grant.withScopes(scopes, Instant.now());
     try {
@@ -1151,13 +1211,18 @@ public final class AppVaultService {
   }
 
   private static Set<AppIdentityGrantScope> scopesAllowedByManifest(
-      Set<AppIdentityGrantScope> scopes,
-      boolean identitiesReadPresent,
-      boolean identitiesUsePresent) {
+      Set<AppIdentityGrantScope> scopes, Set<String> permissions) {
     TreeSet<AppIdentityGrantScope> retained = new TreeSet<>();
     for (AppIdentityGrantScope scope : scopes) {
-      if ((scope == AppIdentityGrantScope.METADATA_READ && identitiesReadPresent)
-          || (requiresIdentityUseCapability(scope) && identitiesUsePresent)) {
+      String capability =
+          switch (scope) {
+            case METADATA_READ -> "vault.identities.read";
+            case MAIL_SIGN -> "vault.mail.sign";
+            case MAIL_OPEN -> "vault.mail.open";
+            case MAIL_STORAGE -> "vault.mail.storage";
+            default -> "vault.identities.use";
+          };
+      if (permissions.contains(capability)) {
         retained.add(scope);
       }
     }

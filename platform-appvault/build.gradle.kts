@@ -9,6 +9,7 @@ version = rootProject.version
 val mainSourceSet = sourceSets.named("main")
 
 dependencies {
+  implementation(project(":foundation-crypto-keys"))
   compileOnly(libs.jetbrainsAnnotations)
 
   testImplementation(mainSourceSet.map { it.output })

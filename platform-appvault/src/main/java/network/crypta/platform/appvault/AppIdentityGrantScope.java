@@ -13,9 +13,9 @@ import java.util.Objects;
  * operations.
  *
  * <p>Some enum values are reserved for future content-reference applications. The live v1 local
- * Ed25519 signing implementation accepts metadata reads and domain-separated signing only; other
- * scopes remain part of the persistent vocabulary so future identity kinds can use them without a
- * storage-format change.
+ * Ed25519 signing implementation accepts metadata reads and domain-separated signing only.
+ * Dedicated experimental Mail identities accept their distinct typed operation scopes; generic
+ * signing authorization never grants Mail decryption. Other scopes remain reserved vocabulary.
  */
 public enum AppIdentityGrantScope {
   /**
@@ -25,6 +25,15 @@ public enum AppIdentityGrantScope {
    * fingerprints, and public summaries, not private key material.
    */
   METADATA_READ("metadata.read"),
+
+  /** Sign only validated experimental Mail contact or message preimages. */
+  MAIL_SIGN("mail.sign"),
+
+  /** Open only the fixed experimental network Mail envelope with its recipient key. */
+  MAIL_OPEN("mail.open"),
+
+  /** Seal and open app-owned storage using the separate experimental storage domain. */
+  MAIL_STORAGE("mail.storage"),
 
   /**
    * Sign a domain-separated payload without exposing private key material.
