@@ -312,5 +312,42 @@
     "trust-zero-is-distinct-from-no-evidence",
     "outbox-byte-envelope-boundaries-and-unsigned-membership",
     "signature-runtime-unavailable-fails-closed"
+  ],
+  "profiles": [
+    {
+      "profileId": "crypta.profile.v1",
+      "version": 1,
+      "effectiveStatus": "experimental",
+      "recommendedStatus": "experimental",
+      "decision": "retain-experimental"
+    },
+    {
+      "profileId": "crypta.feed.snapshot.v1",
+      "version": 1,
+      "effectiveStatus": "stable",
+      "recommendedStatus": "stable",
+      "decision": "retain-stable"
+    },
+    {
+      "profileId": "crypta.trust.statement.v1",
+      "version": 1,
+      "effectiveStatus": "experimental",
+      "recommendedStatus": "experimental",
+      "decision": "retain-experimental"
+    },
+    {
+      "profileId": "crypta.social.message.v1",
+      "version": 1,
+      "effectiveStatus": "experimental",
+      "recommendedStatus": "experimental",
+      "decision": "retain-experimental"
+    },
+    {
+      "profileId": "crypta.social.outbox.v1",
+      "version": 1,
+      "effectiveStatus": "experimental",
+      "recommendedStatus": "experimental",
+      "decision": "retain-experimental"
+    }
   ]
 }

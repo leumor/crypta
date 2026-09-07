@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 
 from ..io import read_json_bytes, write_json
@@ -76,8 +77,9 @@ def corpus_identity(root: Path) -> dict:
 
 
 def validate_policy(policy: dict) -> None:
-    if set(policy) != {"schemaVersion", "evaluationTime", "suites", "serviceContracts", "limitations", "javascriptGroups"}:
+    if set(policy) != {"schemaVersion", "evaluationTime", "suites", "serviceContracts", "limitations", "javascriptGroups", "profiles"}:
         raise ValueError("profile-review-policy-fields-invalid")
+    profile_decisions(policy)
     suites = policy["suites"]
     if not suites or len({suite["className"] for suite in suites}) != len(suites):
         raise ValueError("profile-review-suite-set-invalid")
@@ -116,20 +118,37 @@ def test_results(root: Path, suites: list[dict]) -> list[dict]:
     return results
 
 
-def registry_rows(value: dict) -> list[dict]:
+def profile_decisions(policy: dict) -> list[dict]:
+    """Require a closed, complete set of explicitly reviewed retention decisions."""
+    rows = policy.get("profiles", [])
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("profile-review-policy-profile-set-invalid")
+    if tuple(row.get("profileId") for row in rows) != CONTENT_PROFILE_IDS:
+        raise ValueError("profile-review-policy-profile-set-invalid")
+    for row in rows:
+        if set(row) != {"profileId", "version", "effectiveStatus", "recommendedStatus", "decision"}:
+            raise ValueError("profile-review-policy-profile-fields-invalid")
+        status = row["effectiveStatus"]
+        if (type(row["version"]) is not int or row["version"] != 1
+                or status not in {"stable", "experimental", "beta"}
+                or row["recommendedStatus"] != status or row["decision"] != "retain-" + status):
+            raise ValueError("profile-review-policy-decision-invalid")
+    return rows
+
+
+def registry_rows(value: dict, policy: dict) -> list[dict]:
     if value.get("schemaVersion") != 1 or value.get("kind") != "content-format-profile-registry":
         raise ValueError("profile-review-registry-invalid")
     rows = value.get("profiles", [])
     if tuple(row.get("id") for row in rows) != CONTENT_PROFILE_IDS:
         raise ValueError("profile-review-registry-set-invalid")
     result = []
-    for row in rows:
-        status = row.get("status")
-        if status not in {"stable", "experimental", "beta"}:
-            raise ValueError("profile-review-status-requires-review")
-        result.append({"profileId": row["id"], "version": row["majorVersion"],
-                       "effectiveStatus": status, "recommendedStatus": status,
-                       "decision": "retain-" + status, "descriptorDigest": semantic_digest(row)})
+    for row, decision in zip(rows, profile_decisions(policy)):
+        if (type(row.get("majorVersion")) is not int
+                or row.get("status") != decision["effectiveStatus"]
+                or row.get("majorVersion") != decision["version"]):
+            raise ValueError("profile-review-status-or-version-requires-review")
+        result.append({**decision, "descriptorDigest": semantic_digest(row)})
     return result
 
 
@@ -166,24 +185,58 @@ def service_definition_digest(root: Path) -> str:
     return semantic_digest(descriptor)
 
 
+def _validate_output_path(root: Path, path: Path, *, directory: bool = False) -> None:
+    """Reject links and nonregular destinations, including linked parent directories."""
+    base = root.absolute()
+    relative = path.absolute().relative_to(base)
+    if ".." in relative.parts:
+        raise ValueError("profile-review-output-outside-workspace")
+    current = base
+    for index, part in enumerate(relative.parts):
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("profile-review-output-symlink")
+        if current.exists():
+            wants_directory = directory or index < len(relative.parts) - 1
+            if not (current.is_dir() if wants_directory else current.is_file()):
+                raise ValueError("profile-review-output-type-invalid")
+
+
+def _validate_outputs(root: Path) -> Path:
+    output = root / "build/content-profile-review"
+    _validate_output_path(root, output, directory=True)
+    if output.exists():
+        for path in output.iterdir():
+            _validate_output_path(root, path)
+    return output
+
+
 def _execute(root: Path, command: list[str], log: Path) -> None:
-    # Output can contain assertion payloads. Keep raw logs local, outside public summaries.
-    with log.open("wb") as output:
-        completed = subprocess.run(command, cwd=root, stdout=output, stderr=subprocess.STDOUT)
+    # Capture privately and replace atomically: never truncate an existing link or hardlink target.
+    _validate_output_path(root, log)
+    descriptor, name = tempfile.mkstemp(prefix=".review-log-", dir=log.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            completed = subprocess.run(command, cwd=root, stdout=output, stderr=subprocess.STDOUT)
+        _validate_output_path(root, log)
+        os.replace(temporary, log)
+    finally:
+        temporary.unlink(missing_ok=True)
     if completed.returncode:
         raise ValueError("profile-review-execution-failed")
 
 
 def run(root: Path, mode: str) -> int:
     """Inspect metadata or execute the fixed local suite; never import caller pass receipts."""
-    output = root / "build/content-profile-review"
-    output.mkdir(parents=True, exist_ok=True)
-    summary_path = output / "summary.json"
-    failure_path = output / "failure.json"
-    if mode == "review":
-        summary_path.unlink(missing_ok=True)
-        write_json(failure_path, {"kind": "content-profile-review-failure", "state": "incomplete-or-failed"})
     try:
+        output = _validate_outputs(root)
+        output.mkdir(parents=True, exist_ok=True)
+        summary_path = output / "summary.json"
+        failure_path = output / "failure.json"
+        if mode == "review":
+            summary_path.unlink(missing_ok=True)
+            write_json(failure_path, {"kind": "content-profile-review-failure", "state": "incomplete-or-failed"})
         policy = read_json_bytes((root / POLICY).read_bytes(), "review policy")
         validate_policy(policy)
         source = source_identity(root)
@@ -204,7 +257,7 @@ def run(root: Path, mode: str) -> int:
         registry_path.unlink(missing_ok=True)
         launcher = root / "platform-devtools/build/install/crypta-app/bin" / ("crypta-app.bat" if os.name == "nt" else "crypta-app")
         _execute(root, [str(launcher), "api", "content-formats", "--output", str(registry_path)], output / "registry-private.log")
-        rows = registry_rows(read_json_bytes(registry_path.read_bytes(), "registry"))
+        rows = registry_rows(read_json_bytes(registry_path.read_bytes(), "registry"), policy)
         results = test_results(root, policy["suites"])
         javascript_log = output / "javascript-private.log"
         _execute(root, ["node", "platform-sdk-js/src/test/resources/content-profile-conformance.cjs", "."], javascript_log)
@@ -239,6 +292,7 @@ def run(root: Path, mode: str) -> int:
 
 def bound_summary(root: Path) -> dict | None:
     """Validate local report integrity and current artifacts; this is not runner authentication."""
+    _validate_outputs(root)
     path = root / SUMMARY
     if (path.parent / "failure.json").exists():
         raise ValueError("profile-review-execution-incomplete-or-failed")
@@ -260,7 +314,7 @@ def bound_summary(root: Path) -> dict | None:
             or value["registryExactFileDigest"] != digest(registry)
             or value["results"] != test_results(root, policy["suites"])
             or value["javascript"] != javascript_results(root, root / "build/content-profile-review/javascript-private.log", policy)
-            or value["profiles"] != registry_rows(read_json_bytes(registry.read_bytes(), "registry"))
+            or value["profiles"] != registry_rows(read_json_bytes(registry.read_bytes(), "registry"), policy)
             or value["serviceContracts"] != policy["serviceContracts"]
             or value["evaluationTime"] != policy["evaluationTime"]
             or value["limitations"] != policy["limitations"]

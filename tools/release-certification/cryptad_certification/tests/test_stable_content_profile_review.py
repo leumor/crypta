@@ -1,7 +1,10 @@
 """Adversarial tests of local conformance binding; no test fixture is runtime authority."""
 from __future__ import annotations
 
+import copy
 import json
+import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -15,6 +18,7 @@ class ContentProfileReviewTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        self.policy = json.loads((Path(__file__).resolve().parents[2] / "content-profile-review-policy.json").read_text())
         self.suite = {"resultFile": "result.xml", "className": "synthetic.Test", "testCases": ["case()"]}
 
     def xml(self, body='<testcase classname="synthetic.Test" name="case()"/>'):
@@ -50,7 +54,7 @@ class ContentProfileReviewTest(unittest.TestCase):
     def test_registry_preserves_effective_status_and_original_digest_semantics(self):
         rows = [{"id": name, "majorVersion": 1, "status": "stable" if "feed" in name else "experimental"}
                 for name in review.CONTENT_PROFILE_IDS]
-        result = review.registry_rows({"schemaVersion": 1, "kind": "content-format-profile-registry", "profiles": rows})
+        result = review.registry_rows({"schemaVersion": 1, "kind": "content-format-profile-registry", "profiles": rows}, self.policy)
         for source, projected in zip(rows, result):
             self.assertEqual(source["status"], projected["effectiveStatus"])
             self.assertEqual(source["status"], projected["recommendedStatus"])
@@ -61,7 +65,7 @@ class ContentProfileReviewTest(unittest.TestCase):
                     review.CONTENT_PROFILE_IDS[:-1] + (review.CONTENT_PROFILE_IDS[0],)):
             with self.assertRaises(ValueError):
                 review.registry_rows({"schemaVersion": 1, "kind": "content-format-profile-registry",
-                                      "profiles": [{"id": name} for name in ids]})
+                                      "profiles": [{"id": name} for name in ids]}, self.policy)
 
     def test_duplicate_cases_and_missing_profiles_rejected(self):
         directory = self.root / review.CORPUS
@@ -106,9 +110,10 @@ class ContentProfileReviewTest(unittest.TestCase):
                 review.javascript_results(self.root, log, policy)
 
     def test_empty_suite_policy_cannot_claim_review(self):
-        with self.assertRaises(ValueError):
-            review.validate_policy({"schemaVersion": 1, "evaluationTime": "2026-09-06T00:00:00Z",
-                                    "suites": [], "serviceContracts": [], "limitations": [], "javascriptGroups": []})
+        policy = copy.deepcopy(self.policy)
+        policy["suites"] = []
+        with self.assertRaisesRegex(ValueError, "suite-set-invalid"):
+            review.validate_policy(policy)
 
     def test_vector_bytes_cannot_change_behind_manifest_digest(self):
         directory = self.root / review.CORPUS
@@ -130,3 +135,91 @@ class ContentProfileReviewTest(unittest.TestCase):
         failure.write_text('{"state":"incomplete-or-failed"}')
         with self.assertRaisesRegex(ValueError, "incomplete-or-failed"):
             review.bound_summary(self.root)
+
+    def test_unreviewed_registry_status_and_version_changes_rejected(self):
+        rows = [{"id": row["profileId"], "majorVersion": row["version"],
+                 "status": row["effectiveStatus"]} for row in self.policy["profiles"]]
+        for index in range(len(rows)):
+            for field, replacement in (("status", "beta"), ("status", "deprecated"),
+                                       ("status", "stable" if index != 1 else "experimental"),
+                                       ("majorVersion", 2)):
+                with self.subTest(index=index, field=field, replacement=replacement):
+                    altered = copy.deepcopy(rows)
+                    altered[index][field] = replacement
+                    with self.assertRaisesRegex(ValueError, "requires-review"):
+                        review.registry_rows({"schemaVersion": 1, "kind": "content-format-profile-registry",
+                                              "profiles": altered}, self.policy)
+
+    def test_policy_requires_complete_consistent_maturity_decisions(self):
+        for replacement in ([], self.policy["profiles"][:-1], self.policy["profiles"] * 2):
+            altered = copy.deepcopy(self.policy)
+            altered["profiles"] = replacement
+            with self.assertRaises(ValueError):
+                review.validate_policy(altered)
+        for field, value in (("recommendedStatus", "stable"), ("decision", "retain-stable"),
+                             ("version", True), ("unexpected", True)):
+            altered = copy.deepcopy(self.policy)
+            altered["profiles"][0][field] = value
+            with self.assertRaises(ValueError):
+                review.validate_policy(altered)
+
+    def test_review_refuses_existing_and_dangling_output_links_without_writes(self):
+        output = self.root / "build/content-profile-review"
+        output.mkdir(parents=True)
+        with tempfile.TemporaryDirectory() as outside:
+            target = Path(outside) / "protected"
+            for name in ("execution-private.log", "javascript-private.log", "registry-private.log",
+                         "registry.json", "summary.json", "failure.json"):
+                for exists in (True, False):
+                    with self.subTest(name=name, exists=exists):
+                        if exists:
+                            target.write_bytes(b"unchanged")
+                        link = output / name
+                        link.symlink_to(target)
+                        with patch.object(review.subprocess, "run") as process:
+                            self.assertEqual(1, review.run(self.root, "review"))
+                            process.assert_not_called()
+                        with self.assertRaises(ValueError):
+                            review.bound_summary(self.root)
+                        self.assertTrue(link.is_symlink())
+                        self.assertEqual(exists, target.exists())
+                        if exists:
+                            self.assertEqual(b"unchanged", target.read_bytes())
+                            target.unlink()
+                        link.unlink()
+
+    def test_review_refuses_linked_output_parent_directories(self):
+        with tempfile.TemporaryDirectory() as outside:
+            target = Path(outside)
+            for relative in ("build", "build/content-profile-review"):
+                link = self.root / relative
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(target, target_is_directory=True)
+                with patch.object(review.subprocess, "run") as process:
+                    self.assertEqual(1, review.run(self.root, "review"))
+                    process.assert_not_called()
+                self.assertEqual([], list(target.iterdir()))
+                link.unlink()
+
+    def test_execute_refuses_linked_log_before_starting_process(self):
+        target = self.root / "protected"
+        target.write_bytes(b"unchanged")
+        log = self.root / "execution-private.log"
+        log.symlink_to(target)
+        with patch.object(review.subprocess, "run") as process:
+            with self.assertRaises(ValueError):
+                review._execute(self.root, [sys.executable, "-c", "print('synthetic')"], log)
+            process.assert_not_called()
+        self.assertEqual(b"unchanged", target.read_bytes())
+
+    def test_execute_replaces_regular_or_hardlinked_logs_without_truncating_target(self):
+        target = self.root / "protected"
+        target.write_bytes(b"unchanged")
+        log = self.root / "execution-private.log"
+        os.link(target, log)
+        review._execute(self.root, [sys.executable, "-c", "print('synthetic')"], log)
+        self.assertEqual(b"unchanged", target.read_bytes())
+        self.assertEqual(b"synthetic\n", log.read_bytes())
+        review._execute(self.root, [sys.executable, "-c", "print('replacement')"], log)
+        self.assertEqual(b"replacement\n", log.read_bytes())
+        self.assertEqual([], list(self.root.glob(".review-log-*")))

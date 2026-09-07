@@ -34,6 +34,11 @@ and [local service review](trust-social-local-service-review.md). The registry e
 | `crypta.social.outbox.v1`, major 1 | experimental / experimental | Social Inbox snapshot generator → actual controller import | Unsigned bounded collection of individually signed messages; wrapper labels, time, order and membership unauthenticated | Retain experimental. Signed aggregate freshness/completeness requires a new version/proposal; no guaranteed deletion. |
 | `trust.score`, service version 1 | experimental local service / unchanged | `TrustGraphScoreAppServiceAdapter` via `AppServiceCoordinator` → optional Social Inbox annotation | Provider `trust-graph`, consumer `social-inbox`, scope `score.read`, invoke-time grants/context/dependency checks | Separate from content registry. Unknown evidence and genuine zero differ. Expired/revoked grants have distinct lifecycle states but can share invocation denial. Unsalted subject hashes are local correlation, not anonymity. |
 
+The review policy pins each profile's version, expected effective status, recommended status and
+retention decision. Registry status or major-version drift fails review instead of deriving a new
+recommendation from the changed registry. The existing registry still supplies the authoritative
+descriptor and its digest; changing a policy pin requires an explicit reviewed policy change.
+
 No effective status, wire lifecycle enum, app-service version, `/api/v1`, integer contract 24,
 frozen Platform API baseline 1.0, catalog trust or permission changes follow from the review.
 A stable document does not stabilize its vault/service/publishing routes or activate baseline 1.1.
@@ -66,6 +71,10 @@ corpus, policy, exported registry and exact test-result bytes. Changes during ex
 It is not a wall-clock or remote-runner attestation. Raw assertion/process output stays in local
 `*-private.log` files and must not be uploaded.
 Only the summary and its declared public metadata belong in normal release reporting.
+The review refuses symlinked output directories, parent directories and existing output files
+before writing. Subprocess logs are captured in private temporary files and atomically replace
+regular destinations, so an existing linked file is not truncated. The collector rejects unsafe
+output paths as well.
 
 The existing `app-platform.trust-social-content-format-profiles` collector labels its historical
 checks `source-inspection` and separately attaches a currently bound executable review when one
