@@ -14,7 +14,9 @@ signed-bundle verification and explicitly accept experimental permissions. Mail 
 must not be automatically selected from Stable.
 
 The host must configure the exact loopback Platform API endpoint before launching Mail. The
-launcher accepts the endpoint and process credential only from AppHost. Keys remain in AppVault;
+launcher accepts the endpoint, process credential and explicit Java executable only from AppHost.
+It uses the daemon's Java 25+ runtime, including bundled runtimes, rather than system `PATH` Java.
+Keys remain in AppVault;
 the app worker owns contacts, state and scheduling. Browser state is transient and no process token
 or plaintext is placed in browser persistent storage.
 
@@ -36,6 +38,10 @@ Opening UI, importing a contact or displaying a message does not automatically f
 The generic private result panel shows bounded worker statuses, including unavailable vault,
 unknown sender, wrong recipient, expired, rejected, duplicate, quota and network failures. Private
 operation identifiers let you retry committed sealed operations after an uncertain insert outcome.
+Retry refuses a new enqueue or queue restart once the retained signed message expires, preserving
+its sealed bytes; an already successful insertion remains visible even after expiry.
+Incoming messages must fit within both the pinned sender card's and the local recipient card's
+validity intervals before inbox or replay state is recorded.
 
 ## Backup, rollback and key loss
 

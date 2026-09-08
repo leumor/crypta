@@ -1139,6 +1139,20 @@ public final class LocalProcessAppHost implements AppHost {
     if ("mail-prototype".equals(normalizedAppId)) {
       if (mailPlatformApiEndpoint == null) throw new AppHostException("mail_endpoint_unavailable");
       launchEnvironment.put("CRYPTAD_MAIL_API_ENDPOINT", mailPlatformApiEndpoint.toASCIIString());
+      if (Runtime.version().feature() < 25) throw new AppHostException("mail_java_unavailable");
+      try {
+        Path mailJava =
+            appEnv
+                .javaHome()
+                .toRealPath()
+                .resolve("bin")
+                .resolve(appEnv.isWindows() ? "java.exe" : "java");
+        if (!Files.isRegularFile(mailJava) || !Files.isExecutable(mailJava))
+          throw new AppHostException("mail_java_unavailable");
+        launchEnvironment.put("CRYPTAD_MAIL_JAVA", mailJava.toString());
+      } catch (IOException | IllegalStateException exception) {
+        throw new AppHostException("mail_java_unavailable");
+      }
     }
     AppSandboxLaunchPlan launchPlan;
     try {

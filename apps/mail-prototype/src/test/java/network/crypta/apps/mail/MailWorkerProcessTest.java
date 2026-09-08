@@ -40,6 +40,43 @@ class MailWorkerProcessTest {
   @TempDir Path root;
 
   @Test
+  void malformedCommandsReturnBoundedFailureWithoutStoppingOrMutatingWorker() throws Exception {
+    Map<String, byte[]> network = new ConcurrentHashMap<>();
+    try (Endpoint endpoint = new Endpoint(root.resolve("invalid-command"), network)) {
+      endpoint.start();
+      assertEquals("ready", endpoint.command("initialize", Map.of()).get("status"));
+      long pid = endpoint.child.pid();
+      String backup = endpoint.command("backup", Map.of()).get("backup");
+      endpoint.privateCanaries.add("MALFORMED_PRIVATE_CANARY");
+      for (String json :
+          java.util.List.of(
+              "{\"unused\":[null]}",
+              "{\"unused\":[null,\"MALFORMED_PRIVATE_CANARY\"]}",
+              "{\"unused\":{\"nested\":null}}",
+              "{\"unused\":null}",
+              "{\"unused\":false}",
+              "{\"unused\":1}",
+              "[]",
+              "null",
+              "{\"unused\":[",
+              "{\"a\":\"x\",\"a\":\"y\"}")) {
+        assertEquals(
+            Map.of("status", "invalid"),
+            endpoint.rawCommand("status", json.getBytes(StandardCharsets.UTF_8)));
+        assertEquals("ready", endpoint.command("status", Map.of()).get("status"));
+        assertEquals(pid, endpoint.host.status("mail-prototype").orElseThrow().pid());
+      }
+      assertEquals(
+          Map.of("status", "invalid"),
+          endpoint.rawCommand("status", new byte[] {(byte) 0xc3, 0x28}));
+      assertTrue(
+          backup.equals(endpoint.command("backup", Map.of()).get("backup")),
+          "Invalid command changed private state.");
+      assertTrue(network.isEmpty());
+    }
+  }
+
+  @Test
   void twoIndependentWorkersExchangeLiteralMailRestartDeduplicateAndReply() throws Exception {
     Map<String, byte[]> simulatedNetwork = new ConcurrentHashMap<>();
     String canary = "PUBLIC SYNTHETIC MAIL TEST <script>neverExecute()</script> \u2603";
@@ -406,8 +443,11 @@ class MailWorkerProcessTest {
 
     Map<String, String> command(String command, Map<String, String> payload) throws Exception {
       recordCanaries(payload);
-      String requestId =
-          broker.submit(command, Base64.getEncoder().encodeToString(MailWire.encode(payload)));
+      return rawCommand(command, MailWire.encode(payload));
+    }
+
+    Map<String, String> rawCommand(String command, byte[] payload) throws Exception {
+      String requestId = broker.submit(command, Base64.getEncoder().encodeToString(payload));
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(29);
       while (System.nanoTime() < deadline) {
         var encoded = broker.result(requestId);

@@ -125,6 +125,7 @@ dependencies {
 
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(project(":platform-apphost"))
+  testImplementation(project(":foundation-fs"))
   testImplementation(project(":platform-appdist"))
   testImplementation(project(":platform-devtools"))
   testImplementation(libs.bcprov)

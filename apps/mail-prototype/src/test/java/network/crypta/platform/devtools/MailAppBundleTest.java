@@ -89,6 +89,95 @@ class MailAppBundleTest {
     assertEquals(0, child.exitValue(), output);
   }
 
+  @Test
+  void launcherUsesQuotedHostJavaAndIgnoresConflictingPathJava() throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+        new network.crypta.fs.AppEnv().onPath("sh")
+            && Files.getFileStore(temporary).supportsFileAttributeView("posix"),
+        "POSIX launcher test requires an executable shell and POSIX file permissions.");
+    Path bundle = Files.createDirectories(temporary.resolve("bundle with spaces"));
+    Path bin = Files.createDirectories(bundle.resolve("bin"));
+    Path launcher =
+        Files.copy(stage().resolve("bin/mail-prototype.sh"), bin.resolve("mail-prototype.sh"));
+    Path selected =
+        Files.createDirectories(temporary.resolve("host runtime with spaces")).resolve("java");
+    Files.writeString(selected, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MAIL_TEST_ARGUMENTS\"\n");
+    Files.setPosixFilePermissions(
+        selected, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+    Path poisonDirectory = Files.createDirectories(temporary.resolve("poison-path"));
+    Path poison = poisonDirectory.resolve("java");
+    Files.writeString(
+        poison, "#!/bin/sh\nprintf poisoned > \"$MAIL_TEST_POISON_MARKER\"\nexit 99\n");
+    Files.setPosixFilePermissions(
+        poison, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+    Path arguments = temporary.resolve("selected-java-arguments");
+    Path poisonMarker = temporary.resolve("poison-marker");
+    ProcessBuilder builder = new ProcessBuilder("sh", launcher.toString());
+    builder.directory(temporary.toFile());
+    builder.environment().clear();
+    builder.environment().put("PATH", poisonDirectory + ":/usr/bin:/bin");
+    builder.environment().put("CRYPTAD_APP_TOKEN", "SYNTHETIC_PROCESS_TOKEN_CANARY");
+    builder.environment().put("CRYPTAD_MAIL_API_ENDPOINT", "http://127.0.0.1:1/api/v1");
+    builder.environment().put("CRYPTAD_MAIL_JAVA", selected.toString());
+    builder.environment().put("MAIL_TEST_ARGUMENTS", arguments.toString());
+    builder.environment().put("MAIL_TEST_POISON_MARKER", poisonMarker.toString());
+    Process child = builder.start();
+    try {
+      assertTrue(
+          child.waitFor(10, TimeUnit.SECONDS), "Launcher did not exit within its test deadline.");
+      assertEquals(0, child.exitValue());
+      assertFalse(Files.exists(poisonMarker), "Launcher executed Java selected by PATH.");
+      var passedArguments = Files.readAllLines(arguments);
+      assertEquals(3, passedArguments.size());
+      assertEquals("-cp", passedArguments.get(0));
+      assertTrue(passedArguments.get(1).endsWith("/*"));
+      String classpathRoot =
+          passedArguments.get(1).substring(0, passedArguments.get(1).length() - 2);
+      assertTrue(
+          Path.of(classpathRoot).normalize().equals(bundle.resolve("lib")),
+          "Launcher classpath was not bundle-relative.");
+      assertEquals("network.crypta.apps.mail.MailWorker", passedArguments.get(2));
+      assertEquals(0, child.getInputStream().readAllBytes().length);
+      assertEquals(0, child.getErrorStream().readAllBytes().length);
+    } finally {
+      child.destroyForcibly();
+    }
+  }
+
+  @Test
+  void launcherWithoutHostJavaFailsBeforeExecutingPathJava() throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+        new network.crypta.fs.AppEnv().onPath("sh")
+            && Files.getFileStore(temporary).supportsFileAttributeView("posix"),
+        "POSIX launcher test requires an executable shell and POSIX file permissions.");
+    Path poison = temporary.resolve("java");
+    Path poisonMarker = temporary.resolve("poison-marker");
+    Files.writeString(
+        poison, "#!/bin/sh\nprintf poisoned > \"$MAIL_TEST_POISON_MARKER\"\nexit 99\n");
+    Files.setPosixFilePermissions(
+        poison, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+    ProcessBuilder builder =
+        new ProcessBuilder("sh", stage().resolve("bin/mail-prototype.sh").toString());
+    builder.environment().clear();
+    builder.environment().put("PATH", temporary + ":/usr/bin:/bin");
+    builder.environment().put("CRYPTAD_APP_TOKEN", "SYNTHETIC_PROCESS_TOKEN_CANARY");
+    builder.environment().put("CRYPTAD_MAIL_API_ENDPOINT", "http://127.0.0.1:1/api/v1");
+    builder.environment().put("MAIL_TEST_POISON_MARKER", poisonMarker.toString());
+    Process child = builder.start();
+    try {
+      assertTrue(child.waitFor(10, TimeUnit.SECONDS), "Launcher did not reject missing host Java.");
+      assertTrue(child.exitValue() != 0);
+      assertFalse(Files.exists(poisonMarker), "Missing host Java must not fall back to PATH.");
+      String output =
+          new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+              + new String(child.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+      assertFalse(output.contains("SYNTHETIC_PROCESS_TOKEN_CANARY"));
+      assertFalse(output.contains("http://127.0.0.1:1/api/v1"));
+    } finally {
+      child.destroyForcibly();
+    }
+  }
+
   private static Path stage() {
     return Path.of(System.getProperty("mailPrototype.stageDir"));
   }

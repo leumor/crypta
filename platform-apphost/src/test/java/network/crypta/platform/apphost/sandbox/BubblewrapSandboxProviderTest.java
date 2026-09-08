@@ -357,6 +357,66 @@ class BubblewrapSandboxProviderTest {
         });
   }
 
+  @Test
+  void mailRuntimeOutsideSystemPathsMountsOnlyExecutableLibrariesAndPublicSecurity()
+      throws IOException {
+    Path home = tempDir.resolve("private host/runtime with spaces");
+    Files.createDirectories(home.resolve("bin"));
+    Files.createDirectories(home.resolve("lib"));
+    Files.createDirectories(home.resolve("conf/security"));
+    Files.writeString(home.resolve("conf/security/java.security"), "crypto.policy=unlimited");
+    Files.createDirectories(home.resolve("conf/management"));
+    Path password = Files.writeString(home.resolve("conf/management/jmxremote.password"), "CANARY");
+    var ordinary = context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+    var mail =
+        new AppSandboxLaunchContext(
+            "mail-prototype",
+            ordinary.installDir(),
+            ordinary.dataDir(),
+            ordinary.cacheDir(),
+            ordinary.runDir(),
+            ordinary.logDir(),
+            ordinary.command(),
+            Map.of("CRYPTAD_MAIL_JAVA", tempDir.resolve("untrusted/java").toString()),
+            ordinary.workingDirectory(),
+            ordinary.policy(),
+            ordinary.appEnv());
+    var builder = new BubblewrapCommandBuilder(List.of(), home);
+
+    var plan = builder.build("bwrap", mail);
+
+    assertMount(plan, home.resolve("bin"), BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(plan, home.resolve("lib"), BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(
+        plan,
+        home.resolve("conf/security/java.security"),
+        BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(
+                m ->
+                    m.source().equals(home)
+                        || m.source().equals(home.getParent())
+                        || m.source().equals(home.resolve("conf"))
+                        || m.source().equals(password)
+                        || m.source().toString().contains("untrusted")));
+    assertFalse(
+        builder.build("bwrap", ordinary).bindMounts().stream()
+            .anyMatch(
+                m ->
+                    m.source().equals(home.resolve("bin"))
+                        || m.source().equals(home.resolve("lib"))));
+
+    Path system = Files.createDirectories(tempDir.resolve("system-runtime"));
+    Path linkedHome = Files.createDirectories(system.resolve("jdk"));
+    Files.createDirectories(linkedHome.resolve("bin"));
+    Path sharedLibraries = Files.createDirectories(tempDir.resolve("private-runtime-libraries"));
+    Files.createSymbolicLink(linkedHome.resolve("lib"), sharedLibraries);
+    var linkedPlan = new BubblewrapCommandBuilder(List.of(system), linkedHome).build("bwrap", mail);
+    assertMount(linkedPlan, sharedLibraries, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertFalse(linkedPlan.bindMounts().stream().anyMatch(m -> m.source().equals(tempDir)));
+  }
+
   private AppSandboxLaunchContext context(AppSandboxPolicy policy) {
     return new AppSandboxLaunchContext(
         "sample-app",

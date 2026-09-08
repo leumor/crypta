@@ -2252,6 +2252,16 @@ class LocalProcessAppHostTest {
     host.setMailPlatformApiEndpoint(endpoint);
     RunningAppSnapshot running = host.start("mail-prototype");
     try {
+      Path captureFile = running.paths().runDir().resolve("captured-env.txt");
+      waitForFile(captureFile);
+      AppEnv environment = new AppEnv();
+      Path expectedJava =
+          environment
+              .javaHome()
+              .toRealPath()
+              .resolve("bin")
+              .resolve(environment.isWindows() ? "java.exe" : "java");
+      assertTrue(Files.readString(captureFile).contains("CRYPTAD_MAIL_JAVA=" + expectedJava));
       assertTrue(host.currentLaunch("mail-prototype").isPresent());
       assertFalse(
           host.currentLaunch("mail-prototype").orElseThrow().toString().contains(running.token()));

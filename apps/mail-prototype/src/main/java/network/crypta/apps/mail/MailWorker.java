@@ -33,23 +33,7 @@ public final class MailWorker {
               MailPlatformClient.object(
                   backend.request("POST", "/mail/poll", Map.of()).get("mail"));
           if (frame.get("requestId") instanceof String requestId) {
-            String encoded = (String) frame.get("payloadBase64");
-            if (encoded.length() > 393216) throw new MailFailure("quota");
-            byte[] payload = java.util.Base64.getDecoder().decode(encoded);
-            var values =
-                MailPlatformClient.object(
-                    MailApiJsonParser.parse(new String(payload, StandardCharsets.UTF_8)));
-            var input = new LinkedHashMap<String, String>();
-            for (var entry : values.entrySet()) {
-              if (!(entry.getValue() instanceof String value)) throw new MailFailure("invalid");
-              input.put(entry.getKey(), value);
-            }
-            Map<String, String> response;
-            try {
-              response = mailbox.execute((String) frame.get("command"), input);
-            } catch (RuntimeException exception) {
-              response = Map.of("status", "unavailable");
-            }
+            Map<String, String> response = executeCommand(mailbox, frame);
             backend.request(
                 "POST",
                 "/mail/reply",
@@ -59,7 +43,7 @@ public final class MailWorker {
                     "payloadBase64",
                     MailWire.base64(MailWire.encode(response))));
           } else Thread.sleep(100);
-        } catch (MailFailure | IllegalArgumentException exception) {
+        } catch (RuntimeException exception) {
           Thread.sleep(250);
         }
       }
@@ -67,6 +51,45 @@ public final class MailWorker {
       Thread.currentThread().interrupt();
     } catch (RuntimeException exception) {
       System.exit(2);
+    }
+  }
+
+  /**
+   * Validates one complete command and contains malformed input within its bounded reply.
+   *
+   * @param mailbox process-owned mailbox
+   * @param frame authenticated broker frame for the current launch
+   * @return bounded validation failure or mailbox result, never parser diagnostics
+   */
+  private static Map<String, String> executeCommand(
+      MailMailbox mailbox, Map<String, Object> frame) {
+    var input = new LinkedHashMap<String, String>();
+    String command;
+    try {
+      if (!(frame.get("command") instanceof String name)
+          || !(frame.get("payloadBase64") instanceof String encoded)
+          || encoded.length() > 393216) return Map.of("status", "invalid");
+      command = name;
+      byte[] payload = java.util.Base64.getDecoder().decode(encoded);
+      String json =
+          StandardCharsets.UTF_8
+              .newDecoder()
+              .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+              .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+              .decode(java.nio.ByteBuffer.wrap(payload))
+              .toString();
+      var values = MailPlatformClient.object(MailApiJsonParser.parse(json));
+      for (var entry : values.entrySet()) {
+        if (!(entry.getValue() instanceof String value)) return Map.of("status", "invalid");
+        input.put(entry.getKey(), value);
+      }
+    } catch (RuntimeException | java.nio.charset.CharacterCodingException exception) {
+      return Map.of("status", "invalid");
+    }
+    try {
+      return mailbox.execute(command, input);
+    } catch (RuntimeException exception) {
+      return Map.of("status", "unavailable");
     }
   }
 }

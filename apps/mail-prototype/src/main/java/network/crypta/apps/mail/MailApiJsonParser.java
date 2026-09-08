@@ -121,14 +121,14 @@ final class MailApiJsonParser {
     ArrayList<Object> array = new ArrayList<>();
     skipWhitespace();
     if (consume(']')) {
-      return List.copyOf(array);
+      return java.util.Collections.unmodifiableList(array);
     }
     do {
       array.add(parseValue(depth + 1));
       skipWhitespace();
     } while (consume(','));
     expect(']');
-    return List.copyOf(array);
+    return java.util.Collections.unmodifiableList(array);
   }
 
   /**

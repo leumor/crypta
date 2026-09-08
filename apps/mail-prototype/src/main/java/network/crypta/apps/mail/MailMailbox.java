@@ -402,6 +402,7 @@ public final class MailMailbox {
     }
     if ("failed".equals(status) || "missing".equals(status)) {
       if (!"normal".equals(state.get("recovery"))) throw new MailFailure("recovery-paused");
+      requireUnexpiredOutboxMessage(out);
       approved(required(out, "contact"));
     }
     if ("failed".equals(status)) {
@@ -433,6 +434,18 @@ public final class MailMailbox {
         operation,
         "note",
         "Retry checks insertion; insertion is not delivery or reading.");
+  }
+
+  /**
+   * Checks the retained signed expiry before initiating or restarting network publication.
+   *
+   * @param outbox immutable sealed outbox entry protected by the local storage envelope
+   */
+  private void requireUnexpiredOutboxMessage(Map<String, String> outbox) {
+    byte[] signed = decode(required(outbox, "signed"), 45056);
+    var message = MailWire.decode(MailWire.signedPayload(signed), 32768);
+    MailWire.messagePayload(message);
+    if (MailWire.decimal(message.get("expires")) <= now()) throw new MailFailure("expired");
   }
 
   /**
@@ -495,7 +508,9 @@ public final class MailMailbox {
         || expires <= now()
         || expires - created > 30 * DAY
         || created < MailWire.decimal(sender.get("created"))
-        || expires > MailWire.decimal(sender.get("expires"))) throw new MailFailure("expired");
+        || expires > MailWire.decimal(sender.get("expires"))
+        || created < MailWire.decimal(own.get("created"))
+        || expires > MailWire.decimal(own.get("expires"))) throw new MailFailure("expired");
     String replay =
         hash(
             (own.get("account")

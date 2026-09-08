@@ -281,5 +281,10 @@ files when their real targets are outside the already mounted system runtime pat
 Debian-style JDK symlinks into the host's system Java configuration directory without mounting that
 directory or its parent configuration tree.
 JMX management passwords, app configuration and arbitrary files are not part of this allowlist.
-The resolved host paths remain private launch metadata. The integration assumes the app's Java
-launcher uses the host's configured runtime; it does not export JVM options or weaken Java policy.
+For Mail, AppHost requires Java 25+ and supplies the absolute executable from the daemon's runtime
+as `CRYPTAD_MAIL_JAVA`. The launcher does not search `PATH` for Java. Bubblewrap additionally mounts
+that runtime's `bin` and `lib` directories read-only when needed, supporting bundled runtimes and
+JDKs outside system directories. It does not mount the runtime's parent or its whole `conf` tree;
+management passwords remain excluded. Runtime selection is host-owned, not taken from a manifest
+or browser request. The resolved paths remain private launch metadata; JVM option variables are
+not exported and Java policy is not weakened.

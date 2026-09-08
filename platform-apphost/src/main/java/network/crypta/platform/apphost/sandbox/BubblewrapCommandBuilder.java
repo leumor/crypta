@@ -146,6 +146,7 @@ public final class BubblewrapCommandBuilder {
       }
     }
     addJavaSecurityMounts(mounts);
+    if ("mail-prototype".equals(context.appId())) addJavaRuntimeMounts(mounts);
     mounts.add(BindMount.readOnly(context.installDir(), context.installDir()));
     mounts.add(BindMount.readWrite(context.dataDir(), context.dataDir()));
     mounts.add(BindMount.readWrite(context.cacheDir(), context.cacheDir()));
@@ -167,6 +168,26 @@ public final class BubblewrapCommandBuilder {
       } catch (java.io.IOException exception) {
         throw new IllegalStateException("Java security configuration unavailable");
       }
+    }
+  }
+
+  /** Makes the host-selected runtime executable and modules visible without exposing its parent. */
+  private void addJavaRuntimeMounts(List<BindMount> mounts) {
+    if (javaHome == null) throw new IllegalStateException("Java runtime unavailable");
+    try {
+      Path home = javaHome.toRealPath();
+      for (String directory : List.of("bin", "lib")) {
+        Path destination = home.resolve(directory);
+        Path source = destination.toRealPath();
+        if (!Files.isDirectory(source)) throw new IllegalStateException("Java runtime unavailable");
+        boolean destinationMounted =
+            mounts.stream().anyMatch(mount -> destination.startsWith(mount.destination()));
+        if (!destinationMounted) mounts.add(BindMount.readOnly(source, destination));
+        else if (mounts.stream().noneMatch(mount -> source.startsWith(mount.destination())))
+          mounts.add(BindMount.readOnly(source, source));
+      }
+    } catch (java.io.IOException exception) {
+      throw new IllegalStateException("Java runtime unavailable");
     }
   }
 

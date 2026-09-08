@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import network.crypta.crypt.mail.MailHpke;
 import network.crypta.crypt.mail.MailWire;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -175,6 +176,253 @@ class MailMailboxPolicyTest {
     assertEquals("1", recipient.mail().execute("status", Map.of()).get("inbox"));
   }
 
+  @Test
+  void expiredRetryCannotEnqueueOrRestartAndPreservesCommittedCiphertext() throws Exception {
+    for (String queueState : new String[] {"missing", "failed"}) {
+      for (long beyondExpiry : new long[] {0, 1}) {
+        String suffix = queueState + beyondExpiry;
+        Party sender = party("sender-" + suffix, START);
+        Party recipient = party("recipient-" + suffix, START);
+        String fingerprint = pin(sender.mail(), recipient.mail());
+        QueueGate gate = new QueueGate(sender.backend());
+        String operation = sealWithoutPublishing(gate, fingerprint);
+        long expiry = signedExpiry(sender.backend());
+        byte[] before = sender.backend().storedBytes();
+        gate.queueState = queueState;
+        gate.rejectNetwork = false;
+        MailMailbox later = at(gate, Instant.ofEpochSecond(expiry + beyondExpiry));
+
+        assertStatus("expired", later.execute("retry", Map.of("operation", operation)));
+
+        assertEquals(1, gate.enqueueAttempts);
+        assertEquals(0, gate.restartAttempts);
+        assertArrayEquals(before, sender.backend().storedBytes());
+        assertTrue(sender.backend().insertionBytes.isEmpty());
+      }
+    }
+    assertTrue(network.isEmpty());
+  }
+
+  @Test
+  void unexpiredRetryStillEnqueuesOrRestartsWithoutResealing() throws Exception {
+    for (String queueState : new String[] {"missing", "failed"}) {
+      Party sender = party("sender-" + queueState, START);
+      Party recipient = party("recipient-" + queueState, START);
+      String fingerprint = pin(sender.mail(), recipient.mail());
+      QueueGate gate = new QueueGate(sender.backend());
+      String operation = sealWithoutPublishing(gate, fingerprint);
+      String original = sender.backend().privateState().get("outbox." + operation);
+      String envelope =
+          MailWire.decode(original.getBytes(StandardCharsets.UTF_8), 131072).get("envelope");
+      gate.queueState = queueState;
+      gate.rejectNetwork = false;
+      MailMailbox beforeExpiry =
+          at(gate, Instant.ofEpochSecond(signedExpiry(sender.backend()) - 1));
+
+      assertStatus("queued", beforeExpiry.execute("retry", Map.of("operation", operation)));
+
+      assertEquals("missing".equals(queueState) ? 2 : 1, gate.enqueueAttempts);
+      assertEquals("failed".equals(queueState) ? 1 : 0, gate.restartAttempts);
+      var retained =
+          MailWire.decode(
+              sender
+                  .backend()
+                  .privateState()
+                  .get("outbox." + operation)
+                  .getBytes(StandardCharsets.UTF_8),
+              131072);
+      assertEquals(envelope, retained.get("envelope"));
+      if ("missing".equals(queueState)) {
+        assertArrayEquals(
+            java.util.Base64.getDecoder().decode(envelope),
+            sender.backend().insertionBytes.getFirst());
+      }
+    }
+  }
+
+  @Test
+  void expiredRetryStillReportsKnownOrPreviouslyUncertainSuccessfulInsertion() throws Exception {
+    Party sender = party("sender-known", START);
+    Party recipient = party("recipient-known", START);
+    String fingerprint = pin(sender.mail(), recipient.mail());
+    Map<String, String> inserted = send(sender.mail(), fingerprint);
+    MailMailbox expired =
+        at(sender.backend(), Instant.ofEpochSecond(signedExpiry(sender.backend())));
+    assertEquals(
+        inserted, expired.execute("retry", Map.of("operation", inserted.get("operation"))));
+    assertEquals(1, sender.backend().insertionBytes.size());
+
+    Party uncertain = party("sender-uncertain", START);
+    String contact = pin(uncertain.mail(), recipient.mail());
+    assertStatus(
+        "draft",
+        uncertain
+            .mail()
+            .execute(
+                "save-draft",
+                Map.of(
+                    "fingerprint",
+                    contact,
+                    "subject",
+                    "Public synthetic",
+                    "body",
+                    "Uncertain completed publication")));
+    String approval = uncertain.mail().execute("preview-send", Map.of()).get("approval");
+    uncertain.backend().failInsertAfterCommit = true;
+    assertStatus(
+        "network-unavailable",
+        uncertain.mail().execute("confirm-send", Map.of("approval", approval)));
+    String operation = uncertain.mail().execute("status", Map.of()).get("operations");
+    MailMailbox afterExpiry =
+        at(uncertain.backend(), Instant.ofEpochSecond(signedExpiry(uncertain.backend()) + 1));
+
+    Map<String, String> recovered = afterExpiry.execute("retry", Map.of("operation", operation));
+
+    assertStatus("inserted", recovered);
+    assertEquals(
+        uncertain.backend().inserted.get("app-document-mail-prototype-" + operation),
+        recovered.get("reference"));
+    assertEquals(1, uncertain.backend().insertionBytes.size());
+  }
+
+  private static String sealWithoutPublishing(QueueGate gate, String fingerprint) {
+    MailMailbox mailbox = at(gate, START);
+    assertStatus(
+        "draft",
+        mailbox.execute(
+            "save-draft",
+            Map.of(
+                "fingerprint",
+                fingerprint,
+                "subject",
+                "Public synthetic",
+                "body",
+                "Bounded retry expiry")));
+    String approval = mailbox.execute("preview-send", Map.of()).get("approval");
+    assertStatus(
+        "network-unavailable", mailbox.execute("confirm-send", Map.of("approval", approval)));
+    return mailbox.execute("status", Map.of()).get("operations");
+  }
+
+  private static long signedExpiry(MailTestBackend backend) {
+    return MailWire.decimal(
+        MailWire.decode(MailWire.signedPayload(backend.latestSigned), 32768).get("expires"));
+  }
+
+  @Test
+  void expiredRecipientCardRejectsValidSenderMessageWithoutAdmission() throws Exception {
+    Party recipient = party("expired-recipient", START);
+    Party sender = party("valid-sender", START.plusSeconds(340 * DAY));
+    Instant receivingTime = START.plusSeconds(366 * DAY);
+    MailMailbox receiver = at(recipient.backend(), receivingTime);
+    pin(receiver, sender.mail());
+    String reference =
+        signedReference(
+            sender, recipient, receivingTime.minusSeconds(DAY), receivingTime.plusSeconds(DAY), 1);
+    byte[] before = recipient.backend().storedBytes();
+
+    assertStatus("expired", receive(receiver, reference));
+
+    assertArrayEquals(before, recipient.backend().storedBytes());
+    assertEquals("0", receiver.execute("status", Map.of()).get("inbox"));
+    assertTrue(
+        recipient.backend().privateState().keySet().stream()
+            .noneMatch(k -> k.startsWith("replay.")));
+  }
+
+  @Test
+  void messagePredatingRecipientCreationIsRejectedButExactCreationBoundaryAccepts()
+      throws Exception {
+    Party sender = party("earlier-sender", START);
+    Instant recipientCreated = START.plusSeconds(10 * DAY);
+    Party recipient = party("later-recipient", recipientCreated);
+    MailMailbox receiver = at(recipient.backend(), recipientCreated.plusSeconds(60));
+    pin(receiver, sender.mail());
+    Instant expiry = recipientCreated.plusSeconds(DAY);
+    String tooEarly =
+        signedReference(sender, recipient, recipientCreated.minusSeconds(1), expiry, 2);
+    byte[] before = recipient.backend().storedBytes();
+
+    assertStatus("expired", receive(receiver, tooEarly));
+    assertArrayEquals(before, recipient.backend().storedBytes());
+    String boundary = signedReference(sender, recipient, recipientCreated, expiry, 2);
+    assertStatus("accepted", receive(receiver, boundary));
+    assertEquals("1", receiver.execute("status", Map.of()).get("inbox"));
+    assertEquals(
+        1,
+        recipient.backend().privateState().keySet().stream()
+            .filter(k -> k.startsWith("replay."))
+            .count());
+  }
+
+  @Test
+  void messageBeyondRecipientExpiryIsRejectedButExactExpiryBoundaryAccepts() throws Exception {
+    Party recipient = party("earlier-recipient", START);
+    Party sender = party("later-sender", START.plusSeconds(340 * DAY));
+    Instant creation = START.plusSeconds(364 * DAY);
+    Instant recipientExpiry = START.plusSeconds(365 * DAY);
+    MailMailbox receiver = at(recipient.backend(), creation.plusSeconds(60));
+    pin(receiver, sender.mail());
+    String tooLate =
+        signedReference(sender, recipient, creation, recipientExpiry.plusSeconds(1), 3);
+    byte[] before = recipient.backend().storedBytes();
+
+    assertStatus("expired", receive(receiver, tooLate));
+    assertArrayEquals(before, recipient.backend().storedBytes());
+    String boundary = signedReference(sender, recipient, creation, recipientExpiry, 3);
+    assertStatus("accepted", receive(receiver, boundary));
+    assertEquals("1", receiver.execute("status", Map.of()).get("inbox"));
+    assertEquals(
+        1,
+        recipient.backend().privateState().keySet().stream()
+            .filter(k -> k.startsWith("replay."))
+            .count());
+  }
+
+  private static String signedReference(
+      Party sender, Party recipient, Instant created, Instant expires, int messageId)
+      throws Exception {
+    var senderState = sender.backend().privateState();
+    var senderCard =
+        MailWire.decode(
+            MailWire.signedPayload(senderState.get("ownCard").getBytes(StandardCharsets.UTF_8)),
+            4096);
+    var recipientCard =
+        MailWire.decode(
+            MailWire.signedPayload(
+                recipient.backend().privateState().get("ownCard").getBytes(StandardCharsets.UTF_8)),
+            4096);
+    var message = new LinkedHashMap<String, String>();
+    message.put("profile", MailWire.MESSAGE);
+    message.put("messageId", String.format(java.util.Locale.ROOT, "%032x", messageId));
+    message.put("sender", senderCard.get("signingFingerprint"));
+    message.put("senderAccount", senderCard.get("account"));
+    message.put("senderEpoch", senderCard.get("signingEpoch"));
+    message.put("recipient", recipientCard.get("recipientFingerprint"));
+    message.put("recipientAccount", recipientCard.get("account"));
+    message.put("recipientEpoch", recipientCard.get("recipientEpoch"));
+    message.put("created", Long.toString(created.getEpochSecond()));
+    message.put("expires", Long.toString(expires.getEpochSecond()));
+    message.put("subject", "Public synthetic validity test");
+    message.put("body", "Valid signature and encryption with an adversarial validity interval.");
+    message.put("format", "text/plain");
+    byte[] signed =
+        sender
+            .backend()
+            .vault
+            .signMail(
+                MailTestBackend.APP,
+                senderState.get("signingId"),
+                MailWire.messagePayload(message));
+    byte[] encrypted =
+        MailHpke.seal(
+            "network",
+            recipientCard.get("recipientFingerprint"),
+            MailWire.unbase64(recipientCard.get("recipientKey"), 32),
+            signed);
+    return sender.backend().addEnvelope(encrypted);
+  }
+
   private Party party(String name, Instant time) throws Exception {
     MailTestBackend backend =
         new MailTestBackend(root.resolve(name + "-vault"), root.resolve(name + "-data"), network);
@@ -236,6 +484,7 @@ class MailMailboxPolicyTest {
     private String queueState = "missing";
     private int enqueueAttempts;
     private int restartAttempts;
+    private boolean rejectNetwork = true;
 
     QueueGate(MailTestBackend backend) {
       this.backend = backend;
@@ -246,11 +495,11 @@ class MailMailboxPolicyTest {
       if (path.equals("/queue/app-document-status")) return Map.of("state", queueState);
       if (path.equals("/queue/inserts/app-document")) {
         enqueueAttempts++;
-        throw new MailFailure("network-unavailable");
+        if (rejectNetwork) throw new MailFailure("network-unavailable");
       }
       if (path.equals("/queue/restart")) {
         restartAttempts++;
-        throw new MailFailure("network-unavailable");
+        if (rejectNetwork) throw new MailFailure("network-unavailable");
       }
       return backend.request(method, path, parameters);
     }
