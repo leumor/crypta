@@ -994,6 +994,18 @@ public final class AppVaultService {
   }
 
   /**
+   * Requires current metadata and purpose authority for every retained app-owned Mail identity.
+   * Call before interpreting an app-visible identity list as evidence that initialization may
+   * start. This preflight never decrypts keys, creates records or restores grants.
+   *
+   * @param appId authenticated Mail app identifier
+   * @throws AppVaultException if any retained Mail identity lacks current authority
+   */
+  public synchronized void requireMailIdentityAuthority(String appId) {
+    mailOperations().requireIdentityAuthority(appId);
+  }
+
+  /**
    * Creates an independently generated experimental Mail identity with its narrow self-grant.
    * Central API authorization must restrict this entry point to the live Mail process.
    *

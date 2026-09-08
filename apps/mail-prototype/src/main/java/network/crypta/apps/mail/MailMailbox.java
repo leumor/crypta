@@ -21,6 +21,10 @@ public final class MailMailbox {
   /** Maximum encoded plaintext dataset bytes, leaving private-channel backup headroom. */
   private static final int MAX_STATE = 112 * 1024;
 
+  /** Non-sensitive setup intent, atomically replaced by the first encrypted dataset. */
+  private static final byte[] INITIALIZING =
+      MailWire.encode(Map.of("initialization", "crypta.mail.initialization.v1"));
+
   /** Seconds per policy day. */
   private static final long DAY = 86400;
 
@@ -120,6 +124,7 @@ public final class MailMailbox {
     }
     stored = decode(text(record, "valueBase64"), 262144);
     digest = text(record, "sha256");
+    if (java.util.Arrays.equals(stored, INITIALIZING)) return;
     state = openState(stored);
     validateKeys();
   }
@@ -163,18 +168,34 @@ public final class MailMailbox {
   }
 
   /**
-   * Creates the first retained account only when no prior identity requires recovery.
+   * Resumes marked first-time setup without replacing an established account.
+   *
+   * <p>The marker is durable before any key creation. Only a marker permits reconciliation of
+   * partially created identities; the completed encrypted dataset replaces it through CAS. Missing
+   * data with retained identities and no marker remains a recovery error.
    *
    * @return private retained-account status
    */
   private Map<String, String> initialize() {
     if (!state.isEmpty()) return status();
-    var identities = backend.request("GET", "/app-vault/identities", Map.of()).get("identities");
-    if (identities instanceof List<?> list && !list.isEmpty())
-      throw new MailFailure("recovery-required");
-    var signing = mail("create-identity", Map.of("kind", "mail-signing-v1"));
-    var recipient = mail("create-identity", Map.of("kind", "mail-recipient-v1"));
-    var storage = mail("create-identity", Map.of("kind", "mail-storage-v1"));
+    var visible = backend.request("GET", "/app-vault/identities", Map.of()).get("identities");
+    if (!(visible instanceof List<?> identities)) throw new MailFailure("recovery-required");
+    boolean resumed = stored != null;
+    if (stored == null) {
+      if (!identities.isEmpty()) throw new MailFailure("recovery-required");
+      storeDataset(INITIALIZING);
+    }
+    var retained = new LinkedHashMap<String, Map<String, Object>>();
+    for (Object value : identities) {
+      var identity = object(value);
+      String kind = text(identity, "kind");
+      if (!List.of("mail-signing-v1", "mail-recipient-v1", "mail-storage-v1").contains(kind)
+          || retained.putIfAbsent(kind, identity) != null)
+        throw new MailFailure("recovery-required");
+    }
+    var signing = initializationIdentity(retained, "mail-signing-v1");
+    var recipient = initializationIdentity(retained, "mail-recipient-v1");
+    var storage = initializationIdentity(retained, "mail-storage-v1");
     var signPublic = object(signing.get("publicSummary"));
     var recPublic = object(recipient.get("publicSummary"));
     state.put("schema", "1");
@@ -182,6 +203,7 @@ public final class MailMailbox {
     state.put("recipientId", text(recipient, "identityId"));
     state.put("storageId", text(storage, "identityId"));
     state.put("recovery", "normal");
+    if (resumed) state.put("initializationRecoveryEpoch", randomId());
     var card = new LinkedHashMap<String, String>();
     card.put("profile", MailWire.CONTACT);
     card.put("signingKey", text(signPublic, "publicKeyBase64"));
@@ -201,6 +223,19 @@ public final class MailMailbox {
             StandardCharsets.UTF_8));
     commit();
     return status();
+  }
+
+  /**
+   * Reuses the sole retained purpose identity after a lost creation response.
+   *
+   * @param retained metadata from the current authorized identity list
+   * @param kind dedicated purpose required by setup
+   * @return existing or newly created public identity metadata
+   */
+  private Map<String, Object> initializationIdentity(
+      Map<String, Map<String, Object>> retained, String kind) {
+    var identity = retained.get(kind);
+    return identity != null ? identity : mail("create-identity", Map.of("kind", kind));
   }
 
   /**
@@ -600,6 +635,13 @@ public final class MailMailbox {
     var result = new LinkedHashMap<String, String>();
     result.put("status", "ready");
     result.put("recovery", state.get("recovery"));
+    if (state.containsKey("initializationRecoveryEpoch")) {
+      result.put("initializationRecoveryEpoch", state.get("initializationRecoveryEpoch"));
+      result.put(
+          "note",
+          "Resumed setup. Prior replay history cannot be verified if an older raw app-data snapshot"
+              + " was restored; this recovery epoch does not prove a new account.");
+    }
     result.put("contacts", Long.toString(count("contact.")));
     result.put(
         "contactFingerprints",
@@ -678,6 +720,15 @@ public final class MailMailbox {
     wrapper.put("envelope", MailWire.base64(envelope));
     byte[] value = MailWire.encode(wrapper);
     if (value.length > 262144) throw new MailFailure("quota");
+    storeDataset(value);
+  }
+
+  /**
+   * Publishes setup intent or a protected dataset using the last observed record digest.
+   *
+   * @param value complete bounded record bytes
+   */
+  private void storeDataset(byte[] value) {
     var parameters = new LinkedHashMap<String, String>();
     parameters.put("namespace", "mail-state");
     parameters.put("key", "dataset");

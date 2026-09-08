@@ -133,3 +133,27 @@ retained-key rotation, expiry renewal and a reviewed restore-resume policy separ
 uses one active account/key epoch, does not export private keys, and remains paused after restore.
 Keep external consumer proposals disabled until a narrow approval interface is implemented and
 tested. None of this work activates Stable, baseline 1.1 or the missing protected Phase 12 producers.
+
+## Interrupted first-time setup
+
+The app worker writes the exact fixed `crypta.mail.initialization.v1` marker to the existing
+`mail-state/dataset` record before the first vault mutation. The marker contains only its format
+identifier, without account identifiers, key material or user data. Until the marker is replaced,
+only initialization or explicit retained-key restore can produce usable mailbox state.
+Initialization reconciles at most one identity per Mail role, reuses successful creations whose
+responses were lost, and CAS-replaces the marker with the encrypted schema-1 mailbox. Normal
+schema-1 ciphertext and backup formats are unchanged. No extra journal remains after completion.
+The initial absent-record write relies on the existing single current worker; subsequent writes
+use the observed record digest.
+
+Retained identity authority is checked by the vault before new key creation, including identities
+hidden from an app by revoked metadata grants. Reconciliation never restores grants or replaces
+unavailable keys. Missing data with retained identities and no marker remains recovery-required;
+an unmarked partial setup from an older bundle cannot safely be inferred to be a new account.
+Complete setup before rolling back to a bundle that does not recognize the marker. App-owned
+backup is available only after completion. An operator restoring an older raw app-data snapshot
+containing a setup marker is subject to the existing rollback limitation: without an independent
+monotonic authority, the worker cannot distinguish that snapshot from actual unfinished setup.
+Every resumed setup therefore persists a fresh `initializationRecoveryEpoch` and displays it with
+an explicit prior-replay-history warning in initialization/status results. Intake is available in
+that visibly flagged epoch; it is not a claim of rollback-proof replay prevention.

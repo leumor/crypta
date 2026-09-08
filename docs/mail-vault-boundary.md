@@ -32,3 +32,13 @@ and fresh valid grants. Current uninstall deletes app-owned identities even when
 preserved: uninstall can make backups, old network ciphertext and drafts permanently unreadable.
 Bundle rollback does not restore vault grants, identities or revocations. Later compromise of a
 retained recipient key can expose earlier messages: this composition provides no forward secrecy.
+
+Identity creation checks all retained app-owned Mail identity metadata before generating a new key.
+If any retained identity has revoked, expired, hidden metadata or missing purpose authority,
+creation fails without creating replacement material or restoring grants. An empty app-visible
+identity listing is not proof that the vault contains no retained Mail account.
+
+The Mail identity-list API performs the same retained-authority preflight before returning the
+ordinary grant-filtered list. A revoked or hidden retained account therefore fails before the
+worker writes an initialization marker; later reauthorization cannot turn that failed attempt
+into permission to recreate an empty mailbox. Other apps retain their existing list semantics.

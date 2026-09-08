@@ -43,6 +43,16 @@ its sealed bytes; an already successful insertion remains visible even after exp
 Incoming messages must fit within both the pinned sender card's and the local recipient card's
 validity intervals before inbox or replay state is recorded.
 
+First-time initialization writes a fixed, non-sensitive setup marker before creating vault keys.
+If setup fails or its response is lost, choose Initialize again: the worker reuses the marked
+setup's retained identities and creates only missing roles. The first encrypted mailbox atomically
+replaces the marker. No drafts, contacts or key material are stored in the marker, and ordinary
+mailbox operations remain unavailable until setup completes. Missing data with retained identities
+and no marker still requires recovery. Resumed setup displays and retains a new recovery epoch
+and a warning that prior replay history cannot be verified after a raw snapshot rollback; it is
+not proof of a fresh account. Older unmarked partial setups cannot be distinguished from
+lost mailboxes. Revoked or unavailable key grants block setup instead of creating replacements.
+
 ## Backup, rollback and key loss
 
 Explicit export returns a deterministic private data backup for the bounded encrypted state. It

@@ -46,6 +46,7 @@ final class MailTestBackend implements MailBackend {
       String method, String path, Map<String, String> p) {
     try {
       if (path.equals("/app-vault/identities")) {
+        vault.requireMailIdentityAuthority(APP);
         return Map.of(
             "identities",
             vault.listIdentitiesForApp(APP).stream().map(MailTestBackend::identity).toList());

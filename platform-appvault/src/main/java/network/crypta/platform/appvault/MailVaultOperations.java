@@ -44,6 +44,21 @@ final class MailVaultOperations {
     this.random = random;
   }
 
+  /** Checks all retained Mail authority without exposing grant-hidden identity metadata. */
+  void requireIdentityAuthority(String app) {
+    requireApp(app);
+    for (AppIdentityRecord retained : service.listIdentities()) {
+      if (APP.equals(retained.ownerAppId())
+          && (retained.kind() == AppIdentityKind.MAIL_SIGNING_V1
+              || retained.kind() == AppIdentityKind.MAIL_RECIPIENT_V1
+              || retained.kind() == AppIdentityKind.MAIL_STORAGE_V1)) {
+        // App-visible listings omit revoked, expired and metadata-hidden retained identities.
+        // Do not mistake a filtered listing for permission to replace retained account material.
+        authorize(app, retained.identityId(), retained.kind());
+      }
+    }
+  }
+
   /**
    * Creates an independent purpose identity and its narrow owner grant.
    *
@@ -55,6 +70,7 @@ final class MailVaultOperations {
   AppIdentityRecord create(String app, AppIdentityKind kind) {
     requireApp(app);
     String role = role(kind);
+    requireIdentityAuthority(app);
     if (service.listIdentities().stream()
             .filter(i -> APP.equals(i.ownerAppId()) && i.kind() == kind)
             .count()

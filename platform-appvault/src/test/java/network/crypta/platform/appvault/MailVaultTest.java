@@ -237,6 +237,84 @@ class MailVaultTest {
         AppVaultException.class, () -> vault.openMail(APP, recipient.identityId(), rawEnvelope));
   }
 
+  @Test
+  void retainedMailIdentityWithoutCurrentAuthorityPreventsReplacementCreation() throws Exception {
+    for (String deniedState :
+        new String[] {"revoked", "expired", "metadata-hidden", "purpose-denied"}) {
+      AppVaultService vault = open(root.resolve(deniedState));
+      AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+      for (AppIdentityGrant grant : vault.listGrantsForApp(APP)) {
+        if (grant.identityId().equals(storage.identityId())) vault.revokeGrant(grant.grantId());
+      }
+      switch (deniedState) {
+        case "expired" ->
+            vault.grantIdentity(
+                storage.identityId(),
+                APP,
+                Set.of(AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.MAIL_STORAGE),
+                "operator",
+                "Expired synthetic grant",
+                Instant.EPOCH,
+                null);
+        case "metadata-hidden" ->
+            vault.grantIdentity(
+                storage.identityId(),
+                APP,
+                Set.of(AppIdentityGrantScope.MAIL_STORAGE),
+                "operator",
+                "Purpose only",
+                null,
+                null);
+        case "purpose-denied" ->
+            vault.grantIdentity(
+                storage.identityId(),
+                APP,
+                Set.of(AppIdentityGrantScope.METADATA_READ),
+                "operator",
+                "Metadata only",
+                null,
+                null);
+        default -> {}
+      }
+      var identitiesBefore = vault.listIdentities();
+      var grantsBefore = vault.listGrantsForApp(APP);
+      assertThrows(AppVaultException.class, () -> vault.requireMailIdentityAuthority(APP));
+
+      for (AppIdentityKind requested :
+          new AppIdentityKind[] {
+            AppIdentityKind.MAIL_SIGNING_V1,
+            AppIdentityKind.MAIL_RECIPIENT_V1,
+            AppIdentityKind.MAIL_STORAGE_V1
+          }) {
+        assertThrows(AppVaultException.class, () -> vault.createMailIdentity(APP, requested));
+      }
+
+      assertEquals(identitiesBefore, vault.listIdentities());
+      assertEquals(grantsBefore, vault.listGrantsForApp(APP));
+      assertThrows(
+          AppVaultException.class, () -> vault.sealStorage(APP, storage.identityId(), new byte[0]));
+    }
+  }
+
+  @Test
+  void emptyAppVisibleIdentityListingDoesNotAuthorizeNewAccountAfterRevocation() throws Exception {
+    AppVaultService vault = open(root.resolve("hidden-account"));
+    vault.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
+    vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    vault.revokeGrantsForApp(APP);
+    var identitiesBefore = vault.listIdentities();
+    var grantsBefore = vault.listGrantsForApp(APP);
+    assertTrue(vault.listIdentitiesForApp(APP).isEmpty());
+    assertThrows(AppVaultException.class, () -> vault.requireMailIdentityAuthority(APP));
+
+    assertThrows(
+        AppVaultException.class,
+        () -> vault.createMailIdentity(APP, AppIdentityKind.MAIL_SIGNING_V1));
+
+    assertEquals(identitiesBefore, vault.listIdentities());
+    assertEquals(grantsBefore, vault.listGrantsForApp(APP));
+  }
+
   private static AppVaultService open(Path path) throws Exception {
     AppVaultService service = AppVaultService.open(path);
     if (service.listIdentities().isEmpty()) {
