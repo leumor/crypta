@@ -117,6 +117,90 @@ class MailMailboxBoundsTest {
     assertTrue(MailWire.encode(backend.privateState()).length <= 112 * 1024);
   }
 
+  @Test
+  void escapedOversizeDraftRejectsBeforeReplacingSavedDraftOrApproval() {
+    status(
+        "draft",
+        mailbox.execute(
+            "save-draft",
+            Map.of(
+                "fingerprint",
+                fingerprint,
+                "subject",
+                "Public synthetic",
+                "body",
+                "Retained draft")));
+    var preview = mailbox.execute("preview-send", Map.of());
+    status("approval-required", preview);
+    byte[] before = backend.storedBytes();
+
+    for (String body :
+        List.of("\n".repeat(6000), "\n".repeat(5000), "\"".repeat(16384), "\\".repeat(16384))) {
+      status(
+          "quota",
+          mailbox.execute(
+              "save-draft",
+              Map.of("fingerprint", fingerprint, "subject", "Public synthetic", "body", body)));
+      assertArrayEquals(before, backend.storedBytes());
+      assertTrue(backend.insertionBytes.isEmpty());
+    }
+    status("queued", mailbox.execute("confirm-send", Map.of("approval", preview.get("approval"))));
+  }
+
+  @Test
+  void largestAcceptedEscapedDraftPreviewsSendsAndDecryptsAfterRestart() {
+    String card = mailbox.execute("export-contact", Map.of()).get("card");
+    String sender = other.execute("import-contact", Map.of("card", card)).get("fingerprint");
+    status("contact-approved", other.execute("approve-contact", Map.of("fingerprint", sender)));
+    String subject = "\t".repeat(256);
+    int accepted = 0;
+    int rejected = 6000;
+    while (accepted + 1 < rejected) {
+      int candidate = (accepted + rejected) / 2;
+      var result =
+          mailbox.execute(
+              "save-draft",
+              Map.of(
+                  "fingerprint", fingerprint, "subject", subject, "body", "\n".repeat(candidate)));
+      if ("draft".equals(result.get("status"))) accepted = candidate;
+      else {
+        status("quota", result);
+        rejected = candidate;
+      }
+    }
+    assertTrue(accepted > 2500);
+    String body = "\n".repeat(accepted);
+    status(
+        "draft",
+        mailbox.execute(
+            "save-draft", Map.of("fingerprint", fingerprint, "subject", subject, "body", body)));
+    mailbox = new MailMailbox(backend, clock);
+    var preview = mailbox.execute("preview-send", Map.of());
+    status("approval-required", preview);
+    assertEquals(subject, preview.get("subject"));
+    assertEquals(body, preview.get("body"));
+    byte[] before = backend.storedBytes();
+    status(
+        "quota",
+        mailbox.execute(
+            "save-draft",
+            Map.of("fingerprint", fingerprint, "subject", subject, "body", body + "\n")));
+    assertArrayEquals(before, backend.storedBytes());
+
+    var queued = mailbox.execute("confirm-send", Map.of("approval", preview.get("approval")));
+    status("queued", queued);
+    var inserted = mailbox.execute("retry", Map.of("operation", queued.get("operation")));
+    status("inserted", inserted);
+    var received =
+        other.execute(
+            "import-reference", Map.of("confirmed", "yes", "reference", inserted.get("reference")));
+    status("accepted", received);
+    var read = other.execute("read", Map.of("messageId", received.get("messageId")));
+    assertEquals(subject, read.get("subject"));
+    assertEquals(body, read.get("body"));
+    assertEquals(1, backend.insertionBytes.size());
+  }
+
   private void fillStateTo(int bytes) throws Exception {
     var state = new LinkedHashMap<>(backend.privateState());
     state.put("testCapacityFiller", "");

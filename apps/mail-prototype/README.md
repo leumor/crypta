@@ -43,6 +43,13 @@ its sealed bytes; an already successful insertion remains visible even after exp
 Incoming messages must fit within both the pinned sender card's and the local recipient card's
 validity intervals before inbox or replay state is recorded.
 
+Draft admission checks both UTF-8 content and JSON-encoded size before replacing saved state.
+The subject/body limits remain 256 bytes and 16 KiB; the composed unsigned message also has a
+20 KiB encoded budget to leave room for signed and encrypted outbox copies. Control characters,
+quotes and backslashes consume additional encoded space. Oversize input returns `quota` and
+preserves the saved draft and approval. Mailbox capacity and contact validity are still checked
+when previewing and sending.
+
 First-time initialization writes a fixed, non-sensitive setup marker before creating vault keys.
 If setup fails or its response is lost, choose Initialize again: the worker reuses the marked
 setup's retained identities and creates only missing roles. The first encrypted mailbox atomically

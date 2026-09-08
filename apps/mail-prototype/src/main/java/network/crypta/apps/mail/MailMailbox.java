@@ -21,6 +21,9 @@ public final class MailMailbox {
   /** Maximum encoded plaintext dataset bytes, leaving private-channel backup headroom. */
   private static final int MAX_STATE = 112 * 1024;
 
+  /** Encoded unsigned message budget, reserving room for signed and sealed outbox copies. */
+  private static final int MAX_COMPOSED_MESSAGE = 20 * 1024;
+
   /** Non-sensitive setup intent, atomically replaced by the first encrypted dataset. */
   private static final byte[] INITIALIZING =
       MailWire.encode(Map.of("initialization", "crypta.mail.initialization.v1"));
@@ -311,11 +314,20 @@ public final class MailMailbox {
    */
   private Map<String, String> saveDraft(Map<String, String> input) {
     String fp = required(input, "fingerprint");
-    approved(fp);
+    var recipient = approved(fp);
     String subject = required(input, "subject"), body = required(input, "body");
     if (subject.getBytes(StandardCharsets.UTF_8).length > 256
         || body.getBytes(StandardCharsets.UTF_8).length > 16384) throw new MailFailure("quota");
-    state.put("draft", json(Map.of("fingerprint", fp, "subject", subject, "body", body)));
+    var draft = Map.of("fingerprint", fp, "subject", subject, "body", body);
+    String encodedDraft = json(draft);
+    var own = contact(state.get("ownCard"), true);
+    // Reserve the longest allowed timestamp encodings so time alone cannot outgrow admission.
+    var message =
+        messageFields(draft, recipient, own, "0".repeat(32), Long.MAX_VALUE - 1, Long.MAX_VALUE);
+    if (encodedDraft.getBytes(StandardCharsets.UTF_8).length > 32768
+        || MailWire.encode(message).length > MAX_COMPOSED_MESSAGE) throw new MailFailure("quota");
+    MailWire.messagePayload(message);
+    state.put("draft", encodedDraft);
     state.remove("approval");
     commit();
     return Map.of("status", "draft");
@@ -368,28 +380,14 @@ public final class MailMailbox {
         hash(
             (state.get("draft") + state.get("contact." + draft.get("fingerprint")))
                 .getBytes(StandardCharsets.UTF_8)))) throw new MailFailure("approval-required");
-    var msg = new LinkedHashMap<String, String>();
-    msg.put("profile", MailWire.MESSAGE);
     String id = randomId();
-    msg.put("messageId", id);
-    msg.put("sender", own.get("signingFingerprint"));
-    msg.put("senderAccount", own.get("account"));
-    msg.put("senderEpoch", own.get("signingEpoch"));
-    msg.put("recipient", recipient.get("recipientFingerprint"));
-    msg.put("recipientAccount", recipient.get("account"));
-    msg.put("recipientEpoch", recipient.get("recipientEpoch"));
-    msg.put("created", Long.toString(now()));
-    msg.put(
-        "expires",
-        Long.toString(
+    long created = now();
+    long expires =
+        Math.min(
+            created + 30 * DAY,
             Math.min(
-                now() + 30 * DAY,
-                Math.min(
-                    MailWire.decimal(recipient.get("expires")),
-                    MailWire.decimal(own.get("expires"))))));
-    msg.put("subject", draft.get("subject"));
-    msg.put("body", draft.get("body"));
-    msg.put("format", "text/plain");
+                MailWire.decimal(recipient.get("expires")), MailWire.decimal(own.get("expires"))));
+    var msg = messageFields(draft, recipient, own, id, created, expires);
     byte[] signed = crypto("sign", state.get("signingId"), MailWire.messagePayload(msg));
     byte[] sealed =
         MailHpke.seal(
@@ -408,6 +406,41 @@ public final class MailMailbox {
     state.remove("draft");
     commit();
     return publish(id);
+  }
+
+  /**
+   * Builds the same message fields for encoded draft admission and actual signing.
+   *
+   * @param draft validated recipient selection and literal content
+   * @param recipient approved contact binding
+   * @param own local account binding
+   * @param id random send identifier, or a same-width placeholder for sizing only
+   * @param created creation timestamp
+   * @param expires expiry timestamp
+   * @return unsigned message fields in wire order
+   */
+  private static Map<String, String> messageFields(
+      Map<String, String> draft,
+      Map<String, String> recipient,
+      Map<String, String> own,
+      String id,
+      long created,
+      long expires) {
+    var msg = new LinkedHashMap<String, String>();
+    msg.put("profile", MailWire.MESSAGE);
+    msg.put("messageId", id);
+    msg.put("sender", own.get("signingFingerprint"));
+    msg.put("senderAccount", own.get("account"));
+    msg.put("senderEpoch", own.get("signingEpoch"));
+    msg.put("recipient", recipient.get("recipientFingerprint"));
+    msg.put("recipientAccount", recipient.get("account"));
+    msg.put("recipientEpoch", recipient.get("recipientEpoch"));
+    msg.put("created", Long.toString(created));
+    msg.put("expires", Long.toString(expires));
+    msg.put("subject", draft.get("subject"));
+    msg.put("body", draft.get("body"));
+    msg.put("format", "text/plain");
+    return msg;
   }
 
   /**
