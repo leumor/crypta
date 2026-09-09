@@ -143,6 +143,11 @@ shape through manifest `inputs.networkScaleSoak`.
 A literal 24-hour live soak is an RC release activity. It is not required for ordinary unit tests,
 normal PR tests, or the Python self-tests.
 
+The [observed cross-version runner](cross-version-live-network-soak.md) uses a separate measured
+journal and policy. Its 72-hour protected target does not replace this gate's duration or authority
+requirements. Missing budget/runtime observations remain required findings; an FCP content loop
+does not by itself exercise `AppNetworkBudgetService` through app principals.
+
 The Stable GA post-freeze record must identify the exact frozen product/catalog/archive digests
 used by every node. Its `longSoak` scenario interval, not merely the enclosing evidence interval or
 a claimed duration field, must meet the authoritative Stable GA policy minimum and begin after the

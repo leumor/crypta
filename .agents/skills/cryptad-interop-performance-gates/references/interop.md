@@ -1,5 +1,11 @@
 # Hyphanet interop gate reference
 
+The measured cross-version path is documented in `docs/cross-version-live-network-soak.md`.
+Use `certify.py cross-version-soak --self-test` and the offline `test_cross_version_*.py` suites
+without live authorization. Its exclusive supervisor, private journal and public verifier do not
+upgrade old simulated/attached summaries, authenticate historical packages by labels, or reduce
+existing protected release durations. Keep unexecuted and unsupported mandatory scenarios visible.
+
 Read for Hyphanet interop gate. Commands and unlinked source paths are relative to the repository root.
 
 ## Hyphanet interop gate

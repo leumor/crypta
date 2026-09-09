@@ -3,6 +3,11 @@
 Use this gate to verify that a packaged Cryptad node can interoperate with a pinned Hyphanet
 baseline over darknet peering and FCP content operations.
 
+The [cross-version observed experiment](../../docs/cross-version-live-network-soak.md) reuses these
+clients under an exclusive packaged-process supervisor. It keeps all FCP transcripts and node
+references private and exports separate bounded results. It does not reinterpret this gate's
+datastore, polling fallback or skipped subscription directions as stronger evidence.
+
 PR-194 records this existing harness as a Phase 3 release gate. The closeout summary is in
 [docs/phase-3-platform-primacy-closeout.md](../../docs/phase-3-platform-primacy-closeout.md), and
 the release checklist is in

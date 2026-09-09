@@ -7,6 +7,10 @@ This harness is separate from the Hyphanet interop gate under `tools/interop/`. 
 compatibility with a pinned baseline node. The performance gate records local startup, control-plane,
 and asset-size signals so release candidates have a comparable regression record.
 
+The [cross-version observed runner](../../docs/cross-version-live-network-soak.md) records bounded
+runtime counters separately. It cannot replace these reviewed baselines or treat unavailable
+memory/thread/queue measurements as a pass. A small single-host topology is not a scale benchmark.
+
 ## Requirements
 
 - Python 3.12 or newer for the runner and wrapper.
