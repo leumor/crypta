@@ -255,7 +255,10 @@
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
     try {
       signal.throwIfAborted();
-      const submitted = await apiPostForm("mail/command", { command, payloadBase64: btoa(binary) }, { signal });
+      const params = new URLSearchParams();
+      params.set("command", command);
+      params.set("payloadBase64", btoa(binary));
+      const submitted = await apiPostForm("mail/command", params, { signal });
       while (!signal.aborted) {
         const response = await apiPostForm("mail/result", { requestId: submitted.mail.requestId }, { signal });
         signal.throwIfAborted();
