@@ -78,7 +78,7 @@ class MailMailboxBoundsTest {
   }
 
   @Test
-  void nearCapacityBackupAndRestoreFitActualPrivateFrames() throws Exception {
+  void nearCapacityBackupAndRestoreFitActualPrivateFrames() {
     // A private fixture filler controls exact encoded state bytes without publishing data.
     fillStateTo(112 * 1024 - 128);
     var backup = mailbox.execute("backup", Map.of());
@@ -94,7 +94,7 @@ class MailMailboxBoundsTest {
   }
 
   @Test
-  void pendingInsertionCanRecordReferenceAtReservedCompletionBoundary() throws Exception {
+  void pendingInsertionCanRecordReferenceAtReservedCompletionBoundary() {
     status(
         "draft",
         mailbox.execute(
@@ -201,7 +201,7 @@ class MailMailboxBoundsTest {
     assertEquals(1, backend.insertionBytes.size());
   }
 
-  private void fillStateTo(int bytes) throws Exception {
+  private void fillStateTo(int bytes) {
     var state = new LinkedHashMap<>(backend.privateState());
     state.put("testCapacityFiller", "");
     int count = bytes - MailWire.encode(state).length;

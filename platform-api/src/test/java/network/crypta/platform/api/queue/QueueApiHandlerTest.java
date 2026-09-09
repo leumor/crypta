@@ -1186,18 +1186,17 @@ class QueueApiHandlerTest {
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
     String identifier = "app-document-mail-prototype-0123456789abcdef0123456789abcdef";
-    var status =
-        handler.appDocumentStatus("mail-prototype", Map.of("identifier", List.of(identifier)));
+    var scopedParameters = Map.of("identifier", List.of(identifier));
+    var unscopedParameters = Map.of("identifier", List.of("unscoped"));
+    var status = handler.appDocumentStatus("mail-prototype", scopedParameters);
     assertEquals("inserted", status.get("state"));
     assertEquals("CHK@public-synthetic", status.get("reference"));
     assertThrows(
         PlatformApiException.class,
-        () ->
-            handler.appDocumentStatus("unrelated-app", Map.of("identifier", List.of(identifier))));
+        () -> handler.appDocumentStatus("unrelated-app", scopedParameters));
     assertThrows(
         PlatformApiException.class,
-        () ->
-            handler.appDocumentStatus("mail-prototype", Map.of("identifier", List.of("unscoped"))));
+        () -> handler.appDocumentStatus("mail-prototype", unscopedParameters));
   }
 
   private static final class RecordingQueuePagePort implements QueuePagePort {
