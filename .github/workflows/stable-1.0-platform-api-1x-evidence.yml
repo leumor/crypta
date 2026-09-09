@@ -607,15 +607,33 @@ jobs:
           ' "$contract" >/dev/null
 
       - name: Verify the complete side-effect-free evidence set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECT_COHORT_DIGEST: ${{ vars.APP_SUBJECT_COHORT_DIGEST }}
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
-          python3 tools/release-certification/certify.py stable-platform-api-1x \
-            --mode closeout \
-            --execution-contract build/platform-api-1x-evidence/platform-api-1.x-execution.json \
-            --evidence-dir build/platform-api-1x-evidence \
-            --out-dir build/platform-api-1x-producer-output
+          inventory=build/platform-api-1x-evidence/platform-api-1.x-app-subject-inventory.json
+          if [[ -f "$inventory" ]] && [[ "$(jq -r .schemaVersion "$inventory")" == 2 ]]; then
+            [[ "$SUBJECT_COHORT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+            private_root="$(mktemp -d "$RUNNER_TEMP/app-subject-verification.XXXXXX")"
+            python3 tools/release-certification/protected/app_subject_projection.py verify-matrix \
+              --private-root "$private_root" \
+              --expected-cohort-digest "$SUBJECT_COHORT_DIGEST" \
+              --coordinates build/platform-api-1x-evidence/app-subject-projection-authority.json \
+              --verification-mode closeout \
+              --execution-contract build/platform-api-1x-evidence/platform-api-1.x-execution.json \
+              --evidence-dir build/platform-api-1x-evidence \
+              --out-dir build/platform-api-1x-producer-output
+            rmdir "$private_root"
+          else
+            python3 tools/release-certification/certify.py stable-platform-api-1x \
+              --mode closeout \
+              --execution-contract build/platform-api-1x-evidence/platform-api-1.x-execution.json \
+              --evidence-dir build/platform-api-1x-evidence \
+              --out-dir build/platform-api-1x-producer-output
+          fi
 
       - name: Upload the exact protected evidence aggregate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

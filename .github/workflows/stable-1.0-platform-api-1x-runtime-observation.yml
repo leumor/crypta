@@ -48,6 +48,8 @@ jobs:
     permissions:
       actions: read
       contents: read
+      deployments: read
+      attestations: read
     steps:
       - name: Check out the exact protected source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -155,15 +157,32 @@ jobs:
           ' "$contract" >/dev/null
 
       - name: Verify the exact static matrix before node access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECT_COHORT_DIGEST: ${{ vars.APP_SUBJECT_COHORT_DIGEST }}
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
-          python3 tools/release-certification/certify.py stable-platform-api-1x \
-            --mode verify-app-matrix \
-            --execution-contract build/platform-api-1x-runtime-source/platform-api-1.x-execution.json \
-            --evidence-dir build/platform-api-1x-runtime-source \
-            --out-dir build/platform-api-1x-runtime-preflight
+          inventory=build/platform-api-1x-runtime-source/platform-api-1.x-app-subject-inventory.json
+          if [[ -f "$inventory" ]] && [[ "$(jq -r .schemaVersion "$inventory")" == 2 ]]; then
+            [[ "$SUBJECT_COHORT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+            private_root="$(mktemp -d "$RUNNER_TEMP/app-subject-verification.XXXXXX")"
+            python3 tools/release-certification/protected/app_subject_projection.py verify-matrix \
+              --private-root "$private_root" \
+              --expected-cohort-digest "$SUBJECT_COHORT_DIGEST" \
+              --coordinates build/platform-api-1x-runtime-source/app-subject-projection-authority.json \
+              --execution-contract build/platform-api-1x-runtime-source/platform-api-1.x-execution.json \
+              --evidence-dir build/platform-api-1x-runtime-source \
+              --out-dir build/platform-api-1x-runtime-preflight
+            rmdir "$private_root"
+          else
+            python3 tools/release-certification/certify.py stable-platform-api-1x \
+              --mode verify-app-matrix \
+              --execution-contract build/platform-api-1x-runtime-source/platform-api-1.x-execution.json \
+              --evidence-dir build/platform-api-1x-runtime-source \
+              --out-dir build/platform-api-1x-runtime-preflight
+          fi
 
       - name: Exercise the managed node with the protected runtime adapter
         env:

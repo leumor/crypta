@@ -132,6 +132,7 @@ import picocli.CommandLine;
     mixinStandardHelpOptions = true,
     description = "Create, validate, lint, package, sign, and catalog Crypta app bundles.",
     subcommands = {
+      AppSubjectProjectionCommand.class,
       network.crypta.platform.devtools.migration.sharesite.SharesiteMigrationCommand.class,
       CryptaAppCli.InitCommand.class,
       CryptaAppCli.DevCommand.class,
