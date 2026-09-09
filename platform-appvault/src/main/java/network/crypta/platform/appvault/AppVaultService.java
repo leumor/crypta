@@ -1045,6 +1045,9 @@ public final class AppVaultService {
   /**
    * Protects bounded app-owned state with the separate retained local-storage identity.
    *
+   * <p>Encrypts with the storage key, then signs the complete envelope in a storage-only domain
+   * using the same account's Mail signer. Both identities require current purpose grants.
+   *
    * @param appId authenticated owning app
    * @param identityId retained storage identity
    * @param plaintext complete bounded state
@@ -1056,6 +1059,9 @@ public final class AppVaultService {
 
   /**
    * Authenticates and opens state under the separate local-storage purpose and identity.
+   *
+   * <p>Verifies the writer signature and local identity bindings before decrypting. Unsigned legacy
+   * storage is rejected. This check does not detect replay of an authentic older snapshot.
    *
    * @param appId authenticated owning app
    * @param identityId retained storage identity

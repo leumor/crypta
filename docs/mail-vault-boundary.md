@@ -24,6 +24,17 @@ to the authorized process after complete authenticated open and strict inner-mes
 exact local recipient fingerprint, account and epoch validation. The worker additionally verifies
 the inner signature, pinned sender and contact policy before acceptance or display.
 
+Local storage additionally authenticates the writer. `seal-storage` signs the complete encrypted
+state with the account's retained Mail signer in the distinct `crypta.mail.storage-auth.v1` domain,
+binding app, account and both key identities/epochs. `open-storage` verifies that signature using
+authoritative vault metadata before decrypting. Both current signing and storage grants are required;
+the ordinary Mail signing route cannot sign this domain. Public storage metadata alone therefore
+cannot create a trusted mailbox dataset. See the exact [storage framing](mail-wire-specification.md#vault-authenticated-local-state).
+Earlier unsigned experimental state and backups are rejected without automatic migration, since
+decrypting and re-signing them would authenticate attacker-supplied data. Existing private vault
+key formats and network Mail envelopes are unchanged. Authenticated snapshots are still subject
+to the documented rollback/replay limitations.
+
 Typed operations are bounded synchronous vault work; none calls the worker or transport while
 holding the vault lock. Public errors reveal bounded operation codes and no crypto inputs.
 

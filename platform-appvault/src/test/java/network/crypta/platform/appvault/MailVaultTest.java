@@ -3,6 +3,7 @@ package network.crypta.platform.appvault;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +47,141 @@ class MailVaultTest {
     assertThrows(AppVaultException.class, () -> sender.openMail(APP, wrong.identityId(), envelope));
     AppVaultService reopened = open(root.resolve("recipient"));
     assertArrayEquals(signed, reopened.openMail(APP, receiver.identityId(), envelope));
+  }
+
+  @Test
+  void publicStorageKeyCannotAuthenticateReplacementState() throws Exception {
+    AppVaultService vault = open(root.resolve("vault"));
+    AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    byte[] forged =
+        MailHpke.seal(
+            "storage",
+            storage.fingerprint(),
+            publicKey(storage),
+            "forged public synthetic state".getBytes(StandardCharsets.UTF_8));
+    String storageId = storage.identityId();
+
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, storageId, forged));
+  }
+
+  @Test
+  void authenticatedStorageSurvivesReopenAndRejectsTamperingOrSignatureTransplants()
+      throws Exception {
+    AppVaultService vault = open(root.resolve("vault"));
+    AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    String id = storage.identityId();
+    byte[] plaintext = new byte[131072];
+    Arrays.fill(plaintext, (byte) 's');
+    byte[] sealed = vault.sealStorage(APP, id, plaintext);
+    var fields = MailWire.decode(sealed, 196608);
+    var other = MailWire.decode(vault.sealStorage(APP, id, new byte[0]), 196608);
+
+    AppVaultService reopened = open(root.resolve("vault"));
+    assertArrayEquals(plaintext, reopened.openStorage(APP, id, sealed));
+    assertTrue(sealed.length <= 196608);
+    for (String field : fields.keySet()) {
+      var changed = new LinkedHashMap<>(fields);
+      changed.put(field, field.equals("signature") ? other.get(field) : fields.get(field) + "A");
+      byte[] tampered = MailWire.encode(changed);
+      assertThrows(AppVaultException.class, () -> vault.openStorage(APP, id, tampered), field);
+    }
+    var extra = new LinkedHashMap<>(fields);
+    extra.put("publicKeyBase64", MailWire.base64(publicKey(signing(vault))));
+    byte[] unknownField = MailWire.encode(extra);
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, id, unknownField));
+    var reordered = new LinkedHashMap<String, String>();
+    reordered.put("signature", fields.get("signature"));
+    reordered.putAll(fields);
+    byte[] wrongOrder = MailWire.encode(reordered);
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, id, wrongOrder));
+    String otherId = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1).identityId();
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, otherId, sealed));
+  }
+
+  @Test
+  void storageSignatureBindsCompleteCiphertextAndAuthoritativeIdentityMetadata() throws Exception {
+    AppVaultService vault = open(root.resolve("vault"));
+    AppIdentityRecord signer = signing(vault);
+    AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    byte[] sealed = vault.sealStorage(APP, storage.identityId(), new byte[0]);
+    var fields = MailWire.decode(sealed, 196608);
+    assertEquals("crypta.mail.storage-auth.v1", fields.remove("authentication"));
+    byte[] signature = MailWire.unbase64(fields.remove("signature"), 64);
+    String encrypted = new String(MailWire.encode(fields), StandardCharsets.UTF_8);
+    var bindings = new LinkedHashMap<String, String>();
+    bindings.put("app", APP);
+    bindings.put("account", storage.publicSummary().get("account"));
+    bindings.put("storageId", storage.identityId());
+    bindings.put("storageEpoch", storage.publicSummary().get("epoch"));
+    bindings.put("storageFingerprint", storage.fingerprint());
+    bindings.put("signingId", signer.identityId());
+    bindings.put("signingEpoch", signer.publicSummary().get("epoch"));
+    bindings.put("signingFingerprint", signer.fingerprint());
+
+    assertTrue(MailWire.verify(publicKey(signer), storageFrame(bindings, encrypted), signature));
+    for (String field : bindings.keySet()) {
+      var changed = new LinkedHashMap<>(bindings);
+      changed.put(field, "substituted");
+      assertFalse(
+          MailWire.verify(publicKey(signer), storageFrame(changed, encrypted), signature), field);
+    }
+    assertFalse(
+        MailWire.verify(publicKey(signer), storageFrame(bindings, encrypted + " "), signature));
+  }
+
+  private static byte[] storageFrame(Map<String, String> bindings, String encrypted) {
+    return ("crypta.mail.storage-auth.v1\n"
+            + new String(MailWire.encode(bindings), StandardCharsets.UTF_8)
+            + "\n"
+            + encrypted)
+        .getBytes(StandardCharsets.UTF_8);
+  }
+
+  @Test
+  void storageRequiresCurrentSameAccountSigningAuthorityAndHasNoPublicSigningOracle()
+      throws Exception {
+    AppVaultService vault = open(root.resolve("vault"));
+    AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    String id = storage.identityId();
+    String signingId = signing(vault).identityId();
+    byte[] plaintext = "public synthetic state".getBytes(StandardCharsets.UTF_8);
+    byte[] sealed = vault.sealStorage(APP, id, plaintext);
+    byte[] storagePayload = MailWire.encode(Map.of("profile", "crypta.mail.storage-auth.v1"));
+    assertThrows(AppVaultException.class, () -> vault.signMail(APP, signingId, storagePayload));
+
+    vault.revokeGrantsForApp(APP);
+    vault.grantIdentity(
+        id,
+        APP,
+        Set.of(AppIdentityGrantScope.METADATA_READ, AppIdentityGrantScope.MAIL_STORAGE),
+        "operator",
+        "storage only",
+        null,
+        null);
+    vault.grantIdentity(
+        signingId,
+        APP,
+        Set.of(AppIdentityGrantScope.METADATA_READ),
+        "operator",
+        "signing metadata only",
+        null,
+        null);
+
+    assertThrows(AppVaultException.class, () -> vault.sealStorage(APP, id, plaintext));
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, id, sealed));
+    vault.grantIdentity(
+        signingId,
+        APP,
+        Set.of(AppIdentityGrantScope.MAIL_SIGN),
+        "operator",
+        "expired signing",
+        Instant.EPOCH,
+        null);
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, id, sealed));
+    vault.deleteIdentity(signingId);
+    vault.createMailIdentity(APP, AppIdentityKind.MAIL_SIGNING_V1);
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, id, sealed));
+    assertThrows(AppVaultException.class, () -> vault.sealStorage(APP, id, plaintext));
   }
 
   @Test

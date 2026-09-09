@@ -72,6 +72,22 @@ rollback-proof. Missing keys block recovery and must never create a misleading e
 Bundle rollback preserves current keys/grants/data. Default uninstall destroys required keys,
 even when app data is preserved; data-only backups can consequently become unreadable.
 
+The complete storage ciphertext carries a vault-created Ed25519 signature in a separate storage
+domain, bound to the app, account and retained storage/signing identities and epochs. The vault
+verifies it before returning plaintext for dataset load or restore. HPKE base-mode encryption alone
+cannot prove local provenance: anyone with a storage public key could otherwise forge a dataset,
+including inbox entries. Only the current process-only storage operation can produce this proof;
+the existing Mail signing route does not accept its domain. Both key-purpose grants are required.
+This protects against replacement data from outside the trusted endpoint, not an authorized
+compromised worker. See [exact storage framing](mail-wire-specification.md#vault-authenticated-local-state).
+
+Earlier unsigned experimental Mail datasets and backups are rejected as invalid. No automatic
+migration is safe because legacy data has no writer proof. Preserve old data for separate trusted
+recovery; do not treat it as verified Mail state. The inner schema-1 dataset and retained vault
+identity records remain unchanged. App-bundle rollback continues to use the current vault's checks.
+Downgrading the daemon to a vault implementation without writer verification reintroduces this
+flaw and cannot open the new authenticated storage format.
+
 ## Scope and evidence
 
 The external app-service interface remains closed and disabled; consumer proposals are deferred.
@@ -142,7 +158,8 @@ identifier, without account identifiers, key material or user data. Until the ma
 only initialization or explicit retained-key restore can produce usable mailbox state.
 Initialization reconciles at most one identity per Mail role, reuses successful creations whose
 responses were lost, and CAS-replaces the marker with the encrypted schema-1 mailbox. Normal
-schema-1 ciphertext and backup formats are unchanged. No extra journal remains after completion.
+schema-1 dataset layout is unchanged. No extra journal remains after completion. Its encrypted
+storage wrapper requires the writer authentication described above.
 The initial absent-record write relies on the existing single current worker; subsequent writes
 use the observed record digest.
 

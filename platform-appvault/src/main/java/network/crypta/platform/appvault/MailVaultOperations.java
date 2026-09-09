@@ -1,11 +1,14 @@
 package network.crypta.platform.appvault;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import network.crypta.crypt.mail.MailHpke;
@@ -35,8 +38,36 @@ final class MailVaultOperations {
   /** Public identity summary field binding separate purpose keys to one account. */
   private static final String ACCOUNT = "account";
 
+  /** Immutable key epoch in the authoritative public identity summary. */
+  private static final String EPOCH = "epoch";
+
   /** Key role and HPKE purpose reserved for private local state. */
   private static final String STORAGE_ROLE = "storage";
+
+  /** Separate application signature domain for vault-created local state. */
+  private static final String STORAGE_AUTH_DOMAIN = "crypta.mail.storage-auth.v1";
+
+  /** Required version marker for writer-authenticated storage envelopes. */
+  private static final String AUTHENTICATION = "authentication";
+
+  /** Canonical Base64 writer signature field, always last. */
+  private static final String SIGNATURE = "signature";
+
+  /** Complete encoded storage bound, including the writer authentication fields. */
+  private static final int MAX_STORAGE_ENVELOPE = 196608;
+
+  /** Closed field set and canonical order of the vault-authenticated storage format. */
+  private static final List<String> STORAGE_FIELDS =
+      List.of(
+          "profile",
+          "kem",
+          "kdf",
+          "aead",
+          "selector",
+          "enc",
+          "ciphertext",
+          AUTHENTICATION,
+          SIGNATURE);
 
   /** Authoritative identity lifecycle and grants, accessed under its monitor. */
   private final AppVaultService service;
@@ -124,7 +155,7 @@ final class MailVaultOperations {
       Map<String, String> summary = new LinkedHashMap<>();
       summary.put("algorithm", kind == AppIdentityKind.MAIL_SIGNING_V1 ? "Ed25519" : "X25519");
       summary.put(PUBLIC_KEY_BASE64, MailWire.base64(publicKey));
-      summary.put("epoch", "1");
+      summary.put(EPOCH, "1");
       summary.put("role", role);
       if (kind == AppIdentityKind.MAIL_SIGNING_V1) {
         random.nextBytes(randomId);
@@ -240,8 +271,10 @@ final class MailVaultOperations {
    * <p>Network opening authenticates the HPKE envelope, validates the complete inner message
    * structure and checks the recipient account/key epoch. It checks signature encoding but does not
    * verify the sender signature, contact pin, freshness or replay history. The worker must complete
-   * those checks before accepting or displaying the message. Storage opening uses a distinct HPKE
-   * domain and returns opaque local-state plaintext without applying network message rules.
+   * those checks before accepting or displaying the message. Storage opening first verifies the
+   * complete envelope's writer signature against the same account's authorized retained signer,
+   * then uses a distinct HPKE domain and returns opaque local-state plaintext. Unsigned storage is
+   * rejected; HPKE base-mode integrity alone does not establish local provenance.
    *
    * @param app authenticated Mail app identifier
    * @param id retained recipient or storage identity identifier
@@ -255,7 +288,8 @@ final class MailVaultOperations {
         authorize(
             app, id, storage ? AppIdentityKind.MAIL_STORAGE_V1 : AppIdentityKind.MAIL_RECIPIENT_V1);
     try {
-      MailWire.decode(envelope, storage ? 196608 : 65536);
+      if (storage) envelope = verifyStorage(identity, envelope);
+      else MailWire.decode(envelope, 65536);
     } catch (IllegalArgumentException _) {
       throw invalid();
     }
@@ -290,7 +324,11 @@ final class MailVaultOperations {
   }
 
   /**
-   * Protects bounded state under the distinct retained local-storage identity.
+   * Encrypts bounded state under the storage identity and authenticates the complete ciphertext.
+   *
+   * <p>The same account's retained Mail signer signs a fixed storage-only preimage after
+   * encryption. Both purpose grants are required; this operation never signs caller-supplied
+   * ciphertext.
    *
    * @param app authenticated Mail app identifier
    * @param id retained storage identity identifier
@@ -300,15 +338,94 @@ final class MailVaultOperations {
    */
   byte[] sealStorage(String app, String id, byte[] plaintext) {
     AppIdentityRecord identity = authorize(app, id, AppIdentityKind.MAIL_STORAGE_V1);
+    AppIdentityRecord signer = storageSigner(identity);
+    byte[] privateKey = privateBytes(signer);
     try {
-      return MailHpke.seal(
-          STORAGE_ROLE,
-          identity.fingerprint(),
-          MailWire.unbase64(identity.publicSummary().get(PUBLIC_KEY_BASE64), 32),
-          plaintext);
+      byte[] encrypted =
+          MailHpke.seal(
+              STORAGE_ROLE,
+              identity.fingerprint(),
+              MailWire.unbase64(identity.publicSummary().get(PUBLIC_KEY_BASE64), 32),
+              plaintext);
+      byte[] signature = MailWire.sign(privateKey, storagePreimage(identity, signer, encrypted));
+      var fields = MailWire.decode(encrypted, MAX_STORAGE_ENVELOPE);
+      fields.put(AUTHENTICATION, STORAGE_AUTH_DOMAIN);
+      fields.put(SIGNATURE, MailWire.base64(signature));
+      byte[] authenticated = MailWire.encode(fields);
+      if (authenticated.length > MAX_STORAGE_ENVELOPE) throw invalid();
+      return authenticated;
     } catch (IllegalArgumentException _) {
       throw invalid();
+    } finally {
+      Arrays.fill(privateKey, (byte) 0);
     }
+  }
+
+  /**
+   * Verifies writer provenance before any storage private-key access or plaintext release.
+   *
+   * @param storage authorized storage identity supplying authoritative account/key bindings
+   * @param envelope complete bounded authenticated storage object
+   * @return canonical underlying HPKE envelope, only after signature verification
+   */
+  private byte[] verifyStorage(AppIdentityRecord storage, byte[] envelope) {
+    var fields = MailWire.ordered(MailWire.decode(envelope, MAX_STORAGE_ENVELOPE), STORAGE_FIELDS);
+    if (!Arrays.equals(envelope, MailWire.encode(fields))) throw invalid();
+    requireEqual(STORAGE_AUTH_DOMAIN, fields.remove(AUTHENTICATION));
+    byte[] signature = MailWire.unbase64(fields.remove(SIGNATURE), 64);
+    byte[] encrypted = MailWire.encode(fields);
+    AppIdentityRecord signer = storageSigner(storage);
+    if (!MailWire.verify(
+        MailWire.unbase64(signer.publicSummary().get(PUBLIC_KEY_BASE64), 32),
+        storagePreimage(storage, signer, encrypted),
+        signature)) throw invalid();
+    return encrypted;
+  }
+
+  /**
+   * Selects the sole same-account signer from retained metadata and rechecks its current grant.
+   *
+   * @param storage authorized storage identity
+   * @return current authorized same-account Mail signer
+   */
+  private AppIdentityRecord storageSigner(AppIdentityRecord storage) {
+    var signers =
+        service.listIdentities().stream()
+            .filter(i -> APP.equals(i.ownerAppId()) && i.kind() == AppIdentityKind.MAIL_SIGNING_V1)
+            .filter(
+                i -> storage.publicSummary().get(ACCOUNT).equals(i.publicSummary().get(ACCOUNT)))
+            .toList();
+    if (signers.size() != 1) throw unavailable();
+    return authorize(APP, signers.getFirst().identityId(), AppIdentityKind.MAIL_SIGNING_V1);
+  }
+
+  /**
+   * Frames the complete ciphertext with authoritative local identity bindings in a distinct domain.
+   *
+   * @param storage authorized storage identity
+   * @param signer authorized same-account signer
+   * @param encrypted canonical seven-field HPKE envelope
+   * @return domain, LF, canonical binding object, LF and exact encrypted envelope bytes
+   */
+  private static byte[] storagePreimage(
+      AppIdentityRecord storage, AppIdentityRecord signer, byte[] encrypted) {
+    var binding = new LinkedHashMap<String, String>();
+    binding.put("app", APP);
+    binding.put(ACCOUNT, storage.publicSummary().get(ACCOUNT));
+    binding.put("storageId", storage.identityId());
+    binding.put("storageEpoch", storage.publicSummary().get(EPOCH));
+    binding.put("storageFingerprint", storage.fingerprint());
+    binding.put("signingId", signer.identityId());
+    binding.put("signingEpoch", signer.publicSummary().get(EPOCH));
+    binding.put("signingFingerprint", signer.fingerprint());
+    byte[] prefix = (STORAGE_AUTH_DOMAIN + "\n").getBytes(StandardCharsets.UTF_8);
+    byte[] metadata = MailWire.encode(binding);
+    return ByteBuffer.allocate(prefix.length + metadata.length + 1 + encrypted.length)
+        .put(prefix)
+        .put(metadata)
+        .put((byte) '\n')
+        .put(encrypted)
+        .array();
   }
 
   /**

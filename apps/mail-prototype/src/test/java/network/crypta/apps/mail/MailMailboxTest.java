@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import network.crypta.crypt.mail.MailHpke;
 import network.crypta.crypt.mail.MailWire;
+import network.crypta.platform.appvault.AppIdentityKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -145,6 +146,104 @@ class MailMailboxTest {
     assertArrayEquals(before, b.storedBytes());
     assertStatus("accepted", receive(bob, sent.get("reference")));
     assertStatus("duplicate", receive(bob, sent.get("reference")));
+  }
+
+  @Test
+  void publicMetadataOnlyBackupCannotInjectVerifiedInboxOrReplaceDurableState() {
+    assertForgedStateRejected(false);
+  }
+
+  @Test
+  void copiedBackupSignatureCannotAuthenticateReplacementCiphertext() {
+    assertForgedStateRejected(true);
+  }
+
+  private void assertForgedStateRejected(boolean copySignature) {
+    // The attacker can see public identities and an explicitly exported contact card, but never
+    // opens existing state or invokes a private-key operation to construct this replacement.
+    var identities = b.vault.listIdentitiesForApp(MailTestBackend.APP);
+    var storage =
+        identities.stream()
+            .filter(i -> i.kind() == AppIdentityKind.MAIL_STORAGE_V1)
+            .findFirst()
+            .orElseThrow();
+    var replacement = new LinkedHashMap<String, String>();
+    replacement.put("schema", "1");
+    for (var identity : identities) {
+      String field =
+          switch (identity.kind()) {
+            case MAIL_SIGNING_V1 -> "signingId";
+            case MAIL_RECIPIENT_V1 -> "recipientId";
+            case MAIL_STORAGE_V1 -> "storageId";
+            default -> throw new AssertionError("Unexpected identity");
+          };
+      replacement.put(field, identity.identityId());
+    }
+    replacement.put("ownCard", bob.execute("export-contact", Map.of()).get("card"));
+    replacement.put("recovery", "normal");
+    byte[] fakePayload =
+        MailWire.encode(
+            Map.of(
+                "sender",
+                aliceFingerprint,
+                "subject",
+                "Forged synthetic subject",
+                "body",
+                "Forged body"));
+    replacement.put("inbox.forged", MailWire.base64(MailWire.signed(fakePayload, new byte[64])));
+    byte[] forgedEnvelope =
+        MailHpke.seal(
+            "storage",
+            storage.fingerprint(),
+            MailWire.unbase64(storage.publicSummary().get("publicKeyBase64"), 32),
+            MailWire.encode(replacement));
+    byte[] original = b.storedBytes();
+    if (copySignature) {
+      // Even a captured valid backup provides no authority for replacement ciphertext.
+      var originalOuter = MailWire.decode(original, 262144);
+      var originalEnvelope =
+          MailWire.decode(
+              java.util.Base64.getDecoder().decode(originalOuter.get("envelope")), 196608);
+      var forgedFields = MailWire.decode(forgedEnvelope, 196608);
+      forgedFields.put("authentication", originalEnvelope.get("authentication"));
+      forgedFields.put("signature", originalEnvelope.get("signature"));
+      forgedEnvelope = MailWire.encode(forgedFields);
+    }
+    var wrapper = new LinkedHashMap<String, String>();
+    wrapper.put("storageId", storage.identityId());
+    wrapper.put("envelope", MailWire.base64(forgedEnvelope));
+    String forgedBackup = MailWire.base64(MailWire.encode(wrapper));
+
+    var restored = bob.execute("restore", Map.of("backup", forgedBackup, "confirmed", "yes"));
+
+    assertStatus("invalid", restored);
+    assertArrayEquals(original, b.storedBytes());
+    assertEquals("0", bob.execute("status", Map.of()).get("inbox"));
+    assertStatus("invalid", bob.execute("read", Map.of("messageId", "forged")));
+
+    // A filesystem/app-data replacement takes the same authenticated load path after restart.
+    b.request(
+        "POST",
+        "/app-data/records",
+        Map.of(
+            "namespace",
+            "mail-state",
+            "key",
+            "dataset",
+            "schemaVersion",
+            "1",
+            "contentType",
+            "application/octet-stream",
+            "valueBase64",
+            forgedBackup));
+    bob = new MailMailbox(b, clock);
+    assertStatus("invalid", bob.execute("status", Map.of()));
+    assertStatus("invalid", bob.execute("read", Map.of("messageId", "forged")));
+    assertStatus("invalid", bob.execute("initialize", Map.of()));
+    assertStatus(
+        "recovery-paused",
+        bob.execute("restore", Map.of("backup", MailWire.base64(original), "confirmed", "yes")));
+    assertEquals("0", bob.execute("status", Map.of()).get("inbox"));
   }
 
   @Test

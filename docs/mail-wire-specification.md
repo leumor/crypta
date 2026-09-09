@@ -44,7 +44,44 @@ one fresh sender context. Network envelope limit is 65536 bytes; storage plainte
 131072 bytes with a 196608-byte encoded storage envelope cap. Stored retry bytes are immutable.
 No raw DH, exporters or AEAD context is exposed to apps.
 
-Independent known answers are from RFC 9180 Appendix A.1.1 and RFC 8032 section 7.1.
+## Vault-authenticated local state
+
+Base-mode HPKE does not authenticate the writer: anyone with the public storage key can seal
+new ciphertext. Consequently, the vault's storage operations require an additional pure Ed25519
+signature by the retained Mail signing identity for the storage key's immutable account. This
+signature is created only inside `seal-storage`, with a distinct application domain; the public
+`sign` operation continues to accept only contact and message payloads. Both storage and signing
+purpose grants must be current. The trusted worker still owns acceptance policy; this proof
+authenticates an authorized vault write, not the correctness of a compromised worker.
+
+The protected storage object contains the seven HPKE fields above, followed by `authentication`
+(exactly `crypta.mail.storage-auth.v1`) and `signature` (canonical Base64 of 64 bytes). No extra,
+omitted or reordered fields are accepted. The signature preimage is the concatenation of:
+
+1. UTF-8 `crypta.mail.storage-auth.v1`, then one LF byte;
+2. canonical JSON binding fields in this order: `app`, `account`, `storageId`, `storageEpoch`,
+   `storageFingerprint`, `signingId`, `signingEpoch`, `signingFingerprint`;
+3. one LF byte, then the complete canonical seven-field HPKE object, including ciphertext.
+
+All binding values come from authorized vault identity metadata; `app` is `mail-prototype`.
+The vault selects the sole retained Mail signer with the same account and verifies against its
+public key, never a key supplied by the protected object. It verifies before accessing the storage
+private key, decrypting or returning plaintext. The 196608-byte cap includes the added fields;
+there is no second layer of Base64 around the HPKE object inside this envelope.
+
+Unsigned storage from earlier experimental builds is rejected, including previously exported
+backups. There is no automatic migration: decrypting and re-signing such data would bless the
+same forgery. Preserve old data for separate trusted recovery, but do not import it as verified
+state. Mail network envelopes, existing vault key records and the inner schema-1 dataset layout
+are unchanged. An app-bundle rollback still uses the current vault's authentication checks.
+Downgrading the daemon to a vault implementation without this check reintroduces the vulnerability
+and cannot read the new storage object. Authenticated old snapshots remain replayable; the existing
+restore pause and replay-merge policy still applies. This is a prototype composition, not an
+independently reviewed secure-storage protocol.
+
+## Primitive and public synthetic vectors
+
+Independent primitive known answers are from RFC 9180 Appendix A.1.1 and RFC 8032 section 7.1.
 Tests embed the published expected bytes rather than regenerating expectations. These primitive
 vectors are distinct from any future independent review of this application composition.
 

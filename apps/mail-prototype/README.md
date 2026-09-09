@@ -68,6 +68,15 @@ compatible installation with the required retained vault identities and grants. 
 not contain private keys. Missing keys report key-unavailable; creating new keys cannot recover old
 ciphertexts, drafts or sent copies.
 
+Backups require vault-authenticated storage: the complete ciphertext is signed in a separate
+storage domain by the account's retained Mail signer before it can be loaded or restored. Both
+signing and storage grants must remain valid. Public storage keys cannot create a trusted backup.
+Unsigned backups/datasets from earlier experimental builds are rejected as invalid; there is no
+automatic migration that can safely distinguish them from forged state. Preserve old files for
+separate trusted recovery, and do not downgrade the daemon to a vault implementation without this
+check. Such a daemon both reintroduces the vulnerability and cannot read the new authenticated
+format. App-bundle rollback continues to use the current daemon vault's checks.
+
 An older backup can contain older replay state. Recovery must preserve current replay tombstones
 where available. Restore pauses new sending and receiving; this version has no recovery-resume
 operation. Retained messages remain readable. This is not rollback-proof replay prevention.
