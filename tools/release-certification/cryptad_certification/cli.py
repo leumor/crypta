@@ -74,6 +74,20 @@ def build_parser() -> argparse.ArgumentParser:
     _add_run_arguments(multi)
     multi.add_argument("action", nargs="?", choices=MULTI_NODE_ACTIONS)
 
+    cross_version = subparsers.add_parser("cross-version-soak")
+    cross_version.add_argument("action", nargs="?", choices=("plan", "run", "verify", "closeout", "profile-compare"))
+    cross_version.add_argument("--plan", type=Path)
+    cross_version.add_argument("--private-config", type=Path)
+    cross_version.add_argument("--authorization", type=Path)
+    cross_version.add_argument("--journal-root", type=Path)
+    cross_version.add_argument("--continuation", type=Path)
+    cross_version.add_argument("--out-dir", type=Path)
+    cross_version.add_argument("--previous-source")
+    cross_version.add_argument("--current-source")
+    cross_version.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    cross_version.add_argument("--execute", action="store_true")
+    cross_version.add_argument("--self-test", action="store_true")
+
     security = subparsers.add_parser("security-response")
     _add_run_arguments(security)
     security.add_argument("action", nargs="?", choices=SECURITY_ACTIONS)
@@ -1336,6 +1350,14 @@ def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
         return selftest.run(command)
+    if command == "cross-version-soak":
+        from .cross_version_command import run
+
+        try:
+            return run(args)
+        except Exception:
+            # Selected paths, upstream replies and private comparisons are never public errors.
+            raise ValueError("cross-version-command-failed; no complete soak evidence produced") from None
     if command == "stable-protected-release":
         from .engines import stable_1_0_protected_release
 

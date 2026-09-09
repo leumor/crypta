@@ -1,0 +1,299 @@
+"""Offline original-artifact substitution tests; no GitHub or node execution."""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+import zipfile
+
+from cryptad_certification.tests.test_stable_ga import _write_exact_rc_fixture
+
+_MODULE = Path(__file__).resolve().parents[2] / "protected/cross_version_product_admission.py"
+_SPEC = importlib.util.spec_from_file_location("cross_version_product_admission", _MODULE)
+products = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = products
+_SPEC.loader.exec_module(products)
+
+
+def archive(files):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as source:
+        for name, content in files.items():
+            source.writestr(name, content)
+    return output.getvalue()
+
+
+class CrossVersionProductAdmissionTest(unittest.TestCase):
+    def rc(self, root):
+        _context, paths = _write_exact_rc_fixture(root / "fixture")
+        artifact_root = paths["selectedStableRcFreeze"].parent
+        files = {p.relative_to(artifact_root).as_posix(): p.read_bytes() for p in artifact_root.rglob("*") if p.is_file()}
+        coordinates = {"sourceCommit": "a" * 40, "runId": 42, "runAttempt": 3,
+                       "artifactName": "stable-1-0-rc-stable-1-0-rc-284-284-42-3"}
+        return SimpleNamespace(content=archive(files), coordinates=coordinates)
+
+    def portable(self, selected):
+        payload = b"selected old portable archive bytes"
+        checksum = hashlib.sha256(payload).hexdigest()
+        coordinates = {"sourceCommit": "a" * 40, "runId": 84, "runAttempt": 2}
+        checksum_bytes = (checksum + "  ./distributions/cryptad-v284.tar.gz\n").encode()
+        handoff = {"schemaVersion": 1, "kind": "cryptad-stable-supply-chain-builder-handoff",
+                   "builderRole": "candidate-producer", "executionId": "portable-apps",
+                   "jobName": "candidate-producer-portable-apps", "runnerOs": "linux", "runnerArchitecture": "amd64",
+                   "releaseId": "stable-1-0-rc-284", "buildVersion": 284, "sourceCommit": "a" * 40,
+                   "workflowSha": "a" * 40, "runId": 84, "runAttempt": 2,
+                   "workflow": "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml@" + "a" * 40,
+                   "fileSetDigest": "sha256:" + hashlib.sha256(checksum_bytes).hexdigest()}
+        raw = archive({"handoff.json": json.dumps(handoff), "subject-files.sha256": checksum_bytes,
+                       "subjects/distributions/cryptad-v284.tar.gz": payload})
+        node = {"role": "previous", "artifactDigest": "sha256:" + checksum, "artifactSize": len(payload),
+                "sourceCommit": "a" * 40, "product": "cryptad", "packageTarget": "linux-x64",
+                "contractVersion": selected.freeze["platformApi"]["currentContractVersion"]}
+        return SimpleNamespace(content=raw, coordinates=coordinates), node, payload
+
+    def selected(self, root):
+        original = self.rc(root)
+        result = products.verify_rc_artifact(original, root / "selected")
+        return SimpleNamespace(**result.__dict__, _original_coordinates=original.coordinates)
+
+    def test_rc_uses_existing_freeze_product_checksums_and_archive_consumer(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            selected = self.selected(Path(temporary))
+            self.assertEqual("a" * 40, selected.freeze["candidate"]["sourceCommit"])
+            self.assertEqual(selected.product_digest, selected.freeze["candidate"]["productionDistributionDigest"])
+
+    def test_portable_subject_reopens_exact_original_member_and_preserves_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            selected = self.selected(root)
+            original, node, payload = self.portable(selected)
+            row = products.verify_portable_artifact(original, selected, node, root / "portable.tar.gz")
+            self.assertEqual(payload, row["path"].read_bytes())
+            self.assertEqual("not-established", row["frozenPortableBinding"])
+            self.assertEqual("284", row["buildVersion"])
+            self.assertEqual(84, row["portableOrigin"]["runId"])
+
+    def test_portable_wrong_role_digest_source_contract_and_target_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            selected = self.selected(root)
+            original, node, _payload = self.portable(selected)
+            for field, value in (("artifactDigest", "sha256:" + "f" * 64), ("sourceCommit", "b" * 40),
+                                 ("contractVersion", 999), ("packageTarget", "windows-x64")):
+                with self.subTest(field=field):
+                    with self.assertRaises(products.ProductAdmissionError):
+                        products.verify_portable_artifact(original, selected, {**node, field: value}, root / "never")
+
+    def test_rc_source_cannot_be_rebound_to_current_producer(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = self.rc(root)
+            original.coordinates["sourceCommit"] = "b" * 40
+            with self.assertRaisesRegex(products.ProductAdmissionError, "source-mismatch"):
+                products.verify_rc_artifact(original, root / "selected")
+
+    def test_archive_links_traversal_case_collision_and_duplicates_rejected(self):
+        for names in (("../outside",), ("/outside",), ("a", "A")):
+            with self.subTest(names=names), self.assertRaises(products.ProductAdmissionError):
+                products._members(archive({name: b"x" for name in names}))
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as source:
+            member = zipfile.ZipInfo("link")
+            member.external_attr = 0o120777 << 16
+            source.writestr(member, b"outside")
+        with self.assertRaises(products.ProductAdmissionError):
+            products._members(output.getvalue())
+
+    def test_rc_checksum_corruption_is_rejected_by_existing_consumer(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = self.rc(root)
+            with zipfile.ZipFile(io.BytesIO(original.content)) as source:
+                files = {name: source.read(name) for name in source.namelist()}
+            files["crypta-stable-1.0-rc-284-product.tar.gz"] += b"changed"
+            original.content = archive(files)
+            with self.assertRaises(products.ProductAdmissionError):
+                products.verify_rc_artifact(original, root / "selected")
+
+    def test_portable_attestation_requires_original_attempt_for_both_members(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            selected = self.selected(root)
+            original, node, _payload = self.portable(selected)
+            package = root / "portable.tar.gz"
+            products.verify_portable_artifact(original, selected, node, package)
+            invocation = "https://github.com/crypta-network/cryptad/actions/runs/84/attempts/2"
+            result = [{"verificationResult": {"signature": {"certificate": {"runInvocationURI": invocation}}}}]
+            with patch.object(products, "_environment", return_value={}), patch.object(products, "_gh", return_value=result) as gh:
+                products.verify_portable_attestations(original, package, root)
+                self.assertEqual(2, gh.call_count)
+                self.assertIn("--source-digest", gh.call_args.args[0])
+
+    def test_portable_reuploaded_attestation_attempt_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            selected = self.selected(root)
+            original, node, _payload = self.portable(selected)
+            package = root / "portable.tar.gz"
+            products.verify_portable_artifact(original, selected, node, package)
+            invocation = "https://github.com/crypta-network/cryptad/actions/runs/84/attempts/99"
+            result = [{"verificationResult": {"signature": {"certificate": {"runInvocationURI": invocation}}}}]
+            with patch.object(products, "_environment", return_value={}), patch.object(products, "_gh", return_value=result):
+                with self.assertRaisesRegex(products.ProductAdmissionError, "attested-attempt"):
+                    products.verify_portable_attestations(original, package, root)
+
+    def test_required_roster_omission_stops_before_any_network_authentication(self):
+        from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
+        plan = fixture_plan()
+        plan["profile"] = "bounded-live"
+        plan["provenanceClass"] = "production-artifact-comparison"
+        with tempfile.TemporaryDirectory() as temporary, patch.object(products, "authenticate_original") as authenticate:
+            with self.assertRaisesRegex(products.ProductAdmissionError, "required-roster"):
+                products.authenticate_products(plan, {"schemaVersion": 1, "roles": {}}, Path(temporary) / "private")
+            authenticate.assert_not_called()
+
+    def test_protected_long_product_selection_still_requires_original_roster(self):
+        from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
+        plan = fixture_plan()
+        plan.update({"profile": "protected-long-live", "provenanceClass": "production-artifact-comparison", "requestedSeconds": 72 * 3600})
+        plan["policy"]["minimumObservedSeconds"] = 72 * 3600
+        with tempfile.TemporaryDirectory() as temporary, patch.object(products, "authenticate_original") as authenticate:
+            with self.assertRaisesRegex(products.ProductAdmissionError, "required-roster"):
+                products.authenticate_products(plan, {}, Path(temporary) / "private")
+            authenticate.assert_not_called()
+
+    def test_full_original_rc_and_portable_pipeline_binds_four_roles(self):
+        from cryptad_certification.tests import test_stable_ga as fixtures
+        from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
+        from cryptad_certification.tests.test_stable_rc import _freeze
+        plan = fixture_plan()
+        plan.update({"profile": "bounded-live", "provenanceClass": "production-artifact-comparison"})
+        originals = {}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for source_commit, build in (("a" * 40, "284"), ("b" * 40, "283")):
+                release_id = "stable-1-0-rc-" + build
+                def current_freeze():
+                    freeze = _freeze()
+                    freeze["platformApi"]["currentContractVersion"] = 25
+                    return freeze
+                with patch.multiple(fixtures, SOURCE_COMMIT=source_commit, SOURCE_REF="commit:" + source_commit,
+                                    BUILD_VERSION=build, RELEASE_ID=release_id, _complete_rc_freeze=current_freeze):
+                    _context, paths = fixtures._write_exact_rc_fixture(root / ("fixture-" + build))
+                artifact_root = paths["selectedStableRcFreeze"].parent
+                files = {p.relative_to(artifact_root).as_posix(): p.read_bytes() for p in artifact_root.rglob("*") if p.is_file()}
+                coordinates = {"sourceFamily": "stable-rc-product", "sourceCommit": source_commit, "runId": int(build), "runAttempt": 1,
+                               "artifactName": f"stable-1-0-rc-{release_id}-{build}-{build}-1"}
+                originals[("stable-rc-product", source_commit)] = SimpleNamespace(content=archive(files), coordinates=coordinates)
+                payload = ("actual selected portable fixture " + source_commit).encode()
+                checksum = hashlib.sha256(payload).hexdigest()
+                checksum_bytes = (checksum + f"  ./distributions/cryptad-v{build}.tar.gz\n").encode()
+                portable_coordinates = {"sourceFamily": "first-party-release", "sourceCommit": source_commit,
+                                        "runId": int(build) + 1000, "runAttempt": 2}
+                handoff = {"schemaVersion": 1, "kind": "cryptad-stable-supply-chain-builder-handoff", "builderRole": "candidate-producer",
+                           "executionId": "portable-apps", "jobName": "candidate-producer-portable-apps", "runnerOs": "linux", "runnerArchitecture": "amd64",
+                           "releaseId": release_id, "buildVersion": int(build), "sourceCommit": source_commit, "workflowSha": source_commit,
+                           "runId": int(build) + 1000, "runAttempt": 2,
+                           "workflow": "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml@" + source_commit,
+                           "fileSetDigest": "sha256:" + hashlib.sha256(checksum_bytes).hexdigest()}
+                originals[("first-party-release", source_commit)] = SimpleNamespace(
+                    content=archive({"handoff.json": json.dumps(handoff), "subject-files.sha256": checksum_bytes,
+                                     f"subjects/distributions/cryptad-v{build}.tar.gz": payload}), coordinates=portable_coordinates)
+                for node in plan["nodes"]:
+                    if node["sourceCommit"] == source_commit:
+                        node.update({"artifactDigest": "sha256:" + checksum, "artifactSize": len(payload), "contractVersion": 25})
+            selection = {"schemaVersion": 1, "roles": {node["role"]: {
+                "rcCoordinates": originals[("stable-rc-product", node["sourceCommit"])].coordinates,
+                "portableCoordinates": originals[("first-party-release", node["sourceCommit"])].coordinates}
+                for node in plan["nodes"]}}
+            def authenticate(coordinates, _root):
+                return originals[(coordinates["sourceFamily"], coordinates["sourceCommit"])]
+            def attest(arguments, _environment):
+                source = arguments[arguments.index("--source-digest") + 1]
+                run = originals[("first-party-release", source)].coordinates["runId"]
+                return [{"verificationResult": {"signature": {"certificate": {"runInvocationURI":
+                    f"https://github.com/crypta-network/cryptad/actions/runs/{run}/attempts/2"}}}}]
+            with patch.object(products, "authenticate_original", side_effect=authenticate), \
+                    patch.object(products, "_environment", return_value={}), patch.object(products, "_gh", side_effect=attest):
+                admitted = products.authenticate_products(plan, selection, root / "authenticated")
+            private = {"nodes": {role: {"archivePath": path} for role, path in admitted.package_paths().items()}}
+            self.assertTrue(admitted.bind(plan, private))
+            identities = admitted.public_identities()
+            self.assertEqual(4, len(identities))
+            previous = next(row for row in identities if row["role"] == "previous")
+            self.assertEqual("b" * 40, previous["sourceCommit"])
+            self.assertEqual("283", previous["buildVersion"])
+            # An explicitly selected byte-identical local copy retains its original authority.
+            copy = root / "selected-copy.tar.gz"
+            copy.write_bytes(Path(private["nodes"]["previous"]["archivePath"]).read_bytes())
+            private["nodes"]["previous"]["archivePath"] = str(copy)
+            self.assertTrue(admitted.bind(plan, private))
+            copy.write_bytes(b"substituted")
+            with self.assertRaises(products.ProductAdmissionError):
+                admitted.bind(plan, private)
+
+    def app_projection_fixture(self, root, required=None, optional=None):
+        import app_subject_projection as projection
+        from test_app_subject_projection import ProjectionBoundaryTest
+        inventory, _contract, _policy = ProjectionBoundaryTest().inventory()
+        declaration = inventory["subjects"][0]["signedProjection"]
+        declaration.update({"appId": "mail-prototype", "targetStability": "experimental", "targetBaseline": None,
+                            "minimumContractVersion": 25, "maximumTestedContractVersion": 25,
+                            "experimentalCapabilitiesAccepted": True,
+                            "requiredCapabilities": required or ["content.fetch"], "optionalCapabilities": optional or []})
+        inventory["subjects"] = [{"signedProjection": declaration}]
+        authenticated = projection.AuthenticatedProjection(inventory, "sha256:" + "c" * 64, projection._VERIFIED)
+        snapshot = {"contract": {"contractVersion": 25, "stableBaseline": {"name": "1.0", "contractVersion": 19,
+                                 "capabilities": ["content.fetch"]},
+                                 "capabilities": [{"name": "content.fetch", "stability": "stable", "audience": "app"}]}}
+        contract_path = root / "platform-api-current-contract.json"
+        contract_path.write_text(json.dumps(snapshot))
+        selected = SimpleNamespace(freeze_path=root / "freeze.json", freeze={"platformApi": {"currentContractDigest": products.file_digest(contract_path)}})
+        node = {"role": "candidate-sender", "sourceCommit": "a" * 40, "contractVersion": 25,
+                "appDigests": [declaration["bundleDigest"]]}
+        selection = {"coordinates": {}, "cohortDigest": "sha256:" + "d" * 64}
+        return projection, authenticated, selected, node, selection
+
+    def test_app_projection_checks_real_signed_declarations_against_frozen_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            projection, authenticated, selected, node, selection = self.app_projection_fixture(root, optional=["future.optional"])
+            with patch.object(projection, "authenticate_inventory", return_value=authenticated):
+                rows = products.verify_app_projection(selected, node, selection, root)
+            self.assertEqual(["future.optional"], rows[0]["optionalUnavailable"])
+            self.assertEqual("mail-prototype", rows[0]["appId"])
+            self.assertEqual(["content.fetch"], rows[0]["requiredCapabilities"])
+
+    def test_unknown_required_app_capability_blocks_before_node_launch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            projection, authenticated, selected, node, selection = self.app_projection_fixture(root, required=["unknown.required"])
+            with patch.object(projection, "authenticate_inventory", return_value=authenticated):
+                with self.assertRaisesRegex(products.ProductAdmissionError, "required-capability-unknown"):
+                    products.verify_app_projection(selected, node, selection, root)
+
+    def test_genuine_projection_cannot_substitute_different_selected_bundle_or_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            projection, authenticated, selected, node, selection = self.app_projection_fixture(root)
+            with patch.object(projection, "authenticate_inventory", return_value=authenticated):
+                with self.assertRaisesRegex(products.ProductAdmissionError, "selected-bundle-missing"):
+                    products.verify_app_projection(selected, {**node, "appDigests": ["sha256:" + "e" * 64]}, selection, root)
+                (root / "platform-api-current-contract.json").write_text("{}")
+                with self.assertRaisesRegex(products.ProductAdmissionError, "snapshot-freeze-binding"):
+                    products.verify_app_projection(selected, node, selection, root)
+
+    def test_json_boolean_cannot_construct_authority_object(self):
+        with self.assertRaises(products.ProductAdmissionError):
+            products.AuthenticatedProducts(True, "sha256:" + "a" * 64, {})
+
+
+if __name__ == "__main__":
+    unittest.main()
