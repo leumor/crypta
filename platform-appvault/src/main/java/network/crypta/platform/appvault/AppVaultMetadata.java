@@ -29,6 +29,8 @@ public final class AppVaultMetadata {
    */
   public static final String REDACTED_VALUE = "<redacted>";
 
+  private static final String CREATED_AT = "createdAt";
+
   private AppVaultMetadata() {}
 
   /**
@@ -48,11 +50,16 @@ public final class AppVaultMetadata {
       String appId, String secretName, String secretKind, Instant createdAt) {
     return canonical(
         Map.of(
-            "type", "secret",
-            "appId", AppVaultPaths.normalizeAppId(appId),
-            "secretName", AppVaultPaths.normalizeSecretName(secretName),
-            "secretKind", secretKind,
-            "createdAt", createdAt.toString()));
+            "type",
+            "secret",
+            "appId",
+            AppVaultPaths.normalizeAppId(appId),
+            "secretName",
+            AppVaultPaths.normalizeSecretName(secretName),
+            "secretKind",
+            secretKind,
+            CREATED_AT,
+            createdAt.toString()));
   }
 
   /**
@@ -76,7 +83,7 @@ public final class AppVaultMetadata {
       fields.put("identityId", identity.identityId());
       fields.put("kind", identity.kind().jsonValue());
       fields.put("ownerAppId", Objects.requireNonNullElse(identity.ownerAppId(), ""));
-      fields.put("createdAt", identity.createdAt().toString());
+      fields.put(CREATED_AT, identity.createdAt().toString());
       fields.put("fingerprint", identity.fingerprint());
       identity.publicSummary().forEach((key, value) -> fields.put("public." + key, value));
       return canonical(fields);
@@ -91,7 +98,7 @@ public final class AppVaultMetadata {
             identity.kind().jsonValue(),
             "ownerAppId",
             identity.ownerAppId() == null ? "" : identity.ownerAppId(),
-            "createdAt",
+            CREATED_AT,
             identity.createdAt().toString()));
   }
 

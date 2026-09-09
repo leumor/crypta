@@ -18,6 +18,14 @@ import org.bouncycastle.crypto.signers.Ed25519Signer;
 
 /** Closed, canonical wire encoding and pure Ed25519 framing for experimental Mail. */
 public final class MailWire {
+  private static final String FIELD_PROFILE = "profile";
+  private static final String RECIPIENT_EPOCH = "recipientEpoch";
+  private static final String CREATED = "created";
+  private static final String EXPIRES = "expires";
+  private static final String FIELD_RECIPIENT = "recipient";
+  private static final String FIELD_PAYLOAD = "payload";
+  private static final String FIELD_SIGNATURE = "signature";
+
   /** Experimental contact profile and signing domain. */
   public static final String CONTACT = "crypta.mail.contact.v1";
 
@@ -27,31 +35,31 @@ public final class MailWire {
   /** Exact required contact field order. */
   public static final List<String> CONTACT_FIELDS =
       List.of(
-          "profile",
+          FIELD_PROFILE,
           "signingKey",
           "signingFingerprint",
           "account",
           "signingEpoch",
           "recipientKey",
           "recipientFingerprint",
-          "recipientEpoch",
-          "created",
-          "expires",
+          RECIPIENT_EPOCH,
+          CREATED,
+          EXPIRES,
           "suite");
 
   /** Exact required message field order. */
   public static final List<String> MESSAGE_FIELDS =
       List.of(
-          "profile",
+          FIELD_PROFILE,
           "messageId",
           "sender",
           "senderAccount",
           "senderEpoch",
-          "recipient",
+          FIELD_RECIPIENT,
           "recipientAccount",
-          "recipientEpoch",
-          "created",
-          "expires",
+          RECIPIENT_EPOCH,
+          CREATED,
+          EXPIRES,
           "subject",
           "body",
           "format");
@@ -86,11 +94,12 @@ public final class MailWire {
   private static void quote(StringBuilder out, String text) {
     if (text == null) throw invalid();
     out.append('"');
-    for (int i = 0; i < text.length(); i++) {
+    for (int i = 0; i < text.length(); i += Character.charCount(text.codePointAt(i))) {
       char c = text.charAt(i);
       if (Character.isHighSurrogate(c)) {
-        if (++i >= text.length() || !Character.isLowSurrogate(text.charAt(i))) throw invalid();
-        out.append(c).append(text.charAt(i));
+        if (i + 1 >= text.length() || !Character.isLowSurrogate(text.charAt(i + 1)))
+          throw invalid();
+        out.append(c).append(text.charAt(i + 1));
       } else if (Character.isLowSurrogate(c)) throw invalid();
       else if (c == '"' || c == '\\') out.append('\\').append(c);
       else if (c < 32) out.append(String.format(java.util.Locale.ROOT, "\\u%04x", (int) c));
@@ -121,7 +130,7 @@ public final class MailWire {
       Map<String, String> result = parser.object();
       if (!Arrays.equals(bytes, encode(result))) throw invalid();
       return result;
-    } catch (CharacterCodingException e) {
+    } catch (CharacterCodingException _) {
       throw invalid();
     }
   }
@@ -153,18 +162,18 @@ public final class MailWire {
    */
   public static byte[] contactPayload(Map<String, String> fields) {
     var m = ordered(fields, CONTACT_FIELDS);
-    if (!CONTACT.equals(m.get("profile")) || !"32/1/1".equals(m.get("suite"))) throw invalid();
+    if (!CONTACT.equals(m.get(FIELD_PROFILE)) || !"32/1/1".equals(m.get("suite"))) throw invalid();
     byte[] signing = unbase64(m.get("signingKey"), 32);
     byte[] recipient = unbase64(m.get("recipientKey"), 32);
     if (!org.bouncycastle.math.ec.rfc8032.Ed25519.validatePublicKeyFull(signing, 0))
       throw invalid();
     validateRecipientPublicKey(recipient);
     if (!fingerprint("signing", signing).equals(m.get("signingFingerprint"))
-        || !fingerprint("recipient", recipient).equals(m.get("recipientFingerprint")))
+        || !fingerprint(FIELD_RECIPIENT, recipient).equals(m.get("recipientFingerprint")))
       throw invalid();
     id(m.get("account"));
     positive(m.get("signingEpoch"));
-    positive(m.get("recipientEpoch"));
+    positive(m.get(RECIPIENT_EPOCH));
     times(m);
     byte[] result = encode(m);
     if (result.length > 4096) throw invalid();
@@ -180,14 +189,15 @@ public final class MailWire {
    */
   public static byte[] messagePayload(Map<String, String> fields) {
     var m = ordered(fields, MESSAGE_FIELDS);
-    if (!MESSAGE.equals(m.get("profile")) || !"text/plain".equals(m.get("format"))) throw invalid();
+    if (!MESSAGE.equals(m.get(FIELD_PROFILE)) || !"text/plain".equals(m.get("format")))
+      throw invalid();
     id(m.get("messageId"));
     id(m.get("senderAccount"));
     id(m.get("recipientAccount"));
     fingerprintText(m.get("sender"));
-    fingerprintText(m.get("recipient"));
+    fingerprintText(m.get(FIELD_RECIPIENT));
     positive(m.get("senderEpoch"));
-    positive(m.get("recipientEpoch"));
+    positive(m.get(RECIPIENT_EPOCH));
     times(m);
     if (m.get("subject").getBytes(StandardCharsets.UTF_8).length > 256
         || m.get("body").getBytes(StandardCharsets.UTF_8).length > 16384) throw invalid();
@@ -202,7 +212,7 @@ public final class MailWire {
    * @param m typed creation and expiry fields
    */
   private static void times(Map<String, String> m) {
-    if (decimal(m.get("expires")) <= decimal(m.get("created"))) throw invalid();
+    if (decimal(m.get(EXPIRES)) <= decimal(m.get(CREATED))) throw invalid();
   }
 
   /**
@@ -240,10 +250,10 @@ public final class MailWire {
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static long decimal(String value) {
-    if (value == null || !value.matches("0|[1-9][0-9]{0,18}")) throw invalid();
+    if (value == null || !value.matches("0|[1-9]\\d{0,18}")) throw invalid();
     try {
       return Long.parseLong(value);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw invalid();
     }
   }
@@ -272,7 +282,7 @@ public final class MailWire {
       byte[] result = Base64.getDecoder().decode(value);
       if (result.length != length || !base64(result).equals(value)) throw invalid();
       return result;
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw invalid();
     }
   }
@@ -309,8 +319,8 @@ public final class MailWire {
   public static byte[] signed(byte[] payload, byte[] signature) {
     if (payload.length > 32768 || signature.length != 64) throw invalid();
     var m = new LinkedHashMap<String, String>();
-    m.put("payload", base64(payload));
-    m.put("signature", base64(signature));
+    m.put(FIELD_PAYLOAD, base64(payload));
+    m.put(FIELD_SIGNATURE, base64(signature));
     return encode(m);
   }
 
@@ -321,7 +331,7 @@ public final class MailWire {
    * @return validated signed-wrapper fields
    */
   private static Map<String, String> wrapper(byte[] value) {
-    var m = ordered(decode(value, 45056), List.of("payload", "signature"));
+    var m = ordered(decode(value, 45056), List.of(FIELD_PAYLOAD, FIELD_SIGNATURE));
     if (!Arrays.equals(value, encode(m))) throw invalid();
     return m;
   }
@@ -334,12 +344,12 @@ public final class MailWire {
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static byte[] signedPayload(byte[] value) {
-    String s = wrapper(value).get("payload");
+    String s = wrapper(value).get(FIELD_PAYLOAD);
     try {
       byte[] b = Base64.getDecoder().decode(s);
       if (b.length > 32768 || !base64(b).equals(s)) throw invalid();
       return b;
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw invalid();
     }
   }
@@ -352,7 +362,7 @@ public final class MailWire {
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static byte[] signature(byte[] value) {
-    return unbase64(wrapper(value).get("signature"), 64);
+    return unbase64(wrapper(value).get(FIELD_SIGNATURE), 64);
   }
 
   /**
@@ -380,7 +390,7 @@ public final class MailWire {
       new org.bouncycastle.crypto.params.X25519PrivateKeyParameters(validationScalar)
           .generateSecret(
               new org.bouncycastle.crypto.params.X25519PublicKeyParameters(key), new byte[32], 0);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       throw invalid();
     }
   }
@@ -394,7 +404,7 @@ public final class MailWire {
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static String fingerprint(String role, byte[] key) {
-    if (!List.of("signing", "recipient", "storage").contains(role) || key.length != 32)
+    if (!List.of("signing", FIELD_RECIPIENT, "storage").contains(role) || key.length != 32)
       throw invalid();
     try {
       MessageDigest d = MessageDigest.getInstance("SHA-256");
@@ -448,7 +458,7 @@ public final class MailWire {
       s.init(false, new Ed25519PublicKeyParameters(key));
       s.update(preimage, 0, preimage.length);
       return s.verifySignature(signature);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       return false;
     }
   }
@@ -506,10 +516,10 @@ public final class MailWire {
           if (result.putIfAbsent(k, v) != null) throw invalid();
           if (pos < text.length() && text.charAt(pos) == ',') {
             pos++;
-            continue;
+          } else {
+            expect('}');
+            break;
           }
-          expect('}');
-          break;
         }
       }
       if (pos != text.length()) throw invalid();
@@ -528,24 +538,37 @@ public final class MailWire {
         char c = text.charAt(pos++);
         if (c == '"') return out.toString();
         if (c == '\\') {
-          if (pos >= text.length()) throw invalid();
-          char e = text.charAt(pos++);
-          if (e == '"' || e == '\\') out.append(e);
-          else if (e == 'u') {
-            if (pos + 4 > text.length()) throw invalid();
-            try {
-              out.append((char) Integer.parseInt(text.substring(pos, pos + 4), 16));
-            } catch (NumberFormatException ex) {
-              throw invalid();
-            }
-            pos += 4;
-          } else throw invalid();
+          out.append(escapedCharacter());
         } else {
           if (c < 32) throw invalid();
           out.append(c);
         }
       }
       throw invalid();
+    }
+
+    /** Consumes one supported escape after its leading backslash. */
+    private char escapedCharacter() {
+      if (pos >= text.length()) throw invalid();
+      char escaped = text.charAt(pos++);
+      return switch (escaped) {
+        case '"', '\\' -> escaped;
+        case 'u' -> unicodeEscape();
+        default -> throw invalid();
+      };
+    }
+
+    /** Consumes four hexadecimal digits; canonical spelling is checked after parsing. */
+    private char unicodeEscape() {
+      if (pos + 4 > text.length()) throw invalid();
+      char decoded;
+      try {
+        decoded = (char) Integer.parseInt(text.substring(pos, pos + 4), 16);
+      } catch (NumberFormatException _) {
+        throw invalid();
+      }
+      pos += 4;
+      return decoded;
     }
   }
 }

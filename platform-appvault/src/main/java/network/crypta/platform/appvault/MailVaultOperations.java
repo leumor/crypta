@@ -16,6 +16,10 @@ final class MailVaultOperations {
   /** Only app permitted to own or invoke these Mail identities. */
   private static final String APP = "mail-prototype";
 
+  private static final String PUBLIC_KEY_BASE64 = "publicKeyBase64";
+  private static final String ACCOUNT = "account";
+  private static final String STORAGE_ROLE = "storage";
+
   /** Authoritative identity lifecycle and grants, accessed under its monitor. */
   private final AppVaultService service;
 
@@ -90,12 +94,12 @@ final class MailVaultOperations {
       Instant now = Instant.now();
       Map<String, String> summary = new LinkedHashMap<>();
       summary.put("algorithm", kind == AppIdentityKind.MAIL_SIGNING_V1 ? "Ed25519" : "X25519");
-      summary.put("publicKeyBase64", MailWire.base64(publicKey));
+      summary.put(PUBLIC_KEY_BASE64, MailWire.base64(publicKey));
       summary.put("epoch", "1");
       summary.put("role", role);
       if (kind == AppIdentityKind.MAIL_SIGNING_V1) {
         random.nextBytes(randomId);
-        summary.put("account", HexFormat.of().formatHex(randomId));
+        summary.put(ACCOUNT, HexFormat.of().formatHex(randomId));
       } else {
         var signers =
             service.listIdentitiesForApp(APP).stream()
@@ -110,7 +114,7 @@ final class MailVaultOperations {
                                         && g.scopes().contains(AppIdentityGrantScope.MAIL_SIGN)))
                 .toList();
         if (signers.size() != 1) throw denied();
-        summary.put("account", signers.getFirst().publicSummary().get("account"));
+        summary.put(ACCOUNT, signers.getFirst().publicSummary().get(ACCOUNT));
       }
       Set<AppIdentityGrantScope> scopes = Set.of(AppIdentityGrantScope.METADATA_READ, scope(kind));
       AppIdentityRecord identity =
@@ -128,17 +132,22 @@ final class MailVaultOperations {
           identity,
           AppVaultEnvelope.encrypt(
               privateKey, AppVaultMetadata.identityAad(identity), keys.currentKey(), random));
-      try {
-        service.grantIdentity(id, APP, scopes, APP, "Dedicated Mail purpose", null, null);
-      } catch (RuntimeException failure) {
-        service.deleteIdentity(id);
-        throw failure;
-      }
+      grantCreatedIdentity(id, scopes);
       return identity;
-    } catch (IOException failure) {
+    } catch (IOException _) {
       throw unavailable();
     } finally {
       Arrays.fill(privateKey, (byte) 0);
+    }
+  }
+
+  /** Grants the new identity's purpose scopes, deleting the identity if granting fails. */
+  private void grantCreatedIdentity(String id, Set<AppIdentityGrantScope> scopes) {
+    try {
+      service.grantIdentity(id, APP, scopes, APP, "Dedicated Mail purpose", null, null);
+    } catch (RuntimeException failure) {
+      service.deleteIdentity(id);
+      throw failure;
     }
   }
 
@@ -159,8 +168,8 @@ final class MailVaultOperations {
       byte[] preimage = MailWire.preimage(domain, payload);
       if (MailWire.CONTACT.equals(domain)) {
         requireEqual(identity.fingerprint(), fields.get("signingFingerprint"));
-        requireEqual(identity.publicSummary().get("publicKeyBase64"), fields.get("signingKey"));
-        requireEqual(identity.publicSummary().get("account"), fields.get("account"));
+        requireEqual(identity.publicSummary().get(PUBLIC_KEY_BASE64), fields.get("signingKey"));
+        requireEqual(identity.publicSummary().get(ACCOUNT), fields.get(ACCOUNT));
         requireEqual("1", fields.get("signingEpoch"));
         requireEqual("1", fields.get("recipientEpoch"));
         AppIdentityRecord recipient =
@@ -172,12 +181,11 @@ final class MailVaultOperations {
                 .findFirst()
                 .orElseThrow(MailVaultOperations::denied);
         authorize(app, recipient.identityId(), AppIdentityKind.MAIL_RECIPIENT_V1);
-        requireEqual(
-            identity.publicSummary().get("account"), recipient.publicSummary().get("account"));
-        requireEqual(recipient.publicSummary().get("publicKeyBase64"), fields.get("recipientKey"));
+        requireEqual(identity.publicSummary().get(ACCOUNT), recipient.publicSummary().get(ACCOUNT));
+        requireEqual(recipient.publicSummary().get(PUBLIC_KEY_BASE64), fields.get("recipientKey"));
       } else {
         requireEqual(identity.fingerprint(), fields.get("sender"));
-        requireEqual(identity.publicSummary().get("account"), fields.get("senderAccount"));
+        requireEqual(identity.publicSummary().get(ACCOUNT), fields.get("senderAccount"));
         requireEqual("1", fields.get("senderEpoch"));
       }
       byte[] privateKey = privateBytes(identity);
@@ -187,7 +195,7 @@ final class MailVaultOperations {
         Arrays.fill(privateKey, (byte) 0);
         Arrays.fill(preimage, (byte) 0);
       }
-    } catch (IllegalArgumentException failure) {
+    } catch (IllegalArgumentException _) {
       throw invalid();
     }
   }
@@ -208,14 +216,14 @@ final class MailVaultOperations {
             app, id, storage ? AppIdentityKind.MAIL_STORAGE_V1 : AppIdentityKind.MAIL_RECIPIENT_V1);
     try {
       MailWire.decode(envelope, storage ? 196608 : 65536);
-    } catch (IllegalArgumentException failure) {
+    } catch (IllegalArgumentException _) {
       throw invalid();
     }
     byte[] privateKey = privateBytes(identity);
     try {
       byte[] opened =
           MailHpke.open(
-              storage ? "storage" : "network", identity.fingerprint(), privateKey, envelope);
+              storage ? STORAGE_ROLE : "network", identity.fingerprint(), privateKey, envelope);
       if (!storage) {
         boolean valid = false;
         byte[] payload = null;
@@ -225,7 +233,7 @@ final class MailVaultOperations {
           MailWire.messagePayload(fields);
           MailWire.signature(opened);
           requireEqual(identity.fingerprint(), fields.get("recipient"));
-          requireEqual(identity.publicSummary().get("account"), fields.get("recipientAccount"));
+          requireEqual(identity.publicSummary().get(ACCOUNT), fields.get("recipientAccount"));
           requireEqual("1", fields.get("recipientEpoch"));
           valid = true;
         } finally {
@@ -234,7 +242,7 @@ final class MailVaultOperations {
         }
       }
       return opened;
-    } catch (IllegalArgumentException failure) {
+    } catch (IllegalArgumentException _) {
       throw invalid();
     } finally {
       Arrays.fill(privateKey, (byte) 0);
@@ -254,11 +262,11 @@ final class MailVaultOperations {
     AppIdentityRecord identity = authorize(app, id, AppIdentityKind.MAIL_STORAGE_V1);
     try {
       return MailHpke.seal(
-          "storage",
+          STORAGE_ROLE,
           identity.fingerprint(),
-          MailWire.unbase64(identity.publicSummary().get("publicKeyBase64"), 32),
+          MailWire.unbase64(identity.publicSummary().get(PUBLIC_KEY_BASE64), 32),
           plaintext);
-    } catch (IllegalArgumentException failure) {
+    } catch (IllegalArgumentException _) {
       throw invalid();
     }
   }
@@ -317,7 +325,7 @@ final class MailVaultOperations {
         throw unavailable();
       }
       return result;
-    } catch (IOException failure) {
+    } catch (IOException _) {
       throw unavailable();
     }
   }
@@ -332,7 +340,7 @@ final class MailVaultOperations {
     return switch (kind) {
       case MAIL_SIGNING_V1 -> "signing";
       case MAIL_RECIPIENT_V1 -> "recipient";
-      case MAIL_STORAGE_V1 -> "storage";
+      case MAIL_STORAGE_V1 -> STORAGE_ROLE;
       default -> throw denied();
     };
   }

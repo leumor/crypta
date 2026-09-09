@@ -14,7 +14,10 @@ val appDisplayName = "Mail Prototype"
 val appId = "mail-prototype"
 val appDistMainClass = "network.crypta.platform.appdist.AppDistributionTool"
 val mainSourceSet = sourceSets.named("main")
-val appDistCli by configurations.creating
+val appDistCli = configurations.create("appDistCli")
+
+configurations.named("testImplementation") { extendsFrom(appDistCli) }
+
 val stageAppDir = layout.buildDirectory.dir("cryptad-app/$appId")
 val generatedManifestDir = layout.buildDirectory.dir("generated/stageApp")
 val packagedAppFile = layout.buildDirectory.file("cryptad-app-bundle/$appId-${project.version}.zip")
@@ -126,7 +129,6 @@ dependencies {
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(project(":platform-apphost"))
   testImplementation(project(":foundation-fs"))
-  testImplementation(project(":platform-appdist"))
   testImplementation(project(":platform-devtools"))
   testImplementation(libs.bcprov)
   testImplementation(libs.junitJupiterApi)
@@ -134,8 +136,10 @@ dependencies {
   testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
-val generateManifest by
-  tasks.registering(Copy::class) {
+val generateManifest =
+  tasks.register<Copy>("generateManifest") {
+    group = "build"
+    description = "Generates the $appDisplayName AppHost manifest with the current app version."
     from(manifestTemplateFile) {
       rename { "cryptad-app.properties" }
       expand("appVersion" to project.version.toString())
@@ -144,8 +148,8 @@ val generateManifest by
     filteringCharset = "UTF-8"
   }
 
-val stageApp by
-  tasks.registering(Sync::class) {
+val stageApp =
+  tasks.register<Sync>("stageApp") {
     group = "build"
     description = "Stages the $appDisplayName AppHost bundle."
     dependsOn(generateManifest, tasks.named("jar"))
@@ -155,7 +159,7 @@ val stageApp by
     from(platformSdkJsFile) { into("static") }
     from(generatedManifestDir)
     from(tasks.named("jar")) { into("lib") }
-    from(configurations.runtimeClasspath) { into("lib") }
+    from(configurations.named("runtimeClasspath")) { into("lib") }
     doLast {
       val launcher = stagedLauncher.get()
       if (
@@ -166,8 +170,8 @@ val stageApp by
     }
   }
 
-val signApp by
-  tasks.registering(JavaExec::class) {
+val signApp =
+  tasks.register<JavaExec>("signApp") {
     group = "build"
     description = "Signs the staged $appDisplayName AppHost bundle."
     dependsOn(stageApp)
@@ -186,12 +190,12 @@ val signApp by
           requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
         )
       addPrivateKeyArguments(signingTask, name, arguments)
-      setArgs(arguments)
+      args = arguments
     }
   }
 
-val verifyApp by
-  tasks.registering(JavaExec::class) {
+val verifyApp =
+  tasks.register<JavaExec>("verifyApp") {
     group = "verification"
     description = "Verifies the signed staged $appDisplayName AppHost bundle."
     mustRunAfter(signApp)
@@ -209,12 +213,12 @@ val verifyApp by
           requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
         )
       addPublicKeyArguments(name, arguments)
-      setArgs(arguments)
+      args = arguments
     }
   }
 
-val packageApp by
-  tasks.registering(JavaExec::class) {
+val packageApp =
+  tasks.register<JavaExec>("packageApp") {
     group = "build"
     description = "Packages the signed $appDisplayName AppHost bundle deterministically."
     dependsOn(signApp, verifyApp)
@@ -238,8 +242,8 @@ val packageApp by
     }
   }
 
-val packageUnsignedAppForIndependentReproducibility by
-  tasks.registering(JavaExec::class) {
+val packageUnsignedAppForIndependentReproducibility =
+  tasks.register<JavaExec>("packageUnsignedAppForIndependentReproducibility") {
     group = "build"
     description = "Packages the unsigned $appDisplayName payload for independent reproducibility."
     dependsOn(stageApp)

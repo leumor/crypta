@@ -161,11 +161,11 @@ public final class BubblewrapCommandBuilder {
       try {
         if (!Files.isRegularFile(file)) continue;
         Path resolved = file.toRealPath();
-        if (systemReadOnlyPaths.stream().anyMatch(resolved::startsWith)) continue;
-        if (mounts.stream().noneMatch(mount -> mount.destination().equals(resolved))) {
+        if (systemReadOnlyPaths.stream().noneMatch(resolved::startsWith)
+            && mounts.stream().noneMatch(mount -> mount.destination().equals(resolved))) {
           mounts.add(BindMount.readOnly(resolved, resolved));
         }
-      } catch (java.io.IOException exception) {
+      } catch (java.io.IOException _) {
         throw new IllegalStateException("Java security configuration unavailable");
       }
     }
@@ -186,7 +186,7 @@ public final class BubblewrapCommandBuilder {
         else if (mounts.stream().noneMatch(mount -> source.startsWith(mount.destination())))
           mounts.add(BindMount.readOnly(source, source));
       }
-    } catch (java.io.IOException exception) {
+    } catch (java.io.IOException _) {
       throw new IllegalStateException("Java runtime unavailable");
     }
   }

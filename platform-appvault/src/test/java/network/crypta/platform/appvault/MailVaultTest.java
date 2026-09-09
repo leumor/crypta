@@ -184,19 +184,7 @@ class MailVaultTest {
   void authenticatedVaultMetadataPreventsAccountReassignment() throws Exception {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord signing = signing(vault);
-    Map<String, String> changedSummary = new LinkedHashMap<>(signing.publicSummary());
-    changedSummary.put("account", "ffffffffffffffffffffffffffffffff");
-    AppIdentityRecord substituted =
-        new AppIdentityRecord(
-            signing.identityId(),
-            signing.kind(),
-            signing.label(),
-            signing.ownerAppId(),
-            signing.createdAt(),
-            signing.updatedAt(),
-            changedSummary,
-            signing.fingerprint(),
-            signing.usageScopes());
+    AppIdentityRecord substituted = withSubstitutedAccount(signing);
     AppVaultKeyProvider.VaultKey wrappingKey =
         new AppVaultKeyProvider.VaultKey("synthetic-test", new byte[32]);
     AppVaultEnvelope envelope =
@@ -274,7 +262,9 @@ class MailVaultTest {
                 "Metadata only",
                 null,
                 null);
-        default -> {}
+        default -> {
+          // The revoked case keeps the existing revocation without granting replacement scopes.
+        }
       }
       var identitiesBefore = vault.listIdentities();
       var grantsBefore = vault.listGrantsForApp(APP);
@@ -313,6 +303,21 @@ class MailVaultTest {
 
     assertEquals(identitiesBefore, vault.listIdentities());
     assertEquals(grantsBefore, vault.listGrantsForApp(APP));
+  }
+
+  private static AppIdentityRecord withSubstitutedAccount(AppIdentityRecord signing) {
+    Map<String, String> changedSummary = new LinkedHashMap<>(signing.publicSummary());
+    changedSummary.put("account", "ffffffffffffffffffffffffffffffff");
+    return new AppIdentityRecord(
+        signing.identityId(),
+        signing.kind(),
+        signing.label(),
+        signing.ownerAppId(),
+        signing.createdAt(),
+        signing.updatedAt(),
+        changedSummary,
+        signing.fingerprint(),
+        signing.usageScopes());
   }
 
   private static AppVaultService open(Path path) throws Exception {

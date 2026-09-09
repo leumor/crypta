@@ -56,6 +56,7 @@ import network.crypta.support.MediaType;
  * free to add richer insert flows without reworking the basic control-plane contract.
  */
 public final class QueueApiHandler {
+  private static final String MAIL_APP_ID = "mail-prototype";
   private static final String ALERT_SUMMARY_PLACEHOLDER = "<!--CRYPTA_ALERT_SUMMARY-->";
   private static final String COMPATIBILITY_MODE_CURRENT = "COMPAT_CURRENT";
   private static final String COMPATIBILITY_MODE_DEFAULT = "COMPAT_DEFAULT";
@@ -572,20 +573,18 @@ public final class QueueApiHandler {
     String insertUri = PlatformApiParameters.requireString(queryParameters, PARAMETER_INSERT_URI);
     FreenetURI parsedInsertUri = requireInsertUri(insertUri);
     String identifier = PlatformApiParameters.requireString(queryParameters, PARAMETER_IDENTIFIER);
-    if ("mail-prototype".equals(appId) || identifier.startsWith("app-document-mail-prototype-")) {
+    if (MAIL_APP_ID.equals(appId) || identifier.startsWith("app-document-mail-prototype-")) {
       requireAppDocumentIdentifier(appId, identifier);
     }
-    if ("mail-prototype".equals(appId)) {
-      if (!"CHK@".equals(insertUri)) {
-        throw new PlatformApiException(
-            400, "mail_insert_target_invalid", "Mail inserts require CHK.");
-      }
+    if (MAIL_APP_ID.equals(appId) && !"CHK@".equals(insertUri)) {
+      throw new PlatformApiException(
+          400, "mail_insert_target_invalid", "Mail inserts require CHK.");
     }
     byte[] document = decodeAppDocument(queryParameters);
-    if ("mail-prototype".equals(appId)) {
+    if (MAIL_APP_ID.equals(appId)) {
       try {
         MailHpke.validateNetworkEnvelope(document);
-      } catch (IllegalArgumentException failure) {
+      } catch (IllegalArgumentException _) {
         throw new PlatformApiException(400, "mail_envelope_rejected", "Mail envelope rejected.");
       }
     }
@@ -654,7 +653,7 @@ public final class QueueApiHandler {
       result.put("state", status.state());
       result.put("reference", status.reference());
       return result;
-    } catch (RequestQueueUnavailableException failure) {
+    } catch (RequestQueueUnavailableException _) {
       throw queueUnavailable();
     }
   }

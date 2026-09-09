@@ -70,35 +70,38 @@ final class MailTestBackend implements MailBackend {
         p.forEach((key, value) -> parameters.put(key, List.of(value)));
         return Map.of("record", data.putRecord(APP, parameters));
       }
-      if (path.equals("/queue/app-document-status")) {
-        String reference = inserted.get(p.get("identifier"));
-        return reference == null
-            ? Map.of("state", "missing")
-            : Map.of("state", "inserted", "reference", reference);
-      }
-      if (path.equals("/queue/inserts/app-document")) {
-        if (!"CHK@".equals(p.get("insertUri"))) throw new AssertionError("Non-CHK insertion");
-        byte[] bytes = java.util.Base64.getDecoder().decode(p.get("documentBase64"));
-        var outer = MailWire.decode(bytes, 65536);
-        if (!"crypta.mail.envelope.v1".equals(outer.get("profile")))
-          throw new AssertionError("Non-ciphertext network insertion");
-        insertionBytes.add(bytes.clone());
-        String reference = addEnvelope(bytes);
-        inserted.put(p.get("identifier"), reference);
-        if (failInsertAfterCommit) {
-          failInsertAfterCommit = false;
-          throw new MailFailure("network-unavailable");
+      return switch (path) {
+        case "/queue/app-document-status" -> {
+          String reference = inserted.get(p.get("identifier"));
+          yield reference == null
+              ? Map.of("state", "missing")
+              : Map.of("state", "inserted", "reference", reference);
         }
-        return Map.of("queued", true);
-      }
-      if (path.equals("/content/fetch")) {
-        fetches++;
-        byte[] bytes = network.get(p.get("uri"));
-        if (bytes == null) throw new MailFailure("network-unavailable");
-        return Map.of("contentBase64", MailWire.base64(bytes));
-      }
-      if (path.equals("/queue/restart")) return Map.of("restarted", true);
-      throw new AssertionError("Unexpected test platform route: " + method + " " + path);
+        case "/queue/inserts/app-document" -> {
+          if (!"CHK@".equals(p.get("insertUri"))) throw new AssertionError("Non-CHK insertion");
+          byte[] bytes = java.util.Base64.getDecoder().decode(p.get("documentBase64"));
+          var outer = MailWire.decode(bytes, 65536);
+          if (!"crypta.mail.envelope.v1".equals(outer.get("profile")))
+            throw new AssertionError("Non-ciphertext network insertion");
+          insertionBytes.add(bytes.clone());
+          String reference = addEnvelope(bytes);
+          inserted.put(p.get("identifier"), reference);
+          if (failInsertAfterCommit) {
+            failInsertAfterCommit = false;
+            throw new MailFailure("network-unavailable");
+          }
+          yield Map.of("queued", true);
+        }
+        case "/content/fetch" -> {
+          fetches++;
+          byte[] bytes = network.get(p.get("uri"));
+          if (bytes == null) throw new MailFailure("network-unavailable");
+          yield Map.of("contentBase64", MailWire.base64(bytes));
+        }
+        case "/queue/restart" -> Map.of("restarted", true);
+        default ->
+            throw new AssertionError("Unexpected test platform route: " + method + " " + path);
+      };
     } catch (AppVaultException failure) {
       throw new MailFailure(
           failure.errorCode().equals("mail_operation_rejected") ? "invalid" : "key-unavailable");
@@ -115,7 +118,7 @@ final class MailTestBackend implements MailBackend {
     return reference;
   }
 
-  Map<String, String> privateState() throws IOException {
+  Map<String, String> privateState() {
     var outer = MailWire.decode(storedBytes(), 262144);
     byte[] plain =
         vault.openStorage(

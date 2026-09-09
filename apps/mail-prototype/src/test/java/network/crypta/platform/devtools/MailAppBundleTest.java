@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -133,8 +134,9 @@ class MailAppBundleTest {
       assertTrue(passedArguments.get(1).endsWith("/*"));
       String classpathRoot =
           passedArguments.get(1).substring(0, passedArguments.get(1).length() - 2);
-      assertTrue(
-          Path.of(classpathRoot).normalize().equals(bundle.resolve("lib")),
+      assertEquals(
+          bundle.resolve("lib"),
+          Path.of(classpathRoot).normalize(),
           "Launcher classpath was not bundle-relative.");
       assertEquals("network.crypta.apps.mail.MailWorker", passedArguments.get(2));
       assertEquals(0, child.getInputStream().readAllBytes().length);
@@ -166,7 +168,7 @@ class MailAppBundleTest {
     Process child = builder.start();
     try {
       assertTrue(child.waitFor(10, TimeUnit.SECONDS), "Launcher did not reject missing host Java.");
-      assertTrue(child.exitValue() != 0);
+      assertNotEquals(0, child.exitValue());
       assertFalse(Files.exists(poisonMarker), "Missing host Java must not fall back to PATH.");
       String output =
           new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8)

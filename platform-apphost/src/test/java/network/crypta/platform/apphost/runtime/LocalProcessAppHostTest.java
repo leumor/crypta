@@ -2242,12 +2242,12 @@ class LocalProcessAppHostTest {
     LocalProcessAppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp("mail-prototype"));
     assertThrows(AppHostException.class, () -> host.start("mail-prototype"));
+    URI remoteEndpoint = URI.create("http://example.com:8888/api/v1");
     assertThrows(
-        IllegalArgumentException.class,
-        () -> host.setMailPlatformApiEndpoint(URI.create("http://example.com:8888/api/v1")));
+        IllegalArgumentException.class, () -> host.setMailPlatformApiEndpoint(remoteEndpoint));
+    URI invalidPathEndpoint = URI.create("http://127.0.0.1:8888/arbitrary");
     assertThrows(
-        IllegalArgumentException.class,
-        () -> host.setMailPlatformApiEndpoint(URI.create("http://127.0.0.1:8888/arbitrary")));
+        IllegalArgumentException.class, () -> host.setMailPlatformApiEndpoint(invalidPathEndpoint));
     URI endpoint = URI.create("http://127.0.0.1:8888/api/v1");
     host.setMailPlatformApiEndpoint(endpoint);
     RunningAppSnapshot running = host.start("mail-prototype");

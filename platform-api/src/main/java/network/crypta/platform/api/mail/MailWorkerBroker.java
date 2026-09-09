@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppTokenPrincipal;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Transient, fixed Mail command broker; mailbox business state belongs to the child worker.
@@ -17,6 +18,8 @@ import network.crypta.platform.apphost.AppTokenPrincipal;
  * method waits for a worker. Expired, stopped and replaced launch frames are discarded.
  */
 public final class MailWorkerBroker {
+  private static final String INVALID_FRAME = "invalid_frame";
+
   /** Maximum base64 text size including encoding overhead. */
   public static final int MAX_PAYLOAD_BASE64_BYTES = 384 * 1024;
 
@@ -192,12 +195,12 @@ public final class MailWorkerBroker {
    * @param value encoded or parsed input value
    */
   private static void validatePayload(String value) {
-    if (value == null || value.length() > MAX_PAYLOAD_BASE64_BYTES) throw failure("invalid_frame");
+    if (value == null || value.length() > MAX_PAYLOAD_BASE64_BYTES) throw failure(INVALID_FRAME);
     try {
       if (!Base64.getEncoder().encodeToString(Base64.getDecoder().decode(value)).equals(value))
-        throw failure("invalid_frame");
-    } catch (IllegalArgumentException exception) {
-      throw failure("invalid_frame");
+        throw failure(INVALID_FRAME);
+    } catch (IllegalArgumentException _) {
+      throw failure(INVALID_FRAME);
     }
   }
 
@@ -223,7 +226,7 @@ public final class MailWorkerBroker {
   public record Frame(
       String requestId, String launchId, String appVersion, String command, String payloadBase64) {
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return "MailWorkerFrame[redacted]";
     }
   }

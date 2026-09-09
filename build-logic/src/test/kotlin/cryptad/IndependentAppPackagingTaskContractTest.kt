@@ -48,11 +48,18 @@ class IndependentAppPackagingTaskContractTest {
       val buildFile =
         Files.readString(repositoryRoot().resolve("apps/$appProject/build.gradle.kts"))
       val block =
-        buildFile.substringAfter("val packageUnsignedAppForIndependentReproducibility by")
+        buildFile.substringAfter("val packageUnsignedAppForIndependentReproducibility ")
           .substringBefore("tasks.named<Test>")
 
-      assertTrue(buildFile.contains("val packageApp by"), appProject)
-      assertTrue(block.contains("tasks.registering(JavaExec::class)"), appProject)
+      assertTrue(
+        buildFile.contains("val packageApp by") || buildFile.contains("val packageApp ="),
+        appProject,
+      )
+      assertTrue(
+        block.contains("tasks.registering(JavaExec::class)") ||
+          block.contains("tasks.register<JavaExec>(\"packageUnsignedAppForIndependentReproducibility\")"),
+        appProject,
+      )
       assertTrue(block.contains("dependsOn(stageApp)"), appProject)
       assertTrue(block.contains("classpath = appDistCli"), appProject)
       assertTrue(block.contains("mainClass.set(appDistMainClass)"), appProject)

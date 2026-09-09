@@ -18,6 +18,46 @@ import network.crypta.crypt.mail.MailWire;
  * protects and CAS-publishes one complete dataset; network insertion follows seal commit.
  */
 public final class MailMailbox {
+  private static final String RESTORE = "restore";
+  private static final String STATUS = "status";
+  private static final String OWN_CARD = "ownCard";
+  private static final String OPERATION = "operation";
+  private static final String BACKUP = "backup";
+  private static final String STORAGE_ID = "storageId";
+  private static final String ENVELOPE = "envelope";
+  private static final String SIGNING_ID = "signingId";
+  private static final String RECIPIENT_ID = "recipientId";
+  private static final String IDENTITY_ID = "identityId";
+  private static final String RECOVERY = "recovery";
+  private static final String NORMAL = "normal";
+  private static final String INITIALIZATION_RECOVERY_EPOCH = "initializationRecoveryEpoch";
+  private static final String SIGNING_KEY = "signingKey";
+  private static final String SIGNING_FINGERPRINT = "signingFingerprint";
+  private static final String FINGERPRINT = "fingerprint";
+  private static final String ACCOUNT = "account";
+  private static final String SIGNING_EPOCH = "signingEpoch";
+  private static final String RECIPIENT_FINGERPRINT = "recipientFingerprint";
+  private static final String RECIPIENT_EPOCH = "recipientEpoch";
+  private static final String CREATED = "created";
+  private static final String EXPIRES = "expires";
+  private static final String PENDING_CONTACT = "pendingContact";
+  private static final String APPROVAL = "approval";
+  private static final String CONTACT_PREFIX = "contact.";
+  private static final String REVOKED_PREFIX = "revoked.";
+  private static final String SUBJECT = "subject";
+  private static final String DRAFT = "draft";
+  private static final String OUTBOX_PREFIX = "outbox.";
+  private static final String FIELD_STATE = "state";
+  private static final String REFERENCE = "reference";
+  private static final String MESSAGE_ID = "messageId";
+  private static final String SENDER = "sender";
+  private static final String SENDER_EPOCH = "senderEpoch";
+  private static final String FORMAT = "format";
+  private static final String INSERTED = "inserted";
+  private static final String IDENTIFIER = "identifier";
+  private static final String REPLAY_PREFIX = "replay.";
+  private static final String INBOX_PREFIX = "inbox.";
+
   /** Maximum encoded plaintext dataset bytes, leaving private-channel backup headroom. */
   private static final int MAX_STATE = 112 * 1024;
 
@@ -74,38 +114,42 @@ public final class MailMailbox {
    */
   public synchronized Map<String, String> execute(String command, Map<String, String> input) {
     try {
-      try {
-        load();
-      } catch (IllegalArgumentException failure) {
-        if (!"restore".equals(command)) throw failure;
-        state = new LinkedHashMap<>();
-      } catch (MailFailure failure) {
-        if (!"restore".equals(command) || !"invalid".equals(failure.getMessage())) throw failure;
-        state = new LinkedHashMap<>();
-      }
+      loadForCommand(command);
       if ("initialize".equals(command)) return initialize();
-      if ("restore".equals(command)) return restore(input);
+      if (RESTORE.equals(command)) return restore(input);
       if (state.isEmpty()) throw new MailFailure("initialize-required");
       return switch (command) {
-        case "status" -> status();
-        case "export-contact" -> Map.of("card", state.get("ownCard"), "status", "public-export");
+        case STATUS -> status();
+        case "export-contact" -> Map.of("card", state.get(OWN_CARD), STATUS, "public-export");
         case "import-contact" -> importContact(input);
         case "approve-contact" -> approveContact(input);
         case "revoke-contact" -> revokeContact(input);
         case "save-draft" -> saveDraft(input);
         case "preview-send" -> preview();
         case "confirm-send" -> send(input);
-        case "retry" -> publish(required(input, "operation"));
+        case "retry" -> publish(required(input, OPERATION));
         case "import-reference" -> receive(input);
         case "read" -> read(input);
-        case "backup" ->
-            Map.of("backup", MailWire.base64(stored), "status", "private-data-only-backup");
+        case BACKUP -> Map.of(BACKUP, MailWire.base64(stored), STATUS, "private-data-only-backup");
         default -> throw new MailFailure("invalid");
       };
     } catch (MailFailure e) {
-      return Map.of("status", e.getMessage());
-    } catch (IllegalArgumentException e) {
-      return Map.of("status", "invalid");
+      return Map.of(STATUS, e.getMessage());
+    } catch (IllegalArgumentException _) {
+      return Map.of(STATUS, "invalid");
+    }
+  }
+
+  /** Reloads state while permitting explicit restore to replace malformed stored data. */
+  private void loadForCommand(String command) {
+    try {
+      load();
+    } catch (IllegalArgumentException failure) {
+      if (!RESTORE.equals(command)) throw failure;
+      state = new LinkedHashMap<>();
+    } catch (MailFailure failure) {
+      if (!RESTORE.equals(command) || !"invalid".equals(failure.getMessage())) throw failure;
+      state = new LinkedHashMap<>();
     }
   }
 
@@ -114,9 +158,9 @@ public final class MailMailbox {
     state = new LinkedHashMap<>();
     digest = null;
     stored = null;
-    Map<String, Object> record;
+    Map<String, Object> metadataRecord;
     try {
-      record =
+      metadataRecord =
           object(
               backend
                   .request("GET", "/app-data/records/mail-state/dataset", Map.of())
@@ -125,8 +169,8 @@ public final class MailMailbox {
       if ("not-found".equals(e.getMessage())) return;
       throw e;
     }
-    stored = decode(text(record, "valueBase64"), 262144);
-    digest = text(record, "sha256");
+    stored = decode(text(metadataRecord, "valueBase64"), 262144);
+    digest = text(metadataRecord, "sha256");
     if (java.util.Arrays.equals(stored, INITIALIZING)) return;
     state = openState(stored);
     validateKeys();
@@ -139,13 +183,12 @@ public final class MailMailbox {
    * @return authenticated private state fields
    */
   private Map<String, String> openState(byte[] data) {
-    var outer = MailWire.ordered(MailWire.decode(data, 262144), List.of("storageId", "envelope"));
+    var outer = MailWire.ordered(MailWire.decode(data, 262144), List.of(STORAGE_ID, ENVELOPE));
     byte[] plain =
-        crypto("open-storage", outer.get("storageId"), decode(outer.get("envelope"), 196608));
+        crypto("open-storage", outer.get(STORAGE_ID), decode(outer.get(ENVELOPE), 196608));
     var result = new LinkedHashMap<>(MailWire.decode(plain, MAX_STATE));
     java.util.Arrays.fill(plain, (byte) 0);
-    if (!"1".equals(result.get("schema"))
-        || !outer.get("storageId").equals(result.get("storageId")))
+    if (!"1".equals(result.get("schema")) || !outer.get(STORAGE_ID).equals(result.get(STORAGE_ID)))
       throw new MailFailure("recovery-required");
     return result;
   }
@@ -153,19 +196,19 @@ public final class MailMailbox {
   /** Rechecks all retained identity metadata and current signing/recipient authority. */
   private void validateKeys() {
     try {
-      for (String key : List.of("signingId", "recipientId", "storageId")) {
+      for (String key : List.of(SIGNING_ID, RECIPIENT_ID, STORAGE_ID)) {
         String id = required(state, key);
-        var record =
+        var metadataRecord =
             object(backend.request("GET", "/app-vault/identities/" + id, Map.of()).get("identity"));
-        if (record.isEmpty()) throw new MailFailure("key-unavailable");
+        if (metadataRecord.isEmpty()) throw new MailFailure("key-unavailable");
       }
       // Contact signing rechecks both current signing and recipient-purpose grants and account
       // binding.
       crypto(
           "sign",
-          state.get("signingId"),
-          MailWire.signedPayload(state.get("ownCard").getBytes(StandardCharsets.UTF_8)));
-    } catch (MailFailure failure) {
+          state.get(SIGNING_ID),
+          MailWire.signedPayload(state.get(OWN_CARD).getBytes(StandardCharsets.UTF_8)));
+    } catch (MailFailure _) {
       throw new MailFailure("key-unavailable");
     }
   }
@@ -202,27 +245,27 @@ public final class MailMailbox {
     var signPublic = object(signing.get("publicSummary"));
     var recPublic = object(recipient.get("publicSummary"));
     state.put("schema", "1");
-    state.put("signingId", text(signing, "identityId"));
-    state.put("recipientId", text(recipient, "identityId"));
-    state.put("storageId", text(storage, "identityId"));
-    state.put("recovery", "normal");
-    if (resumed) state.put("initializationRecoveryEpoch", randomId());
+    state.put(SIGNING_ID, text(signing, IDENTITY_ID));
+    state.put(RECIPIENT_ID, text(recipient, IDENTITY_ID));
+    state.put(STORAGE_ID, text(storage, IDENTITY_ID));
+    state.put(RECOVERY, NORMAL);
+    if (resumed) state.put(INITIALIZATION_RECOVERY_EPOCH, randomId());
     var card = new LinkedHashMap<String, String>();
     card.put("profile", MailWire.CONTACT);
-    card.put("signingKey", text(signPublic, "publicKeyBase64"));
-    card.put("signingFingerprint", text(signing, "fingerprint"));
-    card.put("account", text(signPublic, "account"));
-    card.put("signingEpoch", "1");
+    card.put(SIGNING_KEY, text(signPublic, "publicKeyBase64"));
+    card.put(SIGNING_FINGERPRINT, text(signing, FINGERPRINT));
+    card.put(ACCOUNT, text(signPublic, ACCOUNT));
+    card.put(SIGNING_EPOCH, "1");
     card.put("recipientKey", text(recPublic, "publicKeyBase64"));
-    card.put("recipientFingerprint", text(recipient, "fingerprint"));
-    card.put("recipientEpoch", "1");
-    card.put("created", Long.toString(now()));
-    card.put("expires", Long.toString(now() + 365 * DAY));
+    card.put(RECIPIENT_FINGERPRINT, text(recipient, FINGERPRINT));
+    card.put(RECIPIENT_EPOCH, "1");
+    card.put(CREATED, Long.toString(now()));
+    card.put(EXPIRES, Long.toString(now() + 365 * DAY));
     card.put("suite", "32/1/1");
     state.put(
-        "ownCard",
+        OWN_CARD,
         new String(
-            crypto("sign", state.get("signingId"), MailWire.contactPayload(card)),
+            crypto("sign", state.get(SIGNING_ID), MailWire.contactPayload(card)),
             StandardCharsets.UTF_8));
     commit();
     return status();
@@ -250,18 +293,18 @@ public final class MailMailbox {
   private Map<String, String> importContact(Map<String, String> input) {
     String card = required(input, "card");
     var contact = contact(card, true);
-    state.put("pendingContact", card);
-    state.remove("approval");
+    state.put(PENDING_CONTACT, card);
+    state.remove(APPROVAL);
     commit();
     return Map.of(
-        "status",
+        STATUS,
         "compare-fingerprint-out-of-band",
-        "fingerprint",
-        contact.get("signingFingerprint"),
-        "recipientFingerprint",
-        contact.get("recipientFingerprint"),
-        "account",
-        contact.get("account"));
+        FINGERPRINT,
+        contact.get(SIGNING_FINGERPRINT),
+        RECIPIENT_FINGERPRINT,
+        contact.get(RECIPIENT_FINGERPRINT),
+        ACCOUNT,
+        contact.get(ACCOUNT));
   }
 
   /**
@@ -271,24 +314,24 @@ public final class MailMailbox {
    * @return private approval status
    */
   private Map<String, String> approveContact(Map<String, String> input) {
-    String pending = required(state, "pendingContact");
+    String pending = required(state, PENDING_CONTACT);
     var card = contact(pending, true);
-    String fp = required(input, "fingerprint");
-    if (!fp.equals(card.get("signingFingerprint"))) throw new MailFailure("contact-mismatch");
-    String prior = state.get("contact." + fp);
+    String fp = required(input, FINGERPRINT);
+    if (!fp.equals(card.get(SIGNING_FINGERPRINT))) throw new MailFailure("contact-mismatch");
+    String prior = state.get(CONTACT_PREFIX + fp);
     if (prior != null && !prior.equals(pending)) throw new MailFailure("pin-change-blocked");
     for (var e : state.entrySet())
-      if (e.getKey().startsWith("contact.")) {
+      if (e.getKey().startsWith(CONTACT_PREFIX)) {
         var c = contact(e.getValue(), false);
-        if (c.get("account").equals(card.get("account")) && !e.getKey().equals("contact." + fp))
+        if (c.get(ACCOUNT).equals(card.get(ACCOUNT)) && !e.getKey().equals(CONTACT_PREFIX + fp))
           throw new MailFailure("pin-change-blocked");
       }
-    if (prior == null && count("contact.") >= 16) throw new MailFailure("quota");
-    state.put("contact." + fp, pending);
-    state.remove("pendingContact");
-    state.remove("approval");
+    if (prior == null && count(CONTACT_PREFIX) >= 16) throw new MailFailure("quota");
+    state.put(CONTACT_PREFIX + fp, pending);
+    state.remove(PENDING_CONTACT);
+    state.remove(APPROVAL);
     commit();
-    return Map.of("status", "contact-approved");
+    return Map.of(STATUS, "contact-approved");
   }
 
   /**
@@ -298,12 +341,12 @@ public final class MailMailbox {
    * @return private revocation result
    */
   private Map<String, String> revokeContact(Map<String, String> input) {
-    String fp = required(input, "fingerprint");
-    if (!state.containsKey("contact." + fp)) throw new MailFailure("unknown-sender-or-contact");
-    state.put("revoked." + fp, "true");
-    state.remove("approval");
+    String fp = required(input, FINGERPRINT);
+    if (!state.containsKey(CONTACT_PREFIX + fp)) throw new MailFailure("unknown-sender-or-contact");
+    state.put(REVOKED_PREFIX + fp, "true");
+    state.remove(APPROVAL);
     commit();
-    return Map.of("status", "contact-revoked");
+    return Map.of(STATUS, "contact-revoked");
   }
 
   /**
@@ -313,24 +356,25 @@ public final class MailMailbox {
    * @return private draft status
    */
   private Map<String, String> saveDraft(Map<String, String> input) {
-    String fp = required(input, "fingerprint");
+    String fp = required(input, FINGERPRINT);
     var recipient = approved(fp);
-    String subject = required(input, "subject"), body = required(input, "body");
+    String subject = required(input, SUBJECT);
+    String body = required(input, "body");
     if (subject.getBytes(StandardCharsets.UTF_8).length > 256
         || body.getBytes(StandardCharsets.UTF_8).length > 16384) throw new MailFailure("quota");
-    var draft = Map.of("fingerprint", fp, "subject", subject, "body", body);
+    var draft = Map.of(FINGERPRINT, fp, SUBJECT, subject, "body", body);
     String encodedDraft = json(draft);
-    var own = contact(state.get("ownCard"), true);
+    var own = contact(state.get(OWN_CARD), true);
     // Reserve the longest allowed timestamp encodings so time alone cannot outgrow admission.
     var message =
         messageFields(draft, recipient, own, "0".repeat(32), Long.MAX_VALUE - 1, Long.MAX_VALUE);
     if (encodedDraft.getBytes(StandardCharsets.UTF_8).length > 32768
         || MailWire.encode(message).length > MAX_COMPOSED_MESSAGE) throw new MailFailure("quota");
     MailWire.messagePayload(message);
-    state.put("draft", encodedDraft);
-    state.remove("approval");
+    state.put(DRAFT, encodedDraft);
+    state.remove(APPROVAL);
     commit();
-    return Map.of("status", "draft");
+    return Map.of(STATUS, DRAFT);
   }
 
   /**
@@ -339,25 +383,25 @@ public final class MailMailbox {
    * @return exact private preview and approval binding
    */
   private Map<String, String> preview() {
-    var draft = fields(required(state, "draft"), 32768);
-    var recipient = approved(draft.get("fingerprint"));
+    var draft = fields(required(state, DRAFT), 32768);
+    var recipient = approved(draft.get(FINGERPRINT));
     String approval =
         hash(
-            (state.get("draft") + state.get("contact." + draft.get("fingerprint")))
+            (state.get(DRAFT) + state.get(CONTACT_PREFIX + draft.get(FINGERPRINT)))
                 .getBytes(StandardCharsets.UTF_8));
-    state.put("approval", approval);
+    state.put(APPROVAL, approval);
     commit();
     return Map.of(
-        "status",
+        STATUS,
         "approval-required",
-        "approval",
+        APPROVAL,
         approval,
-        "recipientFingerprint",
-        recipient.get("recipientFingerprint"),
-        "recipientEpoch",
-        recipient.get("recipientEpoch"),
-        "subject",
-        draft.get("subject"),
+        RECIPIENT_FINGERPRINT,
+        recipient.get(RECIPIENT_FINGERPRINT),
+        RECIPIENT_EPOCH,
+        recipient.get(RECIPIENT_EPOCH),
+        SUBJECT,
+        draft.get(SUBJECT),
         "body",
         draft.get("body"));
   }
@@ -369,41 +413,40 @@ public final class MailMailbox {
    * @return queued or inserted result after seal commit
    */
   private Map<String, String> send(Map<String, String> input) {
-    if (!"normal".equals(state.get("recovery"))) throw new MailFailure("recovery-paused");
-    if (count("outbox.") >= 8) throw new MailFailure("quota");
-    String approval = required(input, "approval");
-    if (!approval.equals(state.get("approval"))) throw new MailFailure("approval-required");
-    var draft = fields(required(state, "draft"), 32768);
-    var recipient = approved(draft.get("fingerprint"));
-    var own = contact(state.get("ownCard"), true);
+    if (!NORMAL.equals(state.get(RECOVERY))) throw new MailFailure("recovery-paused");
+    if (count(OUTBOX_PREFIX) >= 8) throw new MailFailure("quota");
+    String approval = required(input, APPROVAL);
+    if (!approval.equals(state.get(APPROVAL))) throw new MailFailure("approval-required");
+    var draft = fields(required(state, DRAFT), 32768);
+    var recipient = approved(draft.get(FINGERPRINT));
+    var own = contact(state.get(OWN_CARD), true);
     if (!approval.equals(
         hash(
-            (state.get("draft") + state.get("contact." + draft.get("fingerprint")))
+            (state.get(DRAFT) + state.get(CONTACT_PREFIX + draft.get(FINGERPRINT)))
                 .getBytes(StandardCharsets.UTF_8)))) throw new MailFailure("approval-required");
     String id = randomId();
     long created = now();
     long expires =
         Math.min(
             created + 30 * DAY,
-            Math.min(
-                MailWire.decimal(recipient.get("expires")), MailWire.decimal(own.get("expires"))));
+            Math.min(MailWire.decimal(recipient.get(EXPIRES)), MailWire.decimal(own.get(EXPIRES))));
     var msg = messageFields(draft, recipient, own, id, created, expires);
-    byte[] signed = crypto("sign", state.get("signingId"), MailWire.messagePayload(msg));
+    byte[] signed = crypto("sign", state.get(SIGNING_ID), MailWire.messagePayload(msg));
     byte[] sealed =
         MailHpke.seal(
             "network",
-            recipient.get("recipientFingerprint"),
+            recipient.get(RECIPIENT_FINGERPRINT),
             MailWire.unbase64(recipient.get("recipientKey"), 32),
             signed);
     var out = new LinkedHashMap<String, String>();
-    out.put("state", "sealed");
-    out.put("contact", draft.get("fingerprint"));
-    out.put("envelope", MailWire.base64(sealed));
+    out.put(FIELD_STATE, "sealed");
+    out.put("contact", draft.get(FINGERPRINT));
+    out.put(ENVELOPE, MailWire.base64(sealed));
     out.put("signed", MailWire.base64(signed));
-    out.put("reference", "");
-    state.put("outbox." + id, json(out));
-    state.remove("approval");
-    state.remove("draft");
+    out.put(REFERENCE, "");
+    state.put(OUTBOX_PREFIX + id, json(out));
+    state.remove(APPROVAL);
+    state.remove(DRAFT);
     commit();
     return publish(id);
   }
@@ -428,18 +471,18 @@ public final class MailMailbox {
       long expires) {
     var msg = new LinkedHashMap<String, String>();
     msg.put("profile", MailWire.MESSAGE);
-    msg.put("messageId", id);
-    msg.put("sender", own.get("signingFingerprint"));
-    msg.put("senderAccount", own.get("account"));
-    msg.put("senderEpoch", own.get("signingEpoch"));
-    msg.put("recipient", recipient.get("recipientFingerprint"));
-    msg.put("recipientAccount", recipient.get("account"));
-    msg.put("recipientEpoch", recipient.get("recipientEpoch"));
-    msg.put("created", Long.toString(created));
-    msg.put("expires", Long.toString(expires));
-    msg.put("subject", draft.get("subject"));
+    msg.put(MESSAGE_ID, id);
+    msg.put(SENDER, own.get(SIGNING_FINGERPRINT));
+    msg.put("senderAccount", own.get(ACCOUNT));
+    msg.put(SENDER_EPOCH, own.get(SIGNING_EPOCH));
+    msg.put("recipient", recipient.get(RECIPIENT_FINGERPRINT));
+    msg.put("recipientAccount", recipient.get(ACCOUNT));
+    msg.put(RECIPIENT_EPOCH, recipient.get(RECIPIENT_EPOCH));
+    msg.put(CREATED, Long.toString(created));
+    msg.put(EXPIRES, Long.toString(expires));
+    msg.put(SUBJECT, draft.get(SUBJECT));
     msg.put("body", draft.get("body"));
-    msg.put("format", "text/plain");
+    msg.put(FORMAT, "text/plain");
     return msg;
   }
 
@@ -451,30 +494,29 @@ public final class MailMailbox {
    */
   private Map<String, String> publish(String operation) {
     if (!operation.matches("[0-9a-f]{32}")) throw new MailFailure("invalid");
-    var out = fields(required(state, "outbox." + operation), MAX_STATE);
-    if ("inserted".equals(out.get("state")))
-      return Map.of(
-          "status", "inserted", "operation", operation, "reference", out.get("reference"));
+    var out = fields(required(state, OUTBOX_PREFIX + operation), MAX_STATE);
+    if (INSERTED.equals(out.get(FIELD_STATE)))
+      return Map.of(STATUS, INSERTED, OPERATION, operation, REFERENCE, out.get(REFERENCE));
     String identifier = "app-document-mail-prototype-" + operation;
     var progress =
-        backend.request("GET", "/queue/app-document-status", Map.of("identifier", identifier));
-    String status = text(progress, "state");
-    if ("inserted".equals(status)) {
-      String reference = text(progress, "reference");
+        backend.request("GET", "/queue/app-document-status", Map.of(IDENTIFIER, identifier));
+    String status = text(progress, FIELD_STATE);
+    if (INSERTED.equals(status)) {
+      String reference = text(progress, REFERENCE);
       requireChk(reference);
-      out.put("state", "inserted");
-      out.put("reference", reference);
-      state.put("outbox." + operation, json(out));
+      out.put(FIELD_STATE, INSERTED);
+      out.put(REFERENCE, reference);
+      state.put(OUTBOX_PREFIX + operation, json(out));
       commit();
-      return Map.of("status", "inserted", "operation", operation, "reference", reference);
+      return Map.of(STATUS, INSERTED, OPERATION, operation, REFERENCE, reference);
     }
     if ("failed".equals(status) || "missing".equals(status)) {
-      if (!"normal".equals(state.get("recovery"))) throw new MailFailure("recovery-paused");
+      if (!NORMAL.equals(state.get(RECOVERY))) throw new MailFailure("recovery-paused");
       requireUnexpiredOutboxMessage(out);
       approved(required(out, "contact"));
     }
     if ("failed".equals(status)) {
-      backend.request("POST", "/queue/restart", Map.of("identifier", identifier));
+      backend.request("POST", "/queue/restart", Map.of(IDENTIFIER, identifier));
     } else if ("missing".equals(status)) {
       // These committed immutable bytes are the only application bytes ever inserted.
       backend.request(
@@ -483,22 +525,22 @@ public final class MailMailbox {
           Map.of(
               "insertUri",
               "CHK@",
-              "identifier",
+              IDENTIFIER,
               identifier,
               "documentBase64",
-              out.get("envelope"),
+              out.get(ENVELOPE),
               "contentType",
               "application/vnd.crypta.mail+json",
               "targetFilename",
               "mail.json"));
     }
-    out.put("state", "queued");
-    state.put("outbox." + operation, json(out));
+    out.put(FIELD_STATE, "queued");
+    state.put(OUTBOX_PREFIX + operation, json(out));
     commit();
     return Map.of(
-        "status",
+        STATUS,
         "queued",
-        "operation",
+        OPERATION,
         operation,
         "note",
         "Retry checks insertion; insertion is not delivery or reading.");
@@ -513,7 +555,7 @@ public final class MailMailbox {
     byte[] signed = decode(required(outbox, "signed"), 45056);
     var message = MailWire.decode(MailWire.signedPayload(signed), 32768);
     MailWire.messagePayload(message);
-    if (MailWire.decimal(message.get("expires")) <= now()) throw new MailFailure("expired");
+    if (MailWire.decimal(message.get(EXPIRES)) <= now()) throw new MailFailure("expired");
   }
 
   /**
@@ -524,9 +566,9 @@ public final class MailMailbox {
    */
   private Map<String, String> receive(Map<String, String> input) {
     if (!"yes".equals(input.get("confirmed"))) throw new MailFailure("network-consent-required");
-    if (!"normal".equals(state.get("recovery"))) throw new MailFailure("recovery-paused");
-    if (count("replay.") >= 128 || count("inbox.") >= 16) throw new MailFailure("quota");
-    String reference = required(input, "reference");
+    if (!NORMAL.equals(state.get(RECOVERY))) throw new MailFailure("recovery-paused");
+    if (count(REPLAY_PREFIX) >= 128 || count(INBOX_PREFIX) >= 16) throw new MailFailure("quota");
+    String reference = required(input, REFERENCE);
     requireChk(reference);
     var response =
         backend.request(
@@ -539,67 +581,73 @@ public final class MailMailbox {
                 "65536",
                 "timeoutMillis",
                 "20000",
-                "format",
+                FORMAT,
                 "base64",
                 "purpose",
                 "mail-explicit-import"));
     byte[] envelope = decode(text(response, "contentBase64"), 65536);
     MailHpke.validateNetworkEnvelope(envelope);
     var visibleHeader = MailWire.decode(envelope, 65536);
-    var localCard = contact(state.get("ownCard"), false);
-    if (!localCard.get("recipientFingerprint").equals(visibleHeader.get("selector")))
+    var localCard = contact(state.get(OWN_CARD), false);
+    if (!localCard.get(RECIPIENT_FINGERPRINT).equals(visibleHeader.get("selector")))
       throw new MailFailure("wrong-recipient");
-    byte[] signed = crypto("open", state.get("recipientId"), envelope);
+    byte[] signed = crypto("open", state.get(RECIPIENT_ID), envelope);
     byte[] payload = MailWire.signedPayload(signed);
     var msg = MailWire.decode(payload, 32768);
     MailWire.messagePayload(msg);
-    if (!state.containsKey("contact." + required(msg, "sender")))
+    if (!state.containsKey(CONTACT_PREFIX + required(msg, SENDER)))
       throw new MailFailure("unknown-sender");
-    var sender = approved(required(msg, "sender"));
+    var sender = approved(required(msg, SENDER));
     if (!MailWire.verify(
-        MailWire.unbase64(sender.get("signingKey"), 32),
+        MailWire.unbase64(sender.get(SIGNING_KEY), 32),
         MailWire.preimage(MailWire.MESSAGE, payload),
         MailWire.signature(signed))) throw new MailFailure("invalid");
-    var own = contact(state.get("ownCard"), false);
+    var own = contact(state.get(OWN_CARD), false);
+    validateIncomingBindings(msg, sender, own);
+    String replay =
+        hash(
+            (own.get(ACCOUNT)
+                    + ":"
+                    + own.get(RECIPIENT_FINGERPRINT)
+                    + ":"
+                    + own.get(RECIPIENT_EPOCH)
+                    + ":"
+                    + msg.get(SENDER)
+                    + ":"
+                    + msg.get(SENDER_EPOCH)
+                    + ":"
+                    + msg.get(MESSAGE_ID))
+                .getBytes(StandardCharsets.UTF_8));
+    String payloadDigest = hash(payload);
+    String previous = state.get(REPLAY_PREFIX + replay);
+    if (previous != null)
+      return Map.of(STATUS, previous.equals(payloadDigest) ? "duplicate" : "conflict");
+    state.put(REPLAY_PREFIX + replay, payloadDigest);
+    state.put(INBOX_PREFIX + replay, MailWire.base64(signed));
+    commit();
+    return Map.of(STATUS, "accepted", MESSAGE_ID, replay, "senderTrust", "locally-pinned");
+  }
+
+  /** Checks authenticated account bindings and both contact validity intervals before admission. */
+  private void validateIncomingBindings(
+      Map<String, String> msg, Map<String, String> sender, Map<String, String> own) {
     for (String[] pair :
         List.of(
-            new String[] {"senderAccount", "account"},
-            new String[] {"senderEpoch", "signingEpoch"}))
+            new String[] {"senderAccount", ACCOUNT}, new String[] {SENDER_EPOCH, SIGNING_EPOCH}))
       if (!msg.get(pair[0]).equals(sender.get(pair[1]))) throw new MailFailure("contact-mismatch");
-    if (!msg.get("recipient").equals(own.get("recipientFingerprint"))
-        || !msg.get("recipientAccount").equals(own.get("account"))
-        || !msg.get("recipientEpoch").equals(own.get("recipientEpoch")))
+    if (!msg.get("recipient").equals(own.get(RECIPIENT_FINGERPRINT))
+        || !msg.get("recipientAccount").equals(own.get(ACCOUNT))
+        || !msg.get(RECIPIENT_EPOCH).equals(own.get(RECIPIENT_EPOCH)))
       throw new MailFailure("wrong-recipient");
-    long created = MailWire.decimal(msg.get("created")),
-        expires = MailWire.decimal(msg.get("expires"));
+    long created = MailWire.decimal(msg.get(CREATED));
+    long expires = MailWire.decimal(msg.get(EXPIRES));
     if (created > now() + 300
         || expires <= now()
         || expires - created > 30 * DAY
-        || created < MailWire.decimal(sender.get("created"))
-        || expires > MailWire.decimal(sender.get("expires"))
-        || created < MailWire.decimal(own.get("created"))
-        || expires > MailWire.decimal(own.get("expires"))) throw new MailFailure("expired");
-    String replay =
-        hash(
-            (own.get("account")
-                    + ":"
-                    + own.get("recipientFingerprint")
-                    + ":"
-                    + own.get("recipientEpoch")
-                    + ":"
-                    + msg.get("sender")
-                    + ":"
-                    + msg.get("senderEpoch")
-                    + ":"
-                    + msg.get("messageId"))
-                .getBytes(StandardCharsets.UTF_8));
-    String digest = hash(payload), previous = state.get("replay." + replay);
-    if (previous != null)
-      return Map.of("status", previous.equals(digest) ? "duplicate" : "conflict");
-    state.put("replay." + replay, digest);
-    state.put("inbox." + replay, MailWire.base64(signed));
-    commit();
-    return Map.of("status", "accepted", "messageId", replay, "senderTrust", "locally-pinned");
+        || created < MailWire.decimal(sender.get(CREATED))
+        || expires > MailWire.decimal(sender.get(EXPIRES))
+        || created < MailWire.decimal(own.get(CREATED))
+        || expires > MailWire.decimal(own.get(EXPIRES))) throw new MailFailure("expired");
   }
 
   /**
@@ -609,20 +657,20 @@ public final class MailMailbox {
    * @return literal verified-local-copy fields
    */
   private Map<String, String> read(Map<String, String> input) {
-    String id = required(input, "messageId");
+    String id = required(input, MESSAGE_ID);
     var message =
         MailWire.decode(
-            MailWire.signedPayload(decode(required(state, "inbox." + id), 45056)), 32768);
+            MailWire.signedPayload(decode(required(state, INBOX_PREFIX + id), 45056)), 32768);
     return Map.of(
-        "status",
+        STATUS,
         "verified-local-copy",
-        "sender",
-        message.get("sender"),
-        "subject",
-        message.get("subject"),
+        SENDER,
+        message.get(SENDER),
+        SUBJECT,
+        message.get(SUBJECT),
         "body",
         message.get("body"),
-        "format",
+        FORMAT,
         "text/plain",
         "senderTrust",
         "locally-pinned-at-acceptance");
@@ -638,21 +686,21 @@ public final class MailMailbox {
     if (!"yes".equals(input.get("confirmed")))
       throw new MailFailure("recovery-confirmation-required");
     var current = state;
-    var restored = openState(decode(required(input, "backup"), 262144));
-    if (!current.isEmpty() && !current.get("storageId").equals(restored.get("storageId")))
+    var restored = openState(decode(required(input, BACKUP), 262144));
+    if (!current.isEmpty() && !current.get(STORAGE_ID).equals(restored.get(STORAGE_ID)))
       throw new MailFailure("key-unavailable");
     for (var entry : current.entrySet())
-      if (entry.getKey().startsWith("replay.") || entry.getKey().startsWith("revoked.")) {
+      if (entry.getKey().startsWith(REPLAY_PREFIX) || entry.getKey().startsWith(REVOKED_PREFIX)) {
         String old = restored.putIfAbsent(entry.getKey(), entry.getValue());
         if (old != null && !old.equals(entry.getValue())) throw new MailFailure("conflict");
       }
     state = restored;
-    state.put("recovery", "paused-after-restore");
-    state.remove("approval");
+    state.put(RECOVERY, "paused-after-restore");
+    state.remove(APPROVAL);
     validateKeys();
     commit();
     return Map.of(
-        "status",
+        STATUS,
         "recovery-paused",
         "note",
         "Available replay evidence merged. Receiving is paused after restore; full rollback is not"
@@ -666,32 +714,32 @@ public final class MailMailbox {
    */
   private Map<String, String> status() {
     var result = new LinkedHashMap<String, String>();
-    result.put("status", "ready");
-    result.put("recovery", state.get("recovery"));
-    if (state.containsKey("initializationRecoveryEpoch")) {
-      result.put("initializationRecoveryEpoch", state.get("initializationRecoveryEpoch"));
+    result.put(STATUS, "ready");
+    result.put(RECOVERY, state.get(RECOVERY));
+    if (state.containsKey(INITIALIZATION_RECOVERY_EPOCH)) {
+      result.put(INITIALIZATION_RECOVERY_EPOCH, state.get(INITIALIZATION_RECOVERY_EPOCH));
       result.put(
           "note",
           "Resumed setup. Prior replay history cannot be verified if an older raw app-data snapshot"
               + " was restored; this recovery epoch does not prove a new account.");
     }
-    result.put("contacts", Long.toString(count("contact.")));
+    result.put("contacts", Long.toString(count(CONTACT_PREFIX)));
     result.put(
         "contactFingerprints",
         String.join(
             ",",
             state.keySet().stream()
-                .filter(k -> k.startsWith("contact."))
+                .filter(k -> k.startsWith(CONTACT_PREFIX))
                 .map(k -> k.substring(8))
                 .toList()));
-    result.put("inbox", Long.toString(count("inbox.")));
-    result.put("outbox", Long.toString(count("outbox.")));
+    result.put("inbox", Long.toString(count(INBOX_PREFIX)));
+    result.put("outbox", Long.toString(count(OUTBOX_PREFIX)));
     result.put(
         "messageIds",
         String.join(
             ",",
             state.keySet().stream()
-                .filter(k -> k.startsWith("inbox."))
+                .filter(k -> k.startsWith(INBOX_PREFIX))
                 .map(k -> k.substring(6))
                 .toList()));
     result.put(
@@ -699,7 +747,7 @@ public final class MailMailbox {
         String.join(
             ",",
             state.keySet().stream()
-                .filter(k -> k.startsWith("outbox."))
+                .filter(k -> k.startsWith(OUTBOX_PREFIX))
                 .map(k -> k.substring(7))
                 .toList()));
     return result;
@@ -712,8 +760,8 @@ public final class MailMailbox {
    * @return validated active contact fields
    */
   private Map<String, String> approved(String fp) {
-    if (state.containsKey("revoked." + fp)) throw new MailFailure("contact-revoked");
-    String card = state.get("contact." + fp);
+    if (state.containsKey(REVOKED_PREFIX + fp)) throw new MailFailure("contact-revoked");
+    String card = state.get(CONTACT_PREFIX + fp);
     if (card == null) throw new MailFailure("unknown-sender-or-contact");
     return contact(card, true);
   }
@@ -726,17 +774,17 @@ public final class MailMailbox {
    * @return validated pairing fields
    */
   private Map<String, String> contact(String card, boolean active) {
-    byte[] wrapper = card.getBytes(StandardCharsets.UTF_8),
-        payload = MailWire.signedPayload(wrapper);
+    byte[] wrapper = card.getBytes(StandardCharsets.UTF_8);
+    byte[] payload = MailWire.signedPayload(wrapper);
     var contact = MailWire.decode(payload, 4096);
     MailWire.contactPayload(contact);
     if (!MailWire.verify(
-        MailWire.unbase64(contact.get("signingKey"), 32),
+        MailWire.unbase64(contact.get(SIGNING_KEY), 32),
         MailWire.preimage(MailWire.CONTACT, payload),
         MailWire.signature(wrapper))) throw new MailFailure("invalid-contact");
     if (active
-        && (MailWire.decimal(contact.get("created")) > now() + 300
-            || MailWire.decimal(contact.get("expires")) <= now()))
+        && (MailWire.decimal(contact.get(CREATED)) > now() + 300
+            || MailWire.decimal(contact.get(EXPIRES)) <= now()))
       throw new MailFailure("expired-contact");
     return contact;
   }
@@ -744,13 +792,13 @@ public final class MailMailbox {
   /** Protects and CAS-publishes the complete dataset with insertion-completion headroom. */
   private void commit() {
     byte[] plaintext = MailWire.encode(state);
-    if (plaintext.length + completionReserve() > MAX_STATE || count("replay.") > 128)
+    if (plaintext.length + completionReserve() > MAX_STATE || count(REPLAY_PREFIX) > 128)
       throw new MailFailure("quota");
-    byte[] envelope = crypto("seal-storage", state.get("storageId"), plaintext);
+    byte[] envelope = crypto("seal-storage", state.get(STORAGE_ID), plaintext);
     java.util.Arrays.fill(plaintext, (byte) 0);
     var wrapper = new LinkedHashMap<String, String>();
-    wrapper.put("storageId", state.get("storageId"));
-    wrapper.put("envelope", MailWire.base64(envelope));
+    wrapper.put(STORAGE_ID, state.get(STORAGE_ID));
+    wrapper.put(ENVELOPE, MailWire.base64(envelope));
     byte[] value = MailWire.encode(wrapper);
     if (value.length > 262144) throw new MailFailure("quota");
     storeDataset(value);
@@ -769,8 +817,9 @@ public final class MailMailbox {
     parameters.put("contentType", "application/octet-stream");
     parameters.put("valueBase64", MailWire.base64(value));
     if (digest != null) parameters.put("ifMatchSha256", digest);
-    var record = object(backend.request("POST", "/app-data/records", parameters).get("record"));
-    digest = text(record, "sha256");
+    var metadataRecord =
+        object(backend.request("POST", "/app-data/records", parameters).get("record"));
+    digest = text(metadataRecord, "sha256");
     stored = value;
   }
 
@@ -782,8 +831,8 @@ public final class MailMailbox {
   private int completionReserve() {
     int bytes = 0;
     for (var entry : state.entrySet()) {
-      if (entry.getKey().startsWith("outbox.")
-          && !"inserted".equals(fields(entry.getValue(), MAX_STATE).get("state"))) bytes += 256;
+      if (entry.getKey().startsWith(OUTBOX_PREFIX)
+          && !INSERTED.equals(fields(entry.getValue(), MAX_STATE).get(FIELD_STATE))) bytes += 256;
     }
     return bytes;
   }
@@ -799,7 +848,7 @@ public final class MailMailbox {
   private byte[] crypto(String action, String id, byte[] payload) {
     return decode(
         text(
-            mail(action, Map.of("identityId", id, "payloadBase64", MailWire.base64(payload))),
+            mail(action, Map.of(IDENTITY_ID, id, "payloadBase64", MailWire.base64(payload))),
             "payloadBase64"),
         196608);
   }

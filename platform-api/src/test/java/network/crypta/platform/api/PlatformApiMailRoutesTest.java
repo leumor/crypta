@@ -44,7 +44,7 @@ class PlatformApiMailRoutesTest {
   @BeforeEach
   void setUp() throws Exception {
     host = mock(AppHost.class);
-    launch("current", PERMISSIONS);
+    launch(PERMISSIONS);
     vault = AppVaultService.open(root.resolve("vault"));
     RuntimePorts ports =
         mock(
@@ -126,7 +126,7 @@ class PlatformApiMailRoutesTest {
         403,
         call(PlatformApiPrincipal.appToken(APP, PERMISSIONS), "create-identity", request)
             .statusCode());
-    launch("current", List.of("mail.control"));
+    launch(List.of("mail.control"));
     assertEquals(
         403, call(process(APP, "current", PERMISSIONS), "create-identity", request).statusCode());
     when(host.currentLaunch(APP)).thenReturn(Optional.empty());
@@ -181,7 +181,7 @@ class PlatformApiMailRoutesTest {
     var identity = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
     byte[] sealed = vault.sealStorage(APP, identity.identityId(), new byte[] {1, 2, 3});
     List<String> generic = List.of("vault.identities.use");
-    launch("current", generic);
+    launch(generic);
     assertEquals(
         403,
         call(
@@ -189,7 +189,7 @@ class PlatformApiMailRoutesTest {
                 "open-storage",
                 payload(identity.identityId(), sealed))
             .statusCode());
-    launch("current", PERMISSIONS);
+    launch(PERMISSIONS);
     vault.revokeGrantsForApp(APP);
     var denied =
         call(
@@ -238,9 +238,8 @@ class PlatformApiMailRoutesTest {
     byte[] text = "public synthetic response fence".getBytes(StandardCharsets.UTF_8);
     byte[] envelope = vault.sealStorage(APP, storage.identityId(), text);
     when(host.currentLaunch(APP))
-        .thenReturn(
-            Optional.of(new AppTokenPrincipal(APP, PERMISSIONS, "current", "0.1.0")),
-            Optional.empty());
+        .thenReturn(Optional.of(new AppTokenPrincipal(APP, PERMISSIONS, "current", "0.1.0")))
+        .thenReturn(Optional.empty());
     var response =
         call(
             process(APP, "current", PERMISSIONS),
@@ -251,9 +250,9 @@ class PlatformApiMailRoutesTest {
     assertFalse(response.body().contains("payloadBase64"));
   }
 
-  private void launch(String id, List<String> permissions) {
+  private void launch(List<String> permissions) {
     when(host.currentLaunch(APP))
-        .thenReturn(Optional.of(new AppTokenPrincipal(APP, permissions, id, "0.1.0")));
+        .thenReturn(Optional.of(new AppTokenPrincipal(APP, permissions, "current", "0.1.0")));
   }
 
   private static PlatformApiPrincipal browser(String app) {

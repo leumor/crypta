@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import network.crypta.platform.appvault.AppIdentityKind;
+import network.crypta.platform.appvault.AppIdentityRecord;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,13 +34,15 @@ class MailInitializationTest {
         assertEquals(
             "store-unavailable",
             new MailMailbox(faults, clock).execute("initialize", Map.of()).get("status"));
-        var retained = initial.vault.listIdentities().stream().map(i -> i.identityId()).toList();
+        var retained =
+            initial.vault.listIdentities().stream().map(AppIdentityRecord::identityId).toList();
 
         // Reopen both durable stores, discarding every worker field and the lost response.
         var reopened = backend(installation);
         var restarted = new MailMailbox(reopened, clock);
         assertEquals("ready", restarted.execute("initialize", Map.of()).get("status"));
-        var recovered = reopened.vault.listIdentities().stream().map(i -> i.identityId()).toList();
+        var recovered =
+            reopened.vault.listIdentities().stream().map(AppIdentityRecord::identityId).toList();
         assertEquals(3, recovered.size());
         assertTrue(recovered.containsAll(retained), "Recovery replaced a retained identity.");
         byte[] committed = reopened.storedBytes();

@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.Objects;
 import org.bouncycastle.crypto.hpke.HPKE;
 import org.junit.jupiter.api.Test;
 
@@ -68,25 +69,29 @@ class MailCryptoTest {
     assertFalse(Arrays.equals(envelope, MailHpke.seal("network", selector, publicKey, text)));
     assertThrows(
         IllegalArgumentException.class, () -> MailHpke.open("network", selector, wrong, envelope));
+    String storageSelector = MailWire.fingerprint("storage", publicKey);
     assertThrows(
         IllegalArgumentException.class,
-        () ->
-            MailHpke.open(
-                "storage", MailWire.fingerprint("storage", publicKey), recipient, envelope));
+        () -> MailHpke.open("storage", storageSelector, recipient, envelope));
     for (String field :
         new String[] {"profile", "kem", "kdf", "aead", "selector", "enc", "ciphertext"}) {
       var altered = MailWire.decode(envelope, 65536);
-      String value = altered.get(field);
-      altered.put(field, (value.charAt(0) == 'A' ? "B" : "A") + value.substring(1));
+      altered.compute(
+          field,
+          (_, value) -> {
+            String original = Objects.requireNonNull(value, "Missing envelope field: " + field);
+            return (original.charAt(0) == 'A' ? "B" : "A") + original.substring(1);
+          });
+      byte[] alteredEnvelope = MailWire.encode(altered);
       assertThrows(
           IllegalArgumentException.class,
-          () -> MailHpke.open("network", selector, recipient, MailWire.encode(altered)),
+          () -> MailHpke.open("network", selector, recipient, alteredEnvelope),
           field);
     }
     byte[] zero = new byte[32];
+    String zeroSelector = MailWire.fingerprint("recipient", zero);
     assertThrows(
-        IllegalArgumentException.class,
-        () -> MailHpke.seal("network", MailWire.fingerprint("recipient", zero), zero, text));
+        IllegalArgumentException.class, () -> MailHpke.seal("network", zeroSelector, zero, text));
   }
 
   @Test
@@ -99,10 +104,10 @@ class MailCryptoTest {
           "{\"a\":\"\\u0061\"}",
           "{\"a\":\"\\ud800\"}",
           "{\"a\":{}}"
-        })
-      assertThrows(
-          IllegalArgumentException.class,
-          () -> MailWire.decode(text.getBytes(StandardCharsets.UTF_8), 65536));
+        }) {
+      byte[] encoded = text.getBytes(StandardCharsets.UTF_8);
+      assertThrows(IllegalArgumentException.class, () -> MailWire.decode(encoded, 65536));
+    }
     assertThrows(
         IllegalArgumentException.class,
         () -> MailWire.decode(new byte[] {(byte) 0xc0, (byte) 0xaf}, 65536));
@@ -113,6 +118,51 @@ class MailCryptoTest {
     assertEquals(map, MailWire.decode(MailWire.encode(map), 128));
     map.put("literal", "\ud800");
     assertThrows(IllegalArgumentException.class, () -> MailWire.encode(map));
+  }
+
+  @Test
+  void canonicalEscapesAndAdjacentSupplementaryCharactersPreserveExactBytes() {
+    var fields = new LinkedHashMap<String, String>();
+    fields.put("text", "😀𐀀x\"\\\n\u0000");
+    byte[] expected = "{\"text\":\"😀𐀀x\\\"\\\\\\u000a\\u0000\"}".getBytes(StandardCharsets.UTF_8);
+
+    assertArrayEquals(expected, MailWire.encode(fields));
+    assertEquals(fields, MailWire.decode(expected, 128));
+    for (String invalid : new String[] {"\ud800", "\udc00", "\ud800x", "😀\udc00"}) {
+      fields.put("text", invalid);
+      assertThrows(IllegalArgumentException.class, () -> MailWire.encode(fields));
+    }
+  }
+
+  @Test
+  void malformedEscapesAndTruncatedObjectsAreRejected() {
+    for (String invalid :
+        new String[] {
+          "{\"x\":\"\\uZZZZ\"}",
+          "{\"x\":\"\\u000A\"}",
+          "{\"x\":\"\\n\"}",
+          "{\"x\":\"\\/\"}",
+          "{\"x\":\"\n\"}",
+          "{\"x\":\"ok\",}",
+          "{}{}"
+        }) {
+      byte[] bytes = invalid.getBytes(StandardCharsets.UTF_8);
+      assertThrows(IllegalArgumentException.class, () -> MailWire.decode(bytes, 128));
+    }
+    byte[] complete = "{\"x\":\"\\u000a\",\"y\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+    for (int length = 0; length < complete.length; length++) {
+      byte[] truncated = Arrays.copyOf(complete, length);
+      assertThrows(IllegalArgumentException.class, () -> MailWire.decode(truncated, 128));
+    }
+  }
+
+  @Test
+  void decimalRetainsAsciiOnlyCanonicalRange() {
+    assertEquals(0L, MailWire.decimal("0"));
+    assertEquals(Long.MAX_VALUE, MailWire.decimal("9223372036854775807"));
+    for (String invalid : new String[] {"1١", "1１", "+1", "-1", "00", "1\n"}) {
+      assertThrows(IllegalArgumentException.class, () -> MailWire.decimal(invalid));
+    }
   }
 
   @Test
@@ -163,11 +213,9 @@ class MailCryptoTest {
     byte[] alias = MailHpke.publicKey(MailHpke.generatePrivateKey());
     alias[31] |= (byte) 128;
     assertThrows(IllegalArgumentException.class, () -> MailWire.validateRecipientPublicKey(alias));
+    byte[] noncanonical = hex("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f");
     assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            MailWire.validateRecipientPublicKey(
-                hex("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")));
+        IllegalArgumentException.class, () -> MailWire.validateRecipientPublicKey(noncanonical));
   }
 
   @Test
@@ -209,16 +257,17 @@ class MailCryptoTest {
         java.util.List.of("profile", "kem", "kdf", "aead", "selector", "enc", "ciphertext")) {
       var changed = MailWire.decode(envelope, 65536);
       changed.put(field, "invalid");
+      byte[] changedEnvelope = MailWire.encode(changed);
       assertThrows(
           IllegalArgumentException.class,
-          () -> MailHpke.validateNetworkEnvelope(MailWire.encode(changed)),
+          () -> MailHpke.validateNetworkEnvelope(changedEnvelope),
           field);
     }
     var changed = MailWire.decode(envelope, 65536);
     changed.put("body", "plaintext");
+    byte[] plaintextEnvelope = MailWire.encode(changed);
     assertThrows(
-        IllegalArgumentException.class,
-        () -> MailHpke.validateNetworkEnvelope(MailWire.encode(changed)));
+        IllegalArgumentException.class, () -> MailHpke.validateNetworkEnvelope(plaintextEnvelope));
     assertThrows(
         IllegalArgumentException.class, () -> MailHpke.validateNetworkEnvelope(new byte[65537]));
     byte[] storage =
@@ -265,14 +314,10 @@ class MailCryptoTest {
       assertThrows(IllegalArgumentException.class, () -> MailWire.contactPayload(fields));
       assertThrows(
           IllegalArgumentException.class, () -> MailWire.preimage(MailWire.CONTACT, payload));
+      String invalidSelector = MailWire.fingerprint("recipient", invalidKey);
       assertThrows(
           IllegalArgumentException.class,
-          () ->
-              MailHpke.seal(
-                  "network",
-                  MailWire.fingerprint("recipient", invalidKey),
-                  invalidKey,
-                  new byte[] {1}));
+          () -> MailHpke.seal("network", invalidSelector, invalidKey, new byte[] {1}));
     }
   }
 }

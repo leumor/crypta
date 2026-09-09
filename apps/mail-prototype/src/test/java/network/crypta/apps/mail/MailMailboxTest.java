@@ -66,7 +66,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void freshReencryptionDeduplicatesAndAuthenticatedIdConflictDoesNotOverwrite() throws Exception {
+  void freshReencryptionDeduplicatesAndAuthenticatedIdConflictDoesNotOverwrite() {
     var sent = send(alice, bobFingerprint, "original synthetic text");
     byte[] signed = a.latestSigned.clone();
     var accepted = receive(bob, sent.get("reference"));
@@ -100,7 +100,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void malformedEnvelopeAndUnverifiedSignatureCannotPoisonReplay() throws Exception {
+  void malformedEnvelopeAndUnverifiedSignatureCannotPoisonReplay() {
     var sent = send(alice, bobFingerprint, "authentic synthetic message");
     byte[] signed = a.latestSigned.clone();
     byte[] invalidSignature = MailWire.signature(signed);
@@ -120,7 +120,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void uncertainEnqueueRecoversCommittedImmutableCiphertextWithoutNewSend() throws Exception {
+  void uncertainEnqueueRecoversCommittedImmutableCiphertextWithoutNewSend() {
     prepare(alice, bobFingerprint, "synthetic crash recovery");
     String approval = alice.execute("preview-send", Map.of()).get("approval");
     a.failInsertAfterCommit = true;
@@ -137,7 +137,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void failedAtomicAcceptanceLeavesNoReplayEntryThenRetryAccepts() throws Exception {
+  void failedAtomicAcceptanceLeavesNoReplayEntryThenRetryAccepts() {
     var sent = send(alice, bobFingerprint, "atomic admission");
     byte[] before = b.storedBytes();
     b.failNextStore = true;
@@ -148,7 +148,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void olderBackupMergesAvailableReplayEvidenceAndPausesReceiving() throws Exception {
+  void olderBackupMergesAvailableReplayEvidenceAndPausesReceiving() {
     String old = bob.execute("backup", Map.of()).get("backup");
     var sent = send(alice, bobFingerprint, "after backup synthetic text");
     assertStatus("accepted", receive(bob, sent.get("reference")));
@@ -165,7 +165,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void missingStorageKeyBlocksRestoreAndInitializeWithoutEmptySuccess() throws Exception {
+  void missingStorageKeyBlocksRestoreAndInitializeWithoutEmptySuccess() {
     String backup = bob.execute("backup", Map.of()).get("backup");
     b.vault.deleteIdentity(b.privateState().get("storageId"));
     assertStatus("key-unavailable", bob.execute("status", Map.of()));
@@ -191,7 +191,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void oversizedDraftPreservesPriorCommittedState() throws Exception {
+  void oversizedDraftPreservesPriorCommittedState() {
     byte[] before = a.storedBytes();
     assertStatus(
         "quota",
@@ -204,7 +204,7 @@ class MailMailboxTest {
   }
 
   @Test
-  void fullInboxRejectsFurtherIntakeWithoutEvictingReplayEvidence() throws Exception {
+  void fullInboxRejectsFurtherIntakeWithoutEvictingReplayEvidence() {
     var sent = send(alice, bobFingerprint, "bounded inbox synthetic fixture");
     assertStatus("accepted", receive(bob, sent.get("reference")));
     var message =

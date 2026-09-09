@@ -27,10 +27,12 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -67,7 +69,7 @@ class LegacyQueuePagePortTest {
   @Test
   void renderPage_whenUploadQueueHasCompletedRequest_returnsDetachedHtmlSnapshot()
       throws Exception {
-    QueuePageUploadFileView upload = org.mockito.Mockito.mock(QueuePageUploadFileView.class);
+    QueuePageUploadFileView upload = mock(QueuePageUploadFileView.class);
     when(upload.hasSucceeded()).thenReturn(true);
     when(upload.getIdentifier()).thenReturn("upload-1");
     when(upload.getPriority()).thenReturn((short) 2);
@@ -121,8 +123,8 @@ class LegacyQueuePagePortTest {
 
   @Test
   void renderKeyList_whenDownloadsRequested_returnsOnlyDownloadUris() throws Exception {
-    QueuePageDownloadView download = org.mockito.Mockito.mock(QueuePageDownloadView.class);
-    QueuePageUploadView upload = org.mockito.Mockito.mock(QueuePageUploadView.class);
+    QueuePageDownloadView download = mock(QueuePageDownloadView.class);
+    QueuePageUploadView upload = mock(QueuePageUploadView.class);
     FreenetURI downloadUri = sampleUri();
     FreenetURI uploadUri = sampleUri();
     when(download.getUri()).thenReturn(downloadUri);
@@ -137,9 +139,9 @@ class LegacyQueuePagePortTest {
 
   @Test
   void renderKeyList_whenUploadsRequested_skipsNullUploadUris() throws Exception {
-    QueuePageDownloadView download = org.mockito.Mockito.mock(QueuePageDownloadView.class);
-    QueuePageUploadView uploadWithUri = org.mockito.Mockito.mock(QueuePageUploadView.class);
-    QueuePageUploadView uploadWithoutUri = org.mockito.Mockito.mock(QueuePageUploadView.class);
+    QueuePageDownloadView download = mock(QueuePageDownloadView.class);
+    QueuePageUploadView uploadWithUri = mock(QueuePageUploadView.class);
+    QueuePageUploadView uploadWithoutUri = mock(QueuePageUploadView.class);
     FreenetURI uploadUri = sampleUri();
     when(download.getUri()).thenReturn(sampleUri());
     when(uploadWithUri.getFinalUri()).thenReturn(uploadUri);
@@ -180,7 +182,7 @@ class LegacyQueuePagePortTest {
 
   @Test
   void typedInsertStatusUsesExactUploadAndOnlySuccessfulFinalChk() throws Exception {
-    QueuePageUploadFileView upload = org.mockito.Mockito.mock(QueuePageUploadFileView.class);
+    QueuePageUploadFileView upload = mock(QueuePageUploadFileView.class);
     when(upload.getIdentifier()).thenReturn("owned-operation");
     when(queueBackend.getGlobalRequests()).thenReturn(new QueuePageRequestView[] {upload});
     assertEquals("missing", port.readInsertStatus("different-operation").state());
@@ -192,7 +194,7 @@ class LegacyQueuePagePortTest {
     var status = port.readInsertStatus("owned-operation");
     assertEquals("inserted", status.state());
     assertEquals(sampleUri().toString(), status.reference());
-    assertTrue(!status.toString().contains(sampleUri().toString()));
+    assertFalse(status.toString().contains(sampleUri().toString()));
   }
 
   private FreenetURI sampleUri() {

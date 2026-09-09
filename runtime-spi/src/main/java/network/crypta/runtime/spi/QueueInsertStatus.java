@@ -32,6 +32,9 @@ public record QueueInsertStatus(String state, String reference) {
     }
   }
 
+  /** Returns a non-null diagnostic string with the reference redacted. */
+  @SuppressWarnings(
+      "NullableProblems") // This JDK-only module cannot import nullability annotations.
   @Override
   public String toString() {
     return "QueueInsertStatus[state=" + state + ", reference=<redacted>]";

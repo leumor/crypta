@@ -1113,6 +1113,28 @@ public final class LocalProcessAppHost implements AppHost {
     return launchInstalledApp(installation, 0, 0);
   }
 
+  /** Adds host-owned Mail endpoints and runtime selection to its private launch environment. */
+  private void populateMailLaunchEnvironment(String appId, Map<String, String> launchEnvironment)
+      throws IOException {
+    if (!"mail-prototype".equals(appId)) return;
+    if (mailPlatformApiEndpoint == null) throw new AppHostException("mail_endpoint_unavailable");
+    launchEnvironment.put("CRYPTAD_MAIL_API_ENDPOINT", mailPlatformApiEndpoint.toASCIIString());
+    if (Runtime.version().feature() < 25) throw new AppHostException("mail_java_unavailable");
+    try {
+      Path mailJava =
+          appEnv
+              .javaHome()
+              .toRealPath()
+              .resolve("bin")
+              .resolve(appEnv.isWindows() ? "java.exe" : "java");
+      if (!Files.isRegularFile(mailJava) || !Files.isExecutable(mailJava))
+        throw new AppHostException("mail_java_unavailable");
+      launchEnvironment.put("CRYPTAD_MAIL_JAVA", mailJava.toString());
+    } catch (IOException | IllegalStateException _) {
+      throw new AppHostException("mail_java_unavailable");
+    }
+  }
+
   private RunningAppSnapshot launchInstalledApp(
       InstalledAppSnapshot installation, int restartCount, int currentRestartAttempt)
       throws IOException {
@@ -1136,24 +1158,7 @@ public final class LocalProcessAppHost implements AppHost {
     List<String> command = launchCommand(executable);
     Map<String, String> launchEnvironment = new LinkedHashMap<>();
     populateEnvironment(launchEnvironment, installation.manifest(), paths, token, appEnv);
-    if ("mail-prototype".equals(normalizedAppId)) {
-      if (mailPlatformApiEndpoint == null) throw new AppHostException("mail_endpoint_unavailable");
-      launchEnvironment.put("CRYPTAD_MAIL_API_ENDPOINT", mailPlatformApiEndpoint.toASCIIString());
-      if (Runtime.version().feature() < 25) throw new AppHostException("mail_java_unavailable");
-      try {
-        Path mailJava =
-            appEnv
-                .javaHome()
-                .toRealPath()
-                .resolve("bin")
-                .resolve(appEnv.isWindows() ? "java.exe" : "java");
-        if (!Files.isRegularFile(mailJava) || !Files.isExecutable(mailJava))
-          throw new AppHostException("mail_java_unavailable");
-        launchEnvironment.put("CRYPTAD_MAIL_JAVA", mailJava.toString());
-      } catch (IOException | IllegalStateException exception) {
-        throw new AppHostException("mail_java_unavailable");
-      }
-    }
+    populateMailLaunchEnvironment(normalizedAppId, launchEnvironment);
     AppSandboxLaunchPlan launchPlan;
     try {
       launchPlan =
@@ -1990,8 +1995,8 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private static boolean pathsOverlap(Path firstPath, Path secondPath) throws IOException {
-    Path firstComparablePath = comparablePath(firstPath);
-    Path secondComparablePath = comparablePath(secondPath);
+    Path firstComparablePath = Objects.requireNonNull(comparablePath(firstPath));
+    Path secondComparablePath = Objects.requireNonNull(comparablePath(secondPath));
     return firstComparablePath.startsWith(secondComparablePath)
         || secondComparablePath.startsWith(firstComparablePath);
   }

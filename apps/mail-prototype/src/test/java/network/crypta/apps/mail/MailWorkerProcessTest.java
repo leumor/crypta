@@ -29,6 +29,7 @@ import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -69,8 +70,9 @@ class MailWorkerProcessTest {
       assertEquals(
           Map.of("status", "invalid"),
           endpoint.rawCommand("status", new byte[] {(byte) 0xc3, 0x28}));
-      assertTrue(
-          backup.equals(endpoint.command("backup", Map.of()).get("backup")),
+      assertEquals(
+          backup,
+          endpoint.command("backup", Map.of()).get("backup"),
           "Invalid command changed private state.");
       assertTrue(network.isEmpty());
     }
@@ -79,7 +81,7 @@ class MailWorkerProcessTest {
   @Test
   void twoIndependentWorkersExchangeLiteralMailRestartDeduplicateAndReply() throws Exception {
     Map<String, byte[]> simulatedNetwork = new ConcurrentHashMap<>();
-    String canary = "PUBLIC SYNTHETIC MAIL TEST <script>neverExecute()</script> \u2603";
+    String canary = "PUBLIC SYNTHETIC MAIL TEST <script>neverExecute()</script> ☃";
     try (Endpoint alice = new Endpoint(root.resolve("alice"), simulatedNetwork);
         Endpoint bob = new Endpoint(root.resolve("bob"), simulatedNetwork)) {
       alice.start();
@@ -186,9 +188,6 @@ class MailWorkerProcessTest {
           ProcessHandle process = ProcessHandle.of(sender.child.pid()).orElseThrow();
           assertTrue(process.destroyForcibly());
           process.onExit().get(10, TimeUnit.SECONDS);
-          long reconciliationDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-          while (sender.host.currentLaunch("mail-prototype").isPresent()
-              && System.nanoTime() < reconciliationDeadline) Thread.sleep(10);
           assertTrue(sender.host.currentLaunch("mail-prototype").isEmpty());
           assertTrue(sender.host.authenticateLaunchToken(oldToken).isEmpty());
           sender.assertSafeRuntimeDiagnostics(log, installed);
@@ -200,16 +199,18 @@ class MailWorkerProcessTest {
           sender.start();
           Map<String, String> recovered = sender.command("status", Map.of());
           assertEquals("1", recovered.get("outbox"));
-          assertTrue(
-              operation.equals(recovered.get("operations")),
+          assertEquals(
+              operation,
+              recovered.get("operations"),
               "Committed operation identity changed across process death.");
           Map<String, String> retried = sender.command("retry", Map.of("operation", operation));
           if ("queued".equals(retried.get("status")))
             retried = sender.command("retry", Map.of("operation", operation));
           assertEquals("inserted", retried.get("status"));
           assertEquals(1, sender.backend.insertionBytes.size());
-          assertTrue(
-              java.util.Arrays.equals(sealed, sender.backend.insertionBytes.getFirst()),
+          assertArrayEquals(
+              sealed,
+              sender.backend.insertionBytes.getFirst(),
               "Restart changed committed ciphertext.");
           Map<String, String> importInput =
               Map.of("reference", retried.get("reference"), "confirmed", "yes");
@@ -344,6 +345,7 @@ class MailWorkerProcessTest {
     final HttpServer server;
     final java.util.concurrent.ExecutorService executor = Executors.newFixedThreadPool(4);
     final MailWorkerBroker broker;
+    private final Object replyMonitor = new Object();
     final LocalProcessAppHost host;
     final java.security.KeyPair publisherKey;
     final Path signedBundle;
@@ -448,18 +450,24 @@ class MailWorkerProcessTest {
 
     Map<String, String> rawCommand(String command, byte[] payload) throws Exception {
       String requestId = broker.submit(command, Base64.getEncoder().encodeToString(payload));
+      String encoded = awaitReply(requestId);
+      Map<String, String> result = MailWire.decode(Base64.getDecoder().decode(encoded), 393216);
+      recordCanaries(result);
+      return result;
+    }
+
+    private String awaitReply(String requestId) throws InterruptedException {
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(29);
-      while (System.nanoTime() < deadline) {
-        var encoded = broker.result(requestId);
-        if (encoded.isPresent()) {
-          Map<String, String> result =
-              MailWire.decode(Base64.getDecoder().decode(encoded.get()), 393216);
-          recordCanaries(result);
-          return result;
+      synchronized (replyMonitor) {
+        while (true) {
+          long remaining = deadline - System.nanoTime();
+          if (remaining <= 0)
+            throw new IllegalStateException("Private worker result deadline exceeded.");
+          var encoded = broker.result(requestId);
+          if (encoded.isPresent()) return encoded.get();
+          TimeUnit.NANOSECONDS.timedWait(replyMonitor, remaining);
         }
-        Thread.sleep(10);
       }
-      throw new IllegalStateException("Private worker result deadline exceeded.");
     }
 
     void handle(HttpExchange exchange) throws IOException {
@@ -492,10 +500,13 @@ class MailWorkerProcessTest {
                                       frame.payloadBase64()))
                           .orElse(Map.of("status", "idle")));
             } else if ("/mail/reply".equals(path)) {
-              broker.reply(
-                  authenticated.orElseThrow().launchId(),
-                  parameters.get("requestId"),
-                  parameters.get("payloadBase64"));
+              synchronized (replyMonitor) {
+                broker.reply(
+                    authenticated.orElseThrow().launchId(),
+                    parameters.get("requestId"),
+                    parameters.get("payloadBase64"));
+                replyMonitor.notifyAll();
+              }
               response = Map.of("mail", Map.of("status", "completed"));
             } else {
               synchronized (backend) {
@@ -512,7 +523,7 @@ class MailWorkerProcessTest {
                     activeBarrier.reentryAttempted.countDown();
                     if (host.currentLaunch("mail-prototype").isEmpty())
                       throw new MailFailure("key-unavailable");
-                  } catch (InterruptedException exception) {
+                  } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     throw new MailFailure("unavailable");
                   } finally {
@@ -524,7 +535,7 @@ class MailWorkerProcessTest {
           } catch (MailFailure failure) {
             status = "not-found".equals(failure.getMessage()) ? 404 : 403;
             response = Map.of("error", "unavailable");
-          } catch (RuntimeException failure) {
+          } catch (RuntimeException _) {
             status = 500;
             response = Map.of("error", "invalid");
           }
@@ -617,8 +628,8 @@ class MailWorkerProcessTest {
                   + " this module",
               "WARNING: Restricted methods will be blocked in a future release unless native access"
                   + " is enabled");
-      assertTrue(
-          lines.equals(expected), "Unexpected worker diagnostic; inspect private local artifact.");
+      assertEquals(
+          expected, lines, "Unexpected worker diagnostic; inspect private local artifact.");
     }
 
     @Override

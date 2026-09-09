@@ -15,12 +15,19 @@ public final class MailHpke {
   /** Maximum complete UTF-8 network envelope, including JSON and Base64 overhead. */
   public static final int MAX_NETWORK_ENVELOPE_BYTES = 65536;
 
+  private static final String FIELD_PROFILE = "profile";
+  private static final String FIELD_SELECTOR = "selector";
+  private static final String FIELD_CIPHERTEXT = "ciphertext";
+  private static final String NETWORK = "network";
+  private static final String STORAGE = "storage";
+
   /** Exact ordered HPKE authenticated-header fields. */
-  private static final List<String> HEADER = List.of("profile", "kem", "kdf", "aead", "selector");
+  private static final List<String> HEADER =
+      List.of(FIELD_PROFILE, "kem", "kdf", "aead", FIELD_SELECTOR);
 
   /** Exact ordered outer-envelope fields. */
   private static final List<String> FIELDS =
-      List.of("profile", "kem", "kdf", "aead", "selector", "enc", "ciphertext");
+      List.of(FIELD_PROFILE, "kem", "kdf", "aead", FIELD_SELECTOR, "enc", FIELD_CIPHERTEXT);
 
   /** Prevents instances of the fixed-suite utility. */
   private MailHpke() {}
@@ -66,8 +73,8 @@ public final class MailHpke {
    */
   private static String profile(String purpose) {
     return switch (purpose) {
-      case "network" -> NETWORK_PROFILE;
-      case "storage" -> "crypta.mail.storage.v1";
+      case NETWORK -> NETWORK_PROFILE;
+      case STORAGE -> "crypta.mail.storage.v1";
       default -> throw invalid();
     };
   }
@@ -80,7 +87,7 @@ public final class MailHpke {
    */
   private static int plaintextCap(String purpose) {
     profile(purpose);
-    return "network".equals(purpose) ? 45056 : 131072;
+    return NETWORK.equals(purpose) ? 45056 : 131072;
   }
 
   /**
@@ -90,7 +97,7 @@ public final class MailHpke {
    * @return maximum complete envelope bytes
    */
   private static int envelopeCap(String purpose) {
-    return "network".equals(purpose) ? MAX_NETWORK_ENVELOPE_BYTES : 196608;
+    return NETWORK.equals(purpose) ? MAX_NETWORK_ENVELOPE_BYTES : 196608;
   }
 
   /**
@@ -103,11 +110,11 @@ public final class MailHpke {
   private static Map<String, String> header(String purpose, String selector) {
     if (selector == null || !selector.matches("[0-9a-f]{64}")) throw invalid();
     var m = new LinkedHashMap<String, String>();
-    m.put("profile", profile(purpose));
+    m.put(FIELD_PROFILE, profile(purpose));
     m.put("kem", "32");
     m.put("kdf", "1");
     m.put("aead", "1");
-    m.put("selector", selector);
+    m.put(FIELD_SELECTOR, selector);
     return m;
   }
 
@@ -126,8 +133,7 @@ public final class MailHpke {
     try {
       if (plaintext.length > plaintextCap(purpose)
           || recipientPublic.length != 32
-          || !MailWire.fingerprint(
-                  "network".equals(purpose) ? "recipient" : "storage", recipientPublic)
+          || !MailWire.fingerprint(NETWORK.equals(purpose) ? "recipient" : STORAGE, recipientPublic)
               .equals(selector)) throw invalid();
       MailWire.validateRecipientPublicKey(recipientPublic);
       var m = header(purpose, selector);
@@ -139,11 +145,11 @@ public final class MailHpke {
               profile(purpose).getBytes(StandardCharsets.UTF_8));
       byte[] ct = context.seal(aad, plaintext);
       m.put("enc", MailWire.base64(context.getEncapsulation()));
-      m.put("ciphertext", MailWire.base64(ct));
+      m.put(FIELD_CIPHERTEXT, MailWire.base64(ct));
       byte[] result = MailWire.encode(m);
       if (result.length > envelopeCap(purpose)) throw invalid();
       return result;
-    } catch (InvalidCipherTextException | RuntimeException e) {
+    } catch (InvalidCipherTextException | RuntimeException _) {
       throw invalid();
     }
   }
@@ -162,7 +168,7 @@ public final class MailHpke {
     try {
       if (privateKey.length != 32
           || !MailWire.fingerprint(
-                  "network".equals(purpose) ? "recipient" : "storage", publicKey(privateKey))
+                  NETWORK.equals(purpose) ? "recipient" : STORAGE, publicKey(privateKey))
               .equals(selector)) throw invalid();
       var m = MailWire.ordered(MailWire.decode(envelope, envelopeCap(purpose)), FIELDS);
       if (!java.util.Arrays.equals(envelope, MailWire.encode(m))) throw invalid();
@@ -170,7 +176,7 @@ public final class MailHpke {
       for (String key : HEADER) if (!expected.get(key).equals(m.get(key))) throw invalid();
       byte[] enc = MailWire.unbase64(m.get("enc"), 32);
       MailWire.validateRecipientPublicKey(enc);
-      String ctText = m.get("ciphertext");
+      String ctText = m.get(FIELD_CIPHERTEXT);
       byte[] ct = java.util.Base64.getDecoder().decode(ctText);
       if (ct.length < 16
           || ct.length > plaintextCap(purpose) + 16
@@ -182,7 +188,7 @@ public final class MailHpke {
               h.deserializePrivateKey(privateKey, null),
               profile(purpose).getBytes(StandardCharsets.UTF_8));
       return context.open(MailWire.encode(expected), ct);
-    } catch (InvalidCipherTextException | RuntimeException e) {
+    } catch (InvalidCipherTextException | RuntimeException _) {
       throw invalid();
     }
   }
@@ -201,15 +207,15 @@ public final class MailHpke {
     try {
       var fields = MailWire.ordered(MailWire.decode(envelope, MAX_NETWORK_ENVELOPE_BYTES), FIELDS);
       if (!java.util.Arrays.equals(envelope, MailWire.encode(fields))) throw invalid();
-      var expected = header("network", fields.get("selector"));
+      var expected = header(NETWORK, fields.get(FIELD_SELECTOR));
       for (String key : HEADER) if (!expected.get(key).equals(fields.get(key))) throw invalid();
       MailWire.unbase64(fields.get("enc"), 32);
-      String encoded = fields.get("ciphertext");
+      String encoded = fields.get(FIELD_CIPHERTEXT);
       byte[] ciphertext = java.util.Base64.getDecoder().decode(encoded);
       if (ciphertext.length < 16
-          || ciphertext.length > plaintextCap("network") + 16
+          || ciphertext.length > plaintextCap(NETWORK) + 16
           || !MailWire.base64(ciphertext).equals(encoded)) throw invalid();
-    } catch (RuntimeException exception) {
+    } catch (RuntimeException _) {
       throw invalid();
     }
   }

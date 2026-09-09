@@ -71,36 +71,51 @@ final class MailPlatformClient implements MailBackend {
           .method(method, HttpRequest.BodyPublishers.ofString(form));
     try {
       var response = client.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
-      byte[] bytes;
-      try (var body = response.body()) {
-        bytes = body.readNBytes(1048577);
-      }
-      if (bytes.length > 1048576) throw new MailFailure("quota");
-      if (response.statusCode() < 200 || response.statusCode() >= 300) {
-        try {
-          Object parsed = MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8));
-          Object error = parsed instanceof Map<?, ?> root ? root.get("error") : null;
-          Object code = error instanceof Map<?, ?> details ? details.get("code") : null;
-          if ("key_unavailable".equals(code) || "mail_identity_denied".equals(code))
-            throw new MailFailure("key-unavailable");
-          if ("mail_operation_rejected".equals(code)) throw new MailFailure("invalid");
-          if ("app_data_write_conflict".equals(code)) throw new MailFailure("state-conflict");
-          if ("app_data_quota_exceeded".equals(code)) throw new MailFailure("quota");
-        } catch (IllegalArgumentException ignored) {
-          /* No untrusted error text reaches UI or logs. */
-        }
-
-        if (response.statusCode() == 404) throw new MailFailure("not-found");
-        if (response.statusCode() == 401 || response.statusCode() == 403)
-          throw new MailFailure("key-unavailable");
-        throw new MailFailure("platform-unavailable");
-      }
-      return object(MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8)));
-    } catch (java.io.IOException e) {
+      return readResponse(response);
+    } catch (java.io.IOException _) {
       throw new MailFailure("network-failed");
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
       throw new MailFailure("unavailable");
+    }
+  }
+
+  /** Reads and closes a bounded response before interpreting its status and complete JSON body. */
+  private static Map<String, Object> readResponse(HttpResponse<java.io.InputStream> response)
+      throws java.io.IOException {
+    byte[] bytes;
+    try (var body = response.body()) {
+      bytes = body.readNBytes(1048577);
+    }
+    if (bytes.length > 1048576) throw new MailFailure("quota");
+    if (response.statusCode() < 200 || response.statusCode() >= 300)
+      throw responseFailure(response.statusCode(), bytes);
+    return object(MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8)));
+  }
+
+  /** Maps only allowlisted error codes or HTTP statuses to private, bounded failure messages. */
+  private static MailFailure responseFailure(int statusCode, byte[] bytes) {
+    Object code = errorCode(bytes);
+    if ("key_unavailable".equals(code) || "mail_identity_denied".equals(code))
+      return new MailFailure("key-unavailable");
+    if ("mail_operation_rejected".equals(code)) return new MailFailure("invalid");
+    if ("app_data_write_conflict".equals(code)) return new MailFailure("state-conflict");
+    if ("app_data_quota_exceeded".equals(code)) return new MailFailure("quota");
+    return switch (statusCode) {
+      case 404 -> new MailFailure("not-found");
+      case 401, 403 -> new MailFailure("key-unavailable");
+      default -> new MailFailure("platform-unavailable");
+    };
+  }
+
+  /** Extracts an error code without exposing malformed response text or parser diagnostics. */
+  private static Object errorCode(byte[] bytes) {
+    try {
+      Object parsed = MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8));
+      Object error = parsed instanceof Map<?, ?> root ? root.get("error") : null;
+      return error instanceof Map<?, ?> details ? details.get("code") : null;
+    } catch (IllegalArgumentException _) {
+      return null;
     }
   }
 

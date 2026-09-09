@@ -10,6 +10,15 @@ import network.crypta.platform.appvault.AppVaultService;
 
 /** Fixed own-app mediation and process-only vault routes; no mailbox state lives here. */
 final class PlatformApiMailRoutes {
+  private static final String MAIL_APP_ID = "mail-prototype";
+  private static final String COMMAND = "command";
+  private static final String RESULT_ACTION = "result";
+  private static final String PAYLOAD_BASE64 = "payloadBase64";
+  private static final String REQUEST_ID = "requestId";
+  private static final String SEAL_STORAGE = "seal-storage";
+  private static final String IDENTITY_ID = "identityId";
+  private static final String STATUS = "status";
+
   /** Authoritative current verified AppHost launch. */
   private final AppHost host;
 
@@ -40,16 +49,16 @@ final class PlatformApiMailRoutes {
    */
   PlatformApiResponse route(PlatformApiRequest request) {
     var principal = request.principal();
-    if (!"mail-prototype".equals(principal.appId())
+    if (!MAIL_APP_ID.equals(principal.appId())
         || request.pathSegments().size() != 2
         || !"POST".equals(request.method())
         || broker == null) throw denied();
     String action = request.pathSegments().get(1);
     boolean browser = principal.authSource() == PlatformApiAuthSource.APP_BROWSER_SESSION;
-    if (browser != List.of("command", "result").contains(action)) throw denied();
+    if (browser != List.of(COMMAND, RESULT_ACTION).contains(action)) throw denied();
     if (!browser
         && (principal.launchId() == null
-            || host.currentLaunch("mail-prototype")
+            || host.currentLaunch(MAIL_APP_ID)
                 .filter(
                     p ->
                         p.launchId().equals(principal.launchId())
@@ -57,28 +66,28 @@ final class PlatformApiMailRoutes {
                 .isEmpty())) throw denied();
     java.util.Set<String> allowed =
         switch (action) {
-          case "command" -> java.util.Set.of("command", "payloadBase64");
-          case "result" -> java.util.Set.of("requestId");
+          case COMMAND -> java.util.Set.of(COMMAND, PAYLOAD_BASE64);
+          case RESULT_ACTION -> java.util.Set.of(REQUEST_ID);
           case "poll" -> java.util.Set.of();
-          case "reply" -> java.util.Set.of("requestId", "payloadBase64");
+          case "reply" -> java.util.Set.of(REQUEST_ID, PAYLOAD_BASE64);
           case "create-identity" -> java.util.Set.of("kind");
-          case "sign", "open", "seal-storage", "open-storage" ->
-              java.util.Set.of("identityId", "payloadBase64");
+          case "sign", "open", SEAL_STORAGE, "open-storage" ->
+              java.util.Set.of(IDENTITY_ID, PAYLOAD_BASE64);
           default -> throw denied();
         };
     if (!allowed.equals(request.queryParameters().keySet())) throw denied();
     try {
       Object response =
           switch (action) {
-            case "command" ->
+            case COMMAND ->
                 Map.of(
-                    "requestId",
-                    broker.submit(value(request, "command"), value(request, "payloadBase64")));
-            case "result" -> {
-              var result = broker.result(value(request, "requestId"));
+                    REQUEST_ID,
+                    broker.submit(value(request, COMMAND), value(request, PAYLOAD_BASE64)));
+            case RESULT_ACTION -> {
+              var result = broker.result(value(request, REQUEST_ID));
               yield result
-                  .<Object>map(s -> Map.of("status", "complete", "payloadBase64", s))
-                  .orElse(Map.of("status", "pending"));
+                  .<Object>map(s -> Map.of(STATUS, "complete", PAYLOAD_BASE64, s))
+                  .orElse(Map.of(STATUS, "pending"));
             }
             case "poll" -> {
               var frame = broker.poll(principal.launchId());
@@ -86,20 +95,18 @@ final class PlatformApiMailRoutes {
                   .<Object>map(
                       f ->
                           Map.of(
-                              "requestId",
+                              REQUEST_ID,
                               f.requestId(),
-                              "command",
+                              COMMAND,
                               f.command(),
-                              "payloadBase64",
+                              PAYLOAD_BASE64,
                               f.payloadBase64()))
-                  .orElse(Map.of("status", "idle"));
+                  .orElse(Map.of(STATUS, "idle"));
             }
             case "reply" -> {
               broker.reply(
-                  principal.launchId(),
-                  value(request, "requestId"),
-                  value(request, "payloadBase64"));
-              yield Map.of("status", "ok");
+                  principal.launchId(), value(request, REQUEST_ID), value(request, PAYLOAD_BASE64));
+              yield Map.of(STATUS, "ok");
             }
             case "create-identity" -> {
               requireVault();
@@ -107,37 +114,36 @@ final class PlatformApiMailRoutes {
                   vault.createMailIdentity(
                       principal.appId(), AppIdentityKind.fromJsonValue(value(request, "kind")));
               yield Map.of(
-                  "identityId",
+                  IDENTITY_ID,
                   identity.identityId(),
                   "fingerprint",
                   identity.fingerprint(),
                   "publicSummary",
                   identity.publicSummary());
             }
-            case "sign", "open", "seal-storage", "open-storage" -> {
+            case "sign", "open", SEAL_STORAGE, "open-storage" -> {
               requireVault();
-              String identityId = value(request, "identityId");
+              String identityId = value(request, IDENTITY_ID);
               byte[] payload = payload(request);
               byte[] result =
                   switch (action) {
                     case "sign" -> vault.signMail(principal.appId(), identityId, payload);
                     case "open" -> vault.openMail(principal.appId(), identityId, payload);
-                    case "seal-storage" ->
-                        vault.sealStorage(principal.appId(), identityId, payload);
+                    case SEAL_STORAGE -> vault.sealStorage(principal.appId(), identityId, payload);
                     default -> vault.openStorage(principal.appId(), identityId, payload);
                   };
-              yield Map.of("payloadBase64", Base64.getEncoder().encodeToString(result));
+              yield Map.of(PAYLOAD_BASE64, Base64.getEncoder().encodeToString(result));
             }
             default -> throw denied();
           };
       if (!browser
-          && host.currentLaunch("mail-prototype")
+          && host.currentLaunch(MAIL_APP_ID)
               .filter(p -> p.launchId().equals(principal.launchId()))
               .isEmpty()) throw denied();
       return PlatformApiResponse.ok(Map.of("mail", response));
-    } catch (IllegalArgumentException exception) {
+    } catch (IllegalArgumentException _) {
       throw new PlatformApiException(400, "mail_rejected", "Mail operation rejected.");
-    } catch (IllegalStateException exception) {
+    } catch (IllegalStateException _) {
       throw new PlatformApiException(
           409, "mail_worker_unavailable", "Mail worker operation unavailable.");
     }
@@ -170,7 +176,7 @@ final class PlatformApiMailRoutes {
    * @return decoded private operation bytes
    */
   private static byte[] payload(PlatformApiRequest request) {
-    String value = value(request, "payloadBase64");
+    String value = value(request, PAYLOAD_BASE64);
     if (value.length() > 262144) throw new IllegalArgumentException();
     byte[] bytes = Base64.getDecoder().decode(value);
     if (!Base64.getEncoder().encodeToString(bytes).equals(value))

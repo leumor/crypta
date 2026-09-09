@@ -70,7 +70,8 @@ class MailWorkerBrokerTest {
     MailWorkerBroker broker = new MailWorkerBroker(host);
     assertThrows(IllegalStateException.class, () -> broker.submit("http://127.0.0.1", ""));
     assertThrows(IllegalStateException.class, () -> broker.submit("status", "e30"));
-    assertThrows(IllegalStateException.class, () -> broker.submit("status", "A".repeat(393217)));
+    String oversizedPayload = "A".repeat(393217);
+    assertThrows(IllegalStateException.class, () -> broker.submit("status", oversizedPayload));
     for (int count = 0; count < 4; count++) broker.submit("status", "");
     assertThrows(IllegalStateException.class, () -> broker.submit("status", ""));
     assertEquals("MailWorkerFrame[redacted]", broker.poll("launch").orElseThrow().toString());
