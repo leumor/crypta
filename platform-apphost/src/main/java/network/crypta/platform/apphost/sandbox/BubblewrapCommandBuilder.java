@@ -156,18 +156,28 @@ public final class BubblewrapCommandBuilder {
 
   private void addJavaSecurityMounts(List<BindMount> mounts) {
     if (javaHome == null) return;
-    for (String relative : PUBLIC_JAVA_SECURITY_FILES) {
-      Path file = javaHome.resolve(relative);
-      try {
-        if (!Files.isRegularFile(file)) continue;
-        Path resolved = file.toRealPath();
-        if (systemReadOnlyPaths.stream().noneMatch(resolved::startsWith)
-            && mounts.stream().noneMatch(mount -> mount.destination().equals(resolved))) {
-          mounts.add(BindMount.readOnly(resolved, resolved));
+    try {
+      Path home = javaHome.toRealPath();
+      for (String relative : PUBLIC_JAVA_SECURITY_FILES) {
+        Path lookup = home.resolve(relative);
+        if (Files.isRegularFile(lookup)) {
+          Path resolved = lookup.toRealPath();
+          // System mounts preserve existing symlinks, whose targets must also be visible.
+          addReadOnlyFileIfUncovered(mounts, resolved, resolved);
+          // An external runtime exposes only bin/lib, so its conf symlink is absent. Bind the
+          // allowlisted file directly at the JVM lookup path without exposing the conf directory.
+          addReadOnlyFileIfUncovered(mounts, resolved, lookup);
         }
-      } catch (java.io.IOException _) {
-        throw new IllegalStateException("Java security configuration unavailable");
       }
+    } catch (java.io.IOException _) {
+      throw new IllegalStateException("Java security configuration unavailable");
+    }
+  }
+
+  private static void addReadOnlyFileIfUncovered(
+      List<BindMount> mounts, Path source, Path destination) {
+    if (mounts.stream().noneMatch(mount -> destination.startsWith(mount.destination()))) {
+      mounts.add(BindMount.readOnly(source, destination));
     }
   }
 

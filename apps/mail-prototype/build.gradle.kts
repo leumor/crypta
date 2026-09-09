@@ -130,6 +130,7 @@ dependencies {
   testImplementation(project(":platform-apphost"))
   testImplementation(project(":foundation-fs"))
   testImplementation(project(":platform-devtools"))
+  testImplementation(libs.mockitoCore)
   testImplementation(libs.bcprov)
   testImplementation(libs.junitJupiterApi)
   testRuntimeOnly(libs.junitJupiterEngine)

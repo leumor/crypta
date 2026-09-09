@@ -46,6 +46,11 @@ in ordinary app-data, browser storage, process logs, support exports or public t
 The Java Mail process owns all mailbox decisions and persistence. The daemon owns only vault
 cryptography, fixed transient IPC mediation, app-scoped storage and existing network transport.
 There is no daemon mailbox engine or generic RPC/proxy. Worker unavailability fails closed.
+AppHost selects the Java 25+ executable. The Linux sandbox exposes an external runtime's `bin`
+and `lib` plus fixed public security files at their JVM lookup paths and required symlink targets;
+it does not mount the broader private `conf` directory. A real bubblewrap regression starts a
+relocated runtime with symlinked security configuration and checks that private management
+configuration remains inaccessible (skipped explicitly on hosts without usable bubblewrap).
 
 ## Selected limits and recovery
 
@@ -59,6 +64,10 @@ outbox reserves completion metadata space before commit.
 
 Send approval binds exact draft/contact bytes. Sealed bytes and stable operation/queue identifier
 commit before insertion. Retry reuses those bytes, including after uncertain enqueue outcomes.
+An unexpired failed insert restarts its stable queue identifier through
+`POST /api/v1/queue/requests/restart`; a missing queue request re-enqueues the sealed bytes.
+The retry regression exercises the registered Platform API router with a Mail app principal and
+a simulated queue runtime; it is not evidence of live network publication.
 Inserted means network insertion only; it does not mean delivered or read. Acceptance commits
 message and authenticated replay identity together. Re-encryption of the same signed message is
 a duplicate; conflicting authenticated content under the same identity is rejected.

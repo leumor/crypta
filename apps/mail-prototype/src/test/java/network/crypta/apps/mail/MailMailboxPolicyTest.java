@@ -6,15 +6,24 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import network.crypta.crypt.mail.MailHpke;
 import network.crypta.crypt.mail.MailWire;
+import network.crypta.platform.api.PlatformApiPrincipal;
+import network.crypta.platform.api.PlatformApiRequest;
+import network.crypta.platform.api.PlatformApiRouter;
+import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Answers;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Temporal/contact policy with independent production vault/data services and simulated transport.
@@ -204,6 +213,36 @@ class MailMailboxPolicyTest {
   }
 
   @Test
+  void failedInsertRetryReachesRegisteredRouterAndPreservesCiphertext() throws Exception {
+    Party sender = party("sender-router", START);
+    Party recipient = party("recipient-router", START);
+    String fingerprint = pin(sender.mail(), recipient.mail());
+    QueueGate gate = new QueueGate(sender.backend());
+    String operation = sealWithoutPublishing(gate, fingerprint);
+    String original = sender.backend().privateState().get("outbox." + operation);
+    gate.queueState = "failed";
+    RuntimePorts ports = mock(RuntimePorts.class, Answers.RETURNS_DEEP_STUBS);
+    when(ports.queueSupport().isQueueBackendEnabled()).thenReturn(true);
+    MailBackend routed = routeQueueMutations(ports, gate);
+
+    assertStatus("queued", at(routed, START).execute("retry", Map.of("operation", operation)));
+
+    verify(ports.queueMutation())
+        .restartRequests(List.of("app-document-mail-prototype-" + operation), false);
+    var before = MailWire.decode(original.getBytes(StandardCharsets.UTF_8), 131072);
+    var after =
+        MailWire.decode(
+            sender
+                .backend()
+                .privateState()
+                .get("outbox." + operation)
+                .getBytes(StandardCharsets.UTF_8),
+            131072);
+    assertEquals(before.get("envelope"), after.get("envelope"));
+    assertTrue(network.isEmpty());
+  }
+
+  @Test
   void unexpiredRetryStillEnqueuesOrRestartsWithoutResealing() throws Exception {
     for (String queueState : new String[] {"missing", "failed"}) {
       Party sender = party("sender-" + queueState, START);
@@ -379,9 +418,28 @@ class MailMailboxPolicyTest {
             .count());
   }
 
+  private static MailBackend routeQueueMutations(RuntimePorts ports, MailBackend backend) {
+    PlatformApiRouter router = new PlatformApiRouter(ports);
+    return (method, path, parameters) -> {
+      if (method.equals("POST") && path.startsWith("/queue/")) {
+        Map<String, List<String>> form = new LinkedHashMap<>();
+        parameters.forEach((key, value) -> form.put(key, List.of(value)));
+        var response =
+            router.route(
+                new PlatformApiRequest(
+                    method,
+                    List.of(path.substring(1).split("/")),
+                    form,
+                    PlatformApiPrincipal.appToken("mail-prototype", List.of("queue.write"))));
+        assertEquals(200, response.statusCode(), response.body());
+        return Map.of();
+      }
+      return backend.request(method, path, parameters);
+    };
+  }
+
   private static String signedReference(
-      Party sender, Party recipient, Instant created, Instant expires, int messageId)
-      throws Exception {
+      Party sender, Party recipient, Instant created, Instant expires, int messageId) {
     var senderState = sender.backend().privateState();
     var senderCard =
         MailWire.decode(
@@ -497,7 +555,7 @@ class MailMailboxPolicyTest {
         enqueueAttempts++;
         if (rejectNetwork) throw new MailFailure("network-unavailable");
       }
-      if (path.equals("/queue/restart")) {
+      if (path.equals("/queue/requests/restart")) {
         restartAttempts++;
         if (rejectNetwork) throw new MailFailure("network-unavailable");
       }

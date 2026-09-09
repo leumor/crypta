@@ -609,7 +609,7 @@ public final class MailMailbox {
       approved(required(out, "contact"));
     }
     if ("failed".equals(status)) {
-      backend.request("POST", "/queue/restart", Map.of(IDENTIFIER, identifier));
+      backend.request("POST", "/queue/requests/restart", Map.of(IDENTIFIER, identifier));
     } else if ("missing".equals(status)) {
       // These committed immutable bytes are the only application bytes ever inserted.
       backend.request(

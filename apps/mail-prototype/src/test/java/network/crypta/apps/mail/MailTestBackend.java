@@ -98,7 +98,7 @@ final class MailTestBackend implements MailBackend {
           if (bytes == null) throw new MailFailure("network-unavailable");
           yield Map.of("contentBase64", MailWire.base64(bytes));
         }
-        case "/queue/restart" -> Map.of("restarted", true);
+        case "/queue/requests/restart" -> Map.of("restarted", true);
         default ->
             throw new AssertionError("Unexpected test platform route: " + method + " " + path);
       };
