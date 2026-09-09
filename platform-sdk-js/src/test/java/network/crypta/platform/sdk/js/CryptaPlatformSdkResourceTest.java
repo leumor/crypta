@@ -1584,7 +1584,7 @@ class CryptaPlatformSdkResourceTest {
 
     int requestedNormalization =
         script.indexOf("const requestedAppId = rawAppId ? normalizeAppId(rawAppId) : null;");
-    int fetchWithNormalizedId = script.indexOf("fetchBootstrap(requestedAppId)");
+    int fetchWithNormalizedId = script.indexOf("fetchBootstrap(requestedAppId, signal)");
     int bootstrapNormalization =
         script.indexOf("bootstrap.appId = normalizeAppId(bootstrap.appId);");
     int normalizedComparison =
@@ -1870,6 +1870,9 @@ class CryptaPlatformSdkResourceTest {
 
     const context = {
       console,
+      AbortController,
+      setTimeout,
+      clearTimeout,
       URL,
       URLSearchParams,
       TextEncoder,

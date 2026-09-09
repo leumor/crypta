@@ -1,5 +1,6 @@
 package network.crypta.apps.mail;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -8,6 +9,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -16,13 +21,20 @@ import java.util.stream.Collectors;
  * <p>The launch token is sent only in the process authentication header. The endpoint must use an
  * explicit port and the {@code /api/v1} mount on literal {@code 127.0.0.1} or {@code ::1};
  * redirects are disabled. Connection setup is bounded to five seconds and each HTTP request has a
- * 25-second timeout. Form and response byte caps are enforced separately.
+ * 25-second deadline through complete response-body consumption. Timeout or interruption cancels
+ * the exchange. Form and response byte caps are enforced separately.
  *
  * <p>Responses may contain private plaintext and are returned only to the worker. Ordinary failure
  * responses are mapped to fixed codes without retaining remote error text. Interrupted requests
  * restore the thread's interrupt flag and raise a bounded unavailable failure.
  */
 final class MailPlatformClient implements MailBackend {
+  /** Maximum bytes accumulated from any successful or error response. */
+  private static final int MAX_RESPONSE_BYTES = 1048576;
+
+  /** Overall exchange deadline; production uses 25 seconds. */
+  private final Duration timeout;
+
   /** Validated literal loopback Platform API mount. */
   private final URI endpoint;
 
@@ -44,6 +56,19 @@ final class MailPlatformClient implements MailBackend {
    * @throws IllegalArgumentException if the endpoint or token shape is invalid
    */
   MailPlatformClient(String endpoint, String token) {
+    this(endpoint, token, Duration.ofSeconds(25));
+  }
+
+  /**
+   * Selects an exchange deadline for local tests without a production environment override.
+   *
+   * @param endpoint literal loopback API mount
+   * @param token private process credential
+   * @param timeout positive overall HTTP deadline
+   */
+  MailPlatformClient(String endpoint, String token, Duration timeout) {
+    if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException();
+    this.timeout = timeout;
     this.endpoint = URI.create(endpoint);
     this.token = token;
     if (!"http".equals(this.endpoint.getScheme())
@@ -71,43 +96,64 @@ final class MailPlatformClient implements MailBackend {
             endpoint.toString()
                 + path
                 + ("GET".equals(method) && !form.isEmpty() ? "?" + form : ""));
-    var request =
-        HttpRequest.newBuilder(uri)
-            .timeout(Duration.ofSeconds(25))
-            .header("X-Crypta-App-Token", token);
+    var request = HttpRequest.newBuilder(uri).timeout(timeout).header("X-Crypta-App-Token", token);
     if ("GET".equals(method)) request.GET();
     else
       request
           .header("Content-Type", "application/x-www-form-urlencoded")
           .method(method, HttpRequest.BodyPublishers.ofString(form));
+    return exchange(request.build());
+  }
+
+  /**
+   * Accumulates only bounded body chunks and waits under one deadline, including body stalls.
+   *
+   * @param request complete authenticated request
+   * @return parsed complete response
+   */
+  private Map<String, Object> exchange(HttpRequest request) {
+    var body = new ByteArrayOutputStream();
+    var oversized = new AtomicBoolean();
+    long deadline = System.nanoTime() + timeout.toNanos();
+    var pending =
+        client.sendAsync(
+            request,
+            HttpResponse.BodyHandlers.ofByteArrayConsumer(
+                chunk ->
+                    chunk.ifPresent(
+                        bytes -> {
+                          if (bytes.length > MAX_RESPONSE_BYTES - body.size()) {
+                            oversized.set(true);
+                            throw new MailFailure("quota");
+                          }
+                          body.writeBytes(bytes);
+                        })));
     try {
-      var response = client.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
-      return readResponse(response);
-    } catch (java.io.IOException _) {
+      var response = pending.get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+      return readResponse(response.statusCode(), body.toByteArray());
+    } catch (ExecutionException _) {
+      throw new MailFailure(oversized.get() ? "quota" : "network-failed");
+    } catch (TimeoutException _) {
       throw new MailFailure("network-failed");
     } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
       throw new MailFailure("unavailable");
+    } finally {
+      // Cancel the original HttpClient future so a timed-out body cannot keep the worker busy.
+      pending.cancel(true);
     }
   }
 
   /**
-   * Reads and closes a bounded response before interpreting its status and complete JSON body.
+   * Interprets the HTTP status and complete bounded JSON body after the exchange finishes.
    *
-   * @param response received response whose body is consumed and closed here
+   * @param statusCode response HTTP status
+   * @param bytes complete bounded response body
    * @return parsed object for a successful HTTP status
-   * @throws java.io.IOException if reading or closing the response body fails
-   * @throws MailFailure if the body exceeds 1 MiB or the response indicates an operation failure
+   * @throws MailFailure if the response indicates an operation failure
    */
-  private static Map<String, Object> readResponse(HttpResponse<java.io.InputStream> response)
-      throws java.io.IOException {
-    byte[] bytes;
-    try (var body = response.body()) {
-      bytes = body.readNBytes(1048577);
-    }
-    if (bytes.length > 1048576) throw new MailFailure("quota");
-    if (response.statusCode() < 200 || response.statusCode() >= 300)
-      throw responseFailure(response.statusCode(), bytes);
+  private static Map<String, Object> readResponse(int statusCode, byte[] bytes) {
+    if (statusCode < 200 || statusCode >= 300) throw responseFailure(statusCode, bytes);
     return object(MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8)));
   }
 

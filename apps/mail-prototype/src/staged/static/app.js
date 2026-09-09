@@ -40,9 +40,11 @@
     const previewRevision = draftRevision;
     busy = true;
     document.getElementById("status").textContent = "Waiting for the Mail worker…";
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 30000);
     try {
-      await CryptaPlatform.bootstrap.load({ appId: "mail-prototype" });
-      const result = await CryptaPlatform.mail.command(command, payload);
+      await CryptaPlatform.bootstrap.load({ appId: "mail-prototype", signal: controller.signal });
+      const result = await CryptaPlatform.mail.command(command, payload, { signal: controller.signal });
       document.getElementById("result").textContent = JSON.stringify(result, null, 2);
       const exported = result.card || result.backup || result.reference;
       document.getElementById("export-value").value = typeof exported === "string" ? exported : "";
@@ -58,6 +60,7 @@
       invalidate();
       document.getElementById("status").textContent = "Operation unavailable or failed. Refresh private status before retrying; an insert outcome may be uncertain.";
     } finally {
+      clearTimeout(deadline);
       busy = false;
     }
   }

@@ -9,6 +9,10 @@ const calls = [];
 let bootstrapCalls = 0;
 let ready;
 let deferred;
+let stallBootstrap = false;
+let bootstrapSignal;
+const timers = new Map();
+let nextTimer = 1;
 const canary = '<script>globalThis.executed=true</script><img src="https://example.invalid/canary" onerror="executed=true">';
 class Element {
   constructor() { this.value = ''; this.textContent = ''; this.disabled = false; this.listeners = {}; this.dataset = {}; }
@@ -27,14 +31,26 @@ for (const command of ['initialize', 'export-contact', 'import-contact', 'approv
 }
 const context = {
   TextEncoder,
+  AbortController,
+  setTimeout(callback, delay) { const id = nextTimer++; timers.set(id, {callback, delay}); return id; },
+  clearTimeout(id) { timers.delete(id); },
   document: {
     addEventListener(name, callback) { assert.equal(name, 'DOMContentLoaded'); ready = callback; },
     getElementById: element,
     querySelectorAll(selector) { assert.equal(selector, '[data-command]'); return [...buttons.values()]; },
   },
   CryptaPlatform: {
-    bootstrap: { async load() { bootstrapCalls++; } },
-    mail: { async command(command, payload) {
+    bootstrap: { async load(options) {
+      bootstrapCalls++;
+      assert.ok(options.signal);
+      bootstrapSignal = options.signal;
+      if (stallBootstrap) await new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), {once: true});
+      });
+    } },
+    mail: { async command(command, payload, options) {
+      assert.ok(options.signal);
+      assert.equal(options.signal, bootstrapSignal);
       calls.push({command, payload: JSON.parse(JSON.stringify(payload))});
       if (deferred) await deferred;
       if (command === 'read') return {status: 'verified-local-copy', body: canary, subject: canary};
@@ -109,4 +125,31 @@ const click = async command => { buttons.get(command).listeners.click(); await s
   assert.equal(calls.length, pendingCount);
   release();
   await settle();
+  let reject;
+  deferred = new Promise((_, fail) => { reject = fail; });
+  await click('status');
+  reject(new Error('Mail worker timed out. Check operation status before retrying.'));
+  await settle();
+  assert.match(element('status').textContent, /Refresh private status before retrying/);
+  deferred = null;
+  const afterTimeout = calls.length;
+  await click('status');
+  assert.equal(calls.length, afterTimeout + 1);
+  assert.equal(bootstrapCalls, calls.length);
+  assert.equal(timers.size, 0);
+  stallBootstrap = true;
+  const beforeBootstrapStall = calls.length;
+  await click('status');
+  assert.equal(calls.length, beforeBootstrapStall);
+  const [timerId, timer] = [...timers.entries()][0];
+  assert.equal(timer.delay, 30000);
+  timers.delete(timerId);
+  timer.callback();
+  await settle();
+  assert.ok(bootstrapSignal.aborted);
+  assert.match(element('status').textContent, /Refresh private status before retrying/);
+  stallBootstrap = false;
+  await click('status');
+  assert.equal(calls.length, beforeBootstrapStall + 1);
+  assert.equal(timers.size, 0);
 })().catch(() => { process.stderr.write('mail-ui-behavior-failed\n'); process.exitCode = 1; });
