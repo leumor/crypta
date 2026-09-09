@@ -44,7 +44,8 @@ class MailVaultTest {
             MailWire.signature(opened)));
     assertFalse(new String(envelope, StandardCharsets.UTF_8).contains("public synthetic body"));
     AppIdentityRecord wrong = sender.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
-    assertThrows(AppVaultException.class, () -> sender.openMail(APP, wrong.identityId(), envelope));
+    String wrongId = wrong.identityId();
+    assertThrows(AppVaultException.class, () -> sender.openMail(APP, wrongId, envelope));
     AppVaultService reopened = open(root.resolve("recipient"));
     assertArrayEquals(signed, reopened.openMail(APP, receiver.identityId(), envelope));
   }
@@ -189,24 +190,26 @@ class MailVaultTest {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
     AppIdentityRecord recipient = vault.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
+    String storageId = storage.identityId();
+    String recipientId = recipient.identityId();
     byte[] plaintext = "synthetic private state".getBytes(StandardCharsets.UTF_8);
 
     byte[] sealed = vault.sealStorage(APP, storage.identityId(), plaintext);
 
     assertArrayEquals(plaintext, vault.openStorage(APP, storage.identityId(), sealed));
+    assertThrows(AppVaultException.class, () -> vault.openMail(APP, recipientId, sealed));
+    assertThrows(AppVaultException.class, () -> vault.openMail(APP, storageId, sealed));
     assertThrows(
-        AppVaultException.class, () -> vault.openMail(APP, recipient.identityId(), sealed));
-    assertThrows(AppVaultException.class, () -> vault.openMail(APP, storage.identityId(), sealed));
-    assertThrows(
-        AppVaultException.class,
-        () -> vault.openStorage("unrelated-app", storage.identityId(), sealed));
-    assertThrows(AppVaultException.class, () -> vault.readSecretValue(APP, storage.identityId()));
+        AppVaultException.class, () -> vault.openStorage("unrelated-app", storageId, sealed));
+    assertThrows(AppVaultException.class, () -> vault.readSecretValue(APP, storageId));
   }
 
   @Test
   void grantRevocationExpiryAndGenericScopeDenyPrivateOperations() throws Exception {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    String storageId = storage.identityId();
+    var genericSigningScope = Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED);
     byte[] value = "state".getBytes(StandardCharsets.UTF_8);
     byte[] sealed = vault.sealStorage(APP, storage.identityId(), value);
     vault.revokeGrantsForApp(APP);
@@ -218,19 +221,12 @@ class MailVaultTest {
         "metadata only",
         null,
         null);
-    assertThrows(
-        AppVaultException.class, () -> vault.openStorage(APP, storage.identityId(), sealed));
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, storageId, sealed));
     assertThrows(
         AppVaultException.class,
         () ->
             vault.grantIdentity(
-                storage.identityId(),
-                APP,
-                Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
-                "operator",
-                "invalid",
-                null,
-                null));
+                storageId, APP, genericSigningScope, "operator", "invalid", null, null));
     vault.grantIdentity(
         storage.identityId(),
         APP,
@@ -239,24 +235,24 @@ class MailVaultTest {
         "expired",
         Instant.EPOCH,
         null);
-    assertThrows(
-        AppVaultException.class, () -> vault.openStorage(APP, storage.identityId(), sealed));
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, storageId, sealed));
   }
 
   @Test
   void removedMailCapabilityCannotBeReplacedByGenericIdentityUse() throws Exception {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    String storageId = storage.identityId();
     vault.disableGrantsForRemovedVaultPermissions(
         APP, Set.of("vault.identities.read", "vault.identities.use"));
-    assertThrows(
-        AppVaultException.class, () -> vault.sealStorage(APP, storage.identityId(), new byte[0]));
+    assertThrows(AppVaultException.class, () -> vault.sealStorage(APP, storageId, new byte[0]));
   }
 
   @Test
   void contactSigningRequiresActualLocalRecipientAndAccountBinding() throws Exception {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord signing = signing(vault);
+    String signingId = signing.identityId();
     AppIdentityRecord recipient = vault.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
     Map<String, String> fields = contact(signing, recipient);
     byte[] payload = MailWire.contactPayload(fields);
@@ -268,40 +264,35 @@ class MailVaultTest {
             MailWire.signature(signed)));
     fields.put("account", "ffffffffffffffffffffffffffffffff");
     byte[] substituted = MailWire.contactPayload(fields);
-    assertThrows(
-        AppVaultException.class, () -> vault.signMail(APP, signing.identityId(), substituted));
+    assertThrows(AppVaultException.class, () -> vault.signMail(APP, signingId, substituted));
     AppVaultService other = open(root.resolve("other"));
     AppIdentityRecord otherRecipient =
         other.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
     byte[] foreign = MailWire.contactPayload(contact(signing, otherRecipient));
-    assertThrows(AppVaultException.class, () -> vault.signMail(APP, signing.identityId(), foreign));
+    assertThrows(AppVaultException.class, () -> vault.signMail(APP, signingId, foreign));
   }
 
   @Test
   void senderEpochSubstitutionAndGenericSigningAreDenied() throws Exception {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord signing = signing(vault);
+    String signingId = signing.identityId();
     AppIdentityRecord recipient = vault.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
     Map<String, String> fields = MailWire.decode(message(signing, recipient), 32768);
     fields.put("senderEpoch", "2");
     byte[] changed = MailWire.messagePayload(fields);
-    assertThrows(AppVaultException.class, () -> vault.signMail(APP, signing.identityId(), changed));
-    assertThrows(
-        AppVaultException.class,
-        () ->
-            vault.useIdentity(
-                new AppIdentityUsageRequest(
-                    APP,
-                    signing.identityId(),
-                    AppIdentityGrantScope.MAIL_SIGN,
-                    "mail",
-                    message(signing, recipient))));
+    assertThrows(AppVaultException.class, () -> vault.signMail(APP, signingId, changed));
+    AppIdentityUsageRequest usageRequest =
+        new AppIdentityUsageRequest(
+            APP, signingId, AppIdentityGrantScope.MAIL_SIGN, "mail", message(signing, recipient));
+    assertThrows(AppVaultException.class, () -> vault.useIdentity(usageRequest));
   }
 
   @Test
   void keyLimitsAndUninstallNeverPretendDataOnlyBackupRecoversKeys() throws Exception {
     AppVaultService vault = open(root.resolve("vault"));
     AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+    String storageId = storage.identityId();
     byte[] backup = vault.sealStorage(APP, storage.identityId(), new byte[0]);
     vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
     vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
@@ -309,8 +300,7 @@ class MailVaultTest {
         AppVaultException.class,
         () -> vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1));
     assertEquals(4, vault.deleteAppOwnedIdentitiesForApp(APP).size());
-    assertThrows(
-        AppVaultException.class, () -> vault.openStorage(APP, storage.identityId(), backup));
+    assertThrows(AppVaultException.class, () -> vault.openStorage(APP, storageId, backup));
     assertThrows(
         AppVaultException.class,
         () -> vault.createMailIdentity("unrelated", AppIdentityKind.MAIL_STORAGE_V1));
@@ -329,15 +319,15 @@ class MailVaultTest {
             AppVaultMetadata.identityAad(signing),
             wrappingKey,
             new java.security.SecureRandom());
-    assertThrows(
-        AppVaultException.class,
-        () -> envelope.decrypt(AppVaultMetadata.identityAad(substituted), wrappingKey));
+    byte[] substitutedAad = AppVaultMetadata.identityAad(substituted);
+    assertThrows(AppVaultException.class, () -> envelope.decrypt(substitutedAad, wrappingKey));
   }
 
   @Test
   void networkOpenRejectsWrongAccountEpochAndUnstructuredPlaintext() throws Exception {
     AppVaultService vault = open(root.resolve("account-bound"));
     AppIdentityRecord recipient = vault.createMailIdentity(APP, AppIdentityKind.MAIL_RECIPIENT_V1);
+    String recipientId = recipient.identityId();
     AppIdentityRecord signing = signing(vault);
     var fields = MailWire.decode(message(signing, recipient), 32768);
     fields.put("recipientAccount", "ffffffffffffffffffffffffffffffff");
@@ -345,20 +335,16 @@ class MailVaultTest {
         vault.signMail(APP, signing.identityId(), MailWire.messagePayload(fields));
     byte[] accountEnvelope =
         MailHpke.seal("network", recipient.fingerprint(), publicKey(recipient), wrongAccount);
-    assertThrows(
-        AppVaultException.class,
-        () -> vault.openMail(APP, recipient.identityId(), accountEnvelope));
+    assertThrows(AppVaultException.class, () -> vault.openMail(APP, recipientId, accountEnvelope));
     fields.put("recipientAccount", recipient.publicSummary().get("account"));
     fields.put("recipientEpoch", "2");
     byte[] wrongEpoch = vault.signMail(APP, signing.identityId(), MailWire.messagePayload(fields));
     byte[] epochEnvelope =
         MailHpke.seal("network", recipient.fingerprint(), publicKey(recipient), wrongEpoch);
-    assertThrows(
-        AppVaultException.class, () -> vault.openMail(APP, recipient.identityId(), epochEnvelope));
+    assertThrows(AppVaultException.class, () -> vault.openMail(APP, recipientId, epochEnvelope));
     byte[] rawEnvelope =
         MailHpke.seal("network", recipient.fingerprint(), publicKey(recipient), new byte[0]);
-    assertThrows(
-        AppVaultException.class, () -> vault.openMail(APP, recipient.identityId(), rawEnvelope));
+    assertThrows(AppVaultException.class, () -> vault.openMail(APP, recipientId, rawEnvelope));
   }
 
   @Test
@@ -367,6 +353,7 @@ class MailVaultTest {
         new String[] {"revoked", "expired", "metadata-hidden", "purpose-denied"}) {
       AppVaultService vault = open(root.resolve(deniedState));
       AppIdentityRecord storage = vault.createMailIdentity(APP, AppIdentityKind.MAIL_STORAGE_V1);
+      String storageId = storage.identityId();
       for (AppIdentityGrant grant : vault.listGrantsForApp(APP)) {
         if (grant.identityId().equals(storage.identityId())) vault.revokeGrant(grant.grantId());
       }
@@ -417,8 +404,7 @@ class MailVaultTest {
 
       assertEquals(identitiesBefore, vault.listIdentities());
       assertEquals(grantsBefore, vault.listGrantsForApp(APP));
-      assertThrows(
-          AppVaultException.class, () -> vault.sealStorage(APP, storage.identityId(), new byte[0]));
+      assertThrows(AppVaultException.class, () -> vault.sealStorage(APP, storageId, new byte[0]));
     }
   }
 
