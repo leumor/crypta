@@ -3,6 +3,7 @@ package network.crypta.platform.api.contentformats;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.crypt.mail.MailHpke;
 
 /**
  * Registry of Crypta app ecosystem content format profiles used by first-party apps.
@@ -262,8 +263,37 @@ public final class ContentFormatProfileRegistry {
           ContentFormatVersionPolicy.CONSERVATIVE_V1,
           null);
 
+  /**
+   * Experimental ciphertext-only Mail envelope descriptor.
+   *
+   * <p>The outer envelope is authenticated by HPKE, not an outer sender signature. The encrypted
+   * inner message carries a separate Mail-specific signature verified against a pinned contact.
+   * Exact framing and limits are specified in {@code docs/mail-wire-specification.md}. This
+   * additive profile is not part of the original five-profile trust/social retention review.
+   */
+  public static final ContentFormatProfile MAIL_ENVELOPE =
+      new ContentFormatProfile(
+          MailHpke.NETWORK_PROFILE,
+          1,
+          "application/vnd.crypta.mail+json",
+          "mail-envelope.json",
+          ContentFormatProfileStatus.EXPERIMENTAL,
+          MailHpke.MAX_NETWORK_ENVELOPE_BYTES,
+          null,
+          false,
+          null,
+          "strict_flat_json_hpke_authenticated_header",
+          ContentFormatVersionPolicy.CONSERVATIVE_V1,
+          null);
+
   private static final List<ContentFormatProfile> PROFILES =
-      List.of(PROFILE_DOCUMENT, FEED_SNAPSHOT, TRUST_STATEMENT, SOCIAL_MESSAGE, SOCIAL_OUTBOX);
+      List.of(
+          PROFILE_DOCUMENT,
+          FEED_SNAPSHOT,
+          TRUST_STATEMENT,
+          SOCIAL_MESSAGE,
+          SOCIAL_OUTBOX,
+          MAIL_ENVELOPE);
 
   private static final Map<String, ContentFormatProfile> BY_ID =
       Map.of(
@@ -276,7 +306,9 @@ public final class ContentFormatProfileRegistry {
           SOCIAL_MESSAGE.id(),
           SOCIAL_MESSAGE,
           SOCIAL_OUTBOX.id(),
-          SOCIAL_OUTBOX);
+          SOCIAL_OUTBOX,
+          MAIL_ENVELOPE.id(),
+          MAIL_ENVELOPE);
 
   private ContentFormatProfileRegistry() {}
 
@@ -284,8 +316,9 @@ public final class ContentFormatProfileRegistry {
    * Returns all registered first-party content profiles in deterministic order.
    *
    * <p>The returned list is immutable and ordered as profile, feed, trust, social message, and
-   * social outbox. Release evidence and documentation checks use the stable order for reproducible
-   * summaries; callers should not infer lifecycle priority from the order.
+   * social outbox, followed by the additive experimental Mail envelope. Release evidence and
+   * documentation checks use the stable order for reproducible summaries; callers should not infer
+   * lifecycle priority from the order.
    *
    * @return immutable registry profile list in stable evidence order
    */

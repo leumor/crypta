@@ -6,10 +6,10 @@ import java.util.Objects;
 /**
  * Persistent identity kinds understood by the app vault.
  *
- * <p>The kind controls how private material is created, stored, and used. PR-219 implements local
- * Ed25519 signing as the live v1 kind and reserves explicit vocabulary for future publisher and
- * external-reference identities. Unsupported kinds can be represented in contracts and docs without
- * silently exposing raw protocol keys to apps.
+ * <p>The kind controls how private material is created, stored, and used. Local Ed25519 signing
+ * supports the existing v1 operations; dedicated experimental Mail kinds support only typed Mail
+ * operations. Publisher and external-reference vocabulary remains reserved. Unsupported kinds never
+ * silently expose raw protocol keys to apps.
  */
 public enum AppIdentityKind {
   /**
@@ -19,6 +19,15 @@ public enum AppIdentityKind {
    * when an active grant permits domain-separated signing.
    */
   LOCAL_ED25519_SIGNING("local-ed25519-signing"),
+
+  /** Dedicated experimental Mail pure Ed25519 seed, usable only by typed Mail signing. */
+  MAIL_SIGNING_V1("mail-signing-v1"),
+
+  /** Dedicated experimental Mail X25519 recipient key for the fixed network HPKE suite. */
+  MAIL_RECIPIENT_V1("mail-recipient-v1"),
+
+  /** Dedicated experimental Mail X25519 key for local storage, separate from network use. */
+  MAIL_STORAGE_V1("mail-storage-v1"),
 
   /**
    * Reserved model kind for future Crypta publisher identities.

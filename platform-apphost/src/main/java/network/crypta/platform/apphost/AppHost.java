@@ -594,6 +594,16 @@ public interface AppHost {
   }
 
   /**
+   * Returns current token-free launch binding, or empty for stopped/unsupported hosts.
+   *
+   * @param appId installed application identifier
+   * @return live launch binding
+   */
+  default Optional<AppTokenPrincipal> currentLaunch(String appId) {
+    return Optional.empty();
+  }
+
+  /**
    * Returns token-free process runtime status for one installed app.
    *
    * <p>The status is process-observed only. It does not perform app-provided HTTP health checks or

@@ -13,6 +13,7 @@ from ..io import read_json_bytes, write_json
 from ..redaction import scan_value
 from ..schema_validation import validate_schema
 from .stable_1_0_rc_core import CONTENT_PROFILE_IDS, semantic_digest
+from .content_profile_selection import select_trust_social_v1
 
 CORPUS = "platform-api/src/test/resources/content-profile-conformance/v1"
 POLICY = "tools/release-certification/content-profile-review-policy.json"
@@ -137,11 +138,7 @@ def profile_decisions(policy: dict) -> list[dict]:
 
 
 def registry_rows(value: dict, policy: dict) -> list[dict]:
-    if value.get("schemaVersion") != 1 or value.get("kind") != "content-format-profile-registry":
-        raise ValueError("profile-review-registry-invalid")
-    rows = value.get("profiles", [])
-    if tuple(row.get("id") for row in rows) != CONTENT_PROFILE_IDS:
-        raise ValueError("profile-review-registry-set-invalid")
+    rows = select_trust_social_v1(value)
     result = []
     for row, decision in zip(rows, profile_decisions(policy)):
         if (type(row.get("majorVersion")) is not int

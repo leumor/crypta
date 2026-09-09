@@ -272,3 +272,19 @@ unless the operating system or operator environment limits them outside AppHost.
 Future sandbox work may add stronger platform-specific controls such as network restrictions,
 syscall filters, CPU/memory limits, or real WASM execution. Those are out of scope for the current
 runtime hardening layer.
+
+### Java security configuration in restricted launches
+
+Bubblewrap resolves the host JVM installation through `AppEnv.javaHome()` and adds individual
+read-only mounts for its fixed public `conf/security/java.security` and limited/unlimited policy
+files when their real targets are outside the already mounted system runtime paths. This supports
+Debian-style JDK symlinks into the host's system Java configuration directory without mounting that
+directory or its parent configuration tree.
+JMX management passwords, app configuration and arbitrary files are not part of this allowlist.
+For Mail, AppHost requires Java 25+ and supplies the absolute executable from the daemon's runtime
+as `CRYPTAD_MAIL_JAVA`. The launcher does not search `PATH` for Java. Bubblewrap additionally mounts
+that runtime's `bin` and `lib` directories read-only when needed, supporting bundled runtimes and
+JDKs outside system directories. It does not mount the runtime's parent or its whole `conf` tree;
+management passwords remain excluded. Runtime selection is host-owned, not taken from a manifest
+or browser request. The resolved paths remain private launch metadata; JVM option variables are
+not exported and Java policy is not weakened.

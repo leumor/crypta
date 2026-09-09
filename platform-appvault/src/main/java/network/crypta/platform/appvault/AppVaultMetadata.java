@@ -29,6 +29,8 @@ public final class AppVaultMetadata {
    */
   public static final String REDACTED_VALUE = "<redacted>";
 
+  private static final String CREATED_AT = "createdAt";
+
   private AppVaultMetadata() {}
 
   /**
@@ -48,11 +50,16 @@ public final class AppVaultMetadata {
       String appId, String secretName, String secretKind, Instant createdAt) {
     return canonical(
         Map.of(
-            "type", "secret",
-            "appId", AppVaultPaths.normalizeAppId(appId),
-            "secretName", AppVaultPaths.normalizeSecretName(secretName),
-            "secretKind", secretKind,
-            "createdAt", createdAt.toString()));
+            "type",
+            "secret",
+            "appId",
+            AppVaultPaths.normalizeAppId(appId),
+            "secretName",
+            AppVaultPaths.normalizeSecretName(secretName),
+            "secretKind",
+            secretKind,
+            CREATED_AT,
+            createdAt.toString()));
   }
 
   /**
@@ -60,12 +67,27 @@ public final class AppVaultMetadata {
    *
    * <p>The returned bytes bind private key material to the identity id, kind, optional owner app
    * id, and creation timestamp. Label, update timestamp, and public summary are intentionally
-   * excluded because they can change without replacing the private key.
+   * excluded for existing identity kinds because they can change without replacing the private key.
+   * Experimental Mail kinds additionally bind their immutable account, role, epoch, public key and
+   * fingerprint; changing that metadata cannot silently reassign an existing private key.
    *
    * @param identity record whose immutable fields bind the private envelope
    * @return deterministic UTF-8 AAD bytes for AES-GCM authentication
    */
   public static byte[] identityAad(AppIdentityRecord identity) {
+    if (identity.kind() == AppIdentityKind.MAIL_SIGNING_V1
+        || identity.kind() == AppIdentityKind.MAIL_RECIPIENT_V1
+        || identity.kind() == AppIdentityKind.MAIL_STORAGE_V1) {
+      Map<String, String> fields = new TreeMap<>();
+      fields.put("type", "mail-identity-private-v1");
+      fields.put("identityId", identity.identityId());
+      fields.put("kind", identity.kind().jsonValue());
+      fields.put("ownerAppId", Objects.requireNonNullElse(identity.ownerAppId(), ""));
+      fields.put(CREATED_AT, identity.createdAt().toString());
+      fields.put("fingerprint", identity.fingerprint());
+      identity.publicSummary().forEach((key, value) -> fields.put("public." + key, value));
+      return canonical(fields);
+    }
     return canonical(
         Map.of(
             "type",
@@ -76,7 +98,7 @@ public final class AppVaultMetadata {
             identity.kind().jsonValue(),
             "ownerAppId",
             identity.ownerAppId() == null ? "" : identity.ownerAppId(),
-            "createdAt",
+            CREATED_AT,
             identity.createdAt().toString()));
   }
 

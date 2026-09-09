@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import network.crypta.fs.AppEnv;
 
 /**
  * Builds a bubblewrap wrapper command for one AppHost child process launch.
@@ -25,7 +26,8 @@ import java.util.Set;
  * namespace hides host paths that are not explicitly mounted. The class does not create
  * directories, inspect environment values, or execute bubblewrap; it only returns the command shape
  * that the provider can hand to AppHost. Debian-style {@code /etc/alternatives} command symlinks,
- * resolver configuration, and public certificate trust stores are mounted narrowly when present so
+ * resolver configuration, public certificate trust stores, and fixed public JDK security
+ * configuration files (including Debian symlink targets) are mounted narrowly when present so
  * launchers can resolve common tools and hostnames without exposing the rest of {@code /etc}.
  */
 public final class BubblewrapCommandBuilder {
@@ -56,7 +58,16 @@ public final class BubblewrapCommandBuilder {
           ETC_PKI_TLS_CERTS,
           LINUXBREW_PREFIX);
 
+  private static final List<String> PUBLIC_JAVA_SECURITY_FILES =
+      List.of(
+          "conf/security/java.security",
+          "conf/security/policy/unlimited/default_US_export.policy",
+          "conf/security/policy/unlimited/default_local.policy",
+          "conf/security/policy/limited/default_US_export.policy",
+          "conf/security/policy/limited/default_local.policy",
+          "conf/security/policy/limited/exempt_local.policy");
   private final List<Path> systemReadOnlyPaths;
+  private final Path javaHome;
 
   /**
    * Creates the stateless command builder.
@@ -66,7 +77,7 @@ public final class BubblewrapCommandBuilder {
    * retained launch state.
    */
   public BubblewrapCommandBuilder() {
-    this(DEFAULT_SYSTEM_READ_ONLY_PATHS);
+    this(DEFAULT_SYSTEM_READ_ONLY_PATHS, new AppEnv().javaHome());
   }
 
   /**
@@ -78,6 +89,11 @@ public final class BubblewrapCommandBuilder {
    * @param systemReadOnlyPaths host system paths considered for read-only bind mounts
    */
   BubblewrapCommandBuilder(Collection<Path> systemReadOnlyPaths) {
+    this(systemReadOnlyPaths, null);
+  }
+
+  BubblewrapCommandBuilder(Collection<Path> systemReadOnlyPaths, Path javaHome) {
+    this.javaHome = javaHome;
     this.systemReadOnlyPaths =
         List.copyOf(Objects.requireNonNull(systemReadOnlyPaths, "systemReadOnlyPaths"));
   }
@@ -129,11 +145,60 @@ public final class BubblewrapCommandBuilder {
         mounts.add(BindMount.readOnly(systemPath, systemPath));
       }
     }
+    addJavaSecurityMounts(mounts);
+    if ("mail-prototype".equals(context.appId())) addJavaRuntimeMounts(mounts);
     mounts.add(BindMount.readOnly(context.installDir(), context.installDir()));
     mounts.add(BindMount.readWrite(context.dataDir(), context.dataDir()));
     mounts.add(BindMount.readWrite(context.cacheDir(), context.cacheDir()));
     mounts.add(BindMount.readWrite(context.runDir(), context.runDir()));
     return List.copyOf(mounts);
+  }
+
+  private void addJavaSecurityMounts(List<BindMount> mounts) {
+    if (javaHome == null) return;
+    try {
+      Path home = javaHome.toRealPath();
+      for (String relative : PUBLIC_JAVA_SECURITY_FILES) {
+        Path lookup = home.resolve(relative);
+        if (Files.isRegularFile(lookup)) {
+          Path resolved = lookup.toRealPath();
+          // System mounts preserve existing symlinks, whose targets must also be visible.
+          addReadOnlyFileIfUncovered(mounts, resolved, resolved);
+          // An external runtime exposes only bin/lib, so its conf symlink is absent. Bind the
+          // allowlisted file directly at the JVM lookup path without exposing the conf directory.
+          addReadOnlyFileIfUncovered(mounts, resolved, lookup);
+        }
+      }
+    } catch (java.io.IOException _) {
+      throw new IllegalStateException("Java security configuration unavailable");
+    }
+  }
+
+  private static void addReadOnlyFileIfUncovered(
+      List<BindMount> mounts, Path source, Path destination) {
+    if (mounts.stream().noneMatch(mount -> destination.startsWith(mount.destination()))) {
+      mounts.add(BindMount.readOnly(source, destination));
+    }
+  }
+
+  /** Makes the host-selected runtime executable and modules visible without exposing its parent. */
+  private void addJavaRuntimeMounts(List<BindMount> mounts) {
+    if (javaHome == null) throw new IllegalStateException("Java runtime unavailable");
+    try {
+      Path home = javaHome.toRealPath();
+      for (String directory : List.of("bin", "lib")) {
+        Path destination = home.resolve(directory);
+        Path source = destination.toRealPath();
+        if (!Files.isDirectory(source)) throw new IllegalStateException("Java runtime unavailable");
+        boolean destinationMounted =
+            mounts.stream().anyMatch(mount -> destination.startsWith(mount.destination()));
+        if (!destinationMounted) mounts.add(BindMount.readOnly(source, destination));
+        else if (mounts.stream().noneMatch(mount -> source.startsWith(mount.destination())))
+          mounts.add(BindMount.readOnly(source, source));
+      }
+    } catch (java.io.IOException _) {
+      throw new IllegalStateException("Java runtime unavailable");
+    }
   }
 
   private static List<Path> directoryMounts(Collection<BindMount> bindMounts) {

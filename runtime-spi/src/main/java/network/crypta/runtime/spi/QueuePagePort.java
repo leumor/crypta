@@ -66,4 +66,16 @@ public interface QueuePagePort {
    * @throws RequestQueueUnavailableException if the runtime cannot read the persistent queue state
    */
   String renderKeyList(boolean uploads) throws RequestQueueUnavailableException;
+
+  /**
+   * Reads one exact upload identifier without rendering or parsing a queue page.
+   *
+   * @param identifier exact persistent queue identifier
+   * @return coarse state and successful CHK read reference only
+   * @throws RequestQueueUnavailableException if this runtime cannot provide typed status
+   */
+  default QueueInsertStatus readInsertStatus(String identifier)
+      throws RequestQueueUnavailableException {
+    throw new RequestQueueUnavailableException("Typed insert status unavailable.");
+  }
 }

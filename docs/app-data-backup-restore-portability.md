@@ -226,3 +226,11 @@ hotfixes.
 
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Mail private backup limitation
+
+The experimental Mail UI exports its deterministic protected dataset bytes privately through the
+worker. These remain sensitive even though content is encrypted. It does not export vault keys.
+Worker restore checks retained keys, merges available current replay evidence and pauses receiving.
+Generic operator replacement can revert all local replay state; it is not rollback-proof recovery.
+Default uninstall destroys Mail keys, including with `preserveData=true`.

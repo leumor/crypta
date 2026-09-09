@@ -1584,7 +1584,7 @@ class CryptaPlatformSdkResourceTest {
 
     int requestedNormalization =
         script.indexOf("const requestedAppId = rawAppId ? normalizeAppId(rawAppId) : null;");
-    int fetchWithNormalizedId = script.indexOf("fetchBootstrap(requestedAppId)");
+    int fetchWithNormalizedId = script.indexOf("fetchBootstrap(requestedAppId, signal)");
     int bootstrapNormalization =
         script.indexOf("bootstrap.appId = normalizeAppId(bootstrap.appId);");
     int normalizedComparison =
@@ -1747,6 +1747,10 @@ class CryptaPlatformSdkResourceTest {
   }
 
   private void runSdkNode(String scriptBody) throws Exception {
+    runSdkNode(tempDir, scriptBody);
+  }
+
+  static void runSdkNode(Path tempDir, String scriptBody) throws Exception {
     Assumptions.assumeTrue(nodeAvailable(), "Node.js is required for SDK behavior tests.");
     Path sdkScript = tempDir.resolve("crypta-platform.js");
     Path harness = tempDir.resolve("sdk-harness.js");
@@ -1866,6 +1870,9 @@ class CryptaPlatformSdkResourceTest {
 
     const context = {
       console,
+      AbortController,
+      setTimeout,
+      clearTimeout,
       URL,
       URLSearchParams,
       TextEncoder,

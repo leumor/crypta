@@ -14,6 +14,15 @@
   const urlAttributeNames = new Set(["href", "src", "action", "formaction"]);
   const appIdPattern = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
   const contentFormats = Object.freeze({
+    mailEnvelope: Object.freeze({
+      id: "crypta.mail.envelope.v1", majorVersion: 1, status: "experimental",
+      contentType: "application/vnd.crypta.mail+json", defaultFilename: "mail-envelope.json",
+      maxDocumentBytes: 65536, signed: false, encrypted: true,
+      canonicalization: "strict_flat_json_hpke_authenticated_header",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
     profileDocument: Object.freeze({
       id: "crypta.profile.v1",
       schema: "crypta.profile.v1",
@@ -108,6 +117,8 @@
   let loadingBootstrap = null;
 
   async function loadBootstrap(options) {
+    const signal = options && options.signal;
+    if (signal) signal.throwIfAborted();
     const rawAppId = explicitAppId(options) || inferAppId();
     const requestedAppId = rawAppId ? normalizeAppId(rawAppId) : null;
 
@@ -116,15 +127,16 @@
       return copyBootstrap(currentBootstrap);
     }
     if (
-      !force &&
+      !signal && !force &&
       loadingBootstrap &&
       (requestedAppId === null || loadingAppId === requestedAppId)
     ) {
       return loadingBootstrap.then(copyBootstrap);
     }
 
-    loadingAppId = requestedAppId;
-    const inFlightBootstrap = fetchBootstrap(requestedAppId)
+    // A cancellable bootstrap must not join or become another caller's shared request.
+    if (!signal) loadingAppId = requestedAppId;
+    const inFlightBootstrap = fetchBootstrap(requestedAppId, signal)
       .then((bootstrap) => {
         currentBootstrap = bootstrap;
         currentAppId = bootstrap.appId;
@@ -136,7 +148,7 @@
           loadingBootstrap = null;
         }
       });
-    loadingBootstrap = inFlightBootstrap;
+    if (!signal) loadingBootstrap = inFlightBootstrap;
     return inFlightBootstrap.then(copyBootstrap);
   }
 
@@ -152,7 +164,7 @@
     return inferredAppId ? normalizeAppId(inferredAppId) : null;
   }
 
-  async function fetchBootstrap(appId) {
+  async function fetchBootstrap(appId, signal) {
     const urls = bootstrapUrls(appId);
     const headers = bootstrapHeaders();
     let lastResponse = null;
@@ -160,9 +172,11 @@
     for (let index = 0; index < urls.length; index += 1) {
       const response = await fetch(urls[index], {
         headers,
+        signal,
         credentials: "omit",
       });
       const data = await readJson(response);
+      if (signal) signal.throwIfAborted();
       if (response.ok) {
         return finishBootstrap(appId, data);
       }
@@ -220,6 +234,66 @@
     const params = new URLSearchParams(value.startsWith("#") ? value.substring(1) : value);
     const nonce = params.get(bootstrapNonceFragmentParameter);
     return typeof nonce === "string" ? nonce.trim() : "";
+  }
+
+  async function mailCommand(command, payload, options) {
+    const allowed = ["initialize", "export-contact", "import-contact", "approve-contact", "revoke-contact", "save-draft", "preview-send", "confirm-send", "import-reference", "retry", "read", "status", "backup", "restore"];
+    if (!allowed.includes(command)) throw new Error("Unsupported Mail command.");
+    const bytes = new TextEncoder().encode(JSON.stringify(payload || {}));
+    if (bytes.length > 280000) throw new Error("Mail request is too large.");
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const callerSignal = options && options.signal;
+    const cancel = () => controller.abort();
+    if (callerSignal) {
+      if (callerSignal.aborted) cancel();
+      else callerSignal.addEventListener("abort", cancel, { once: true });
+    }
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
+    try {
+      signal.throwIfAborted();
+      const params = new URLSearchParams();
+      params.set("command", command);
+      params.set("payloadBase64", btoa(binary));
+      const submitted = await apiPostForm("mail/command", params, { signal });
+      while (!signal.aborted) {
+        const response = await apiPostForm("mail/result", { requestId: submitted.mail.requestId }, { signal });
+        signal.throwIfAborted();
+        if (response.mail.status === "complete") {
+          if (response.mail.payloadBase64.length > 393216) throw new Error("Mail response is too large.");
+          const raw = atob(response.mail.payloadBase64);
+          return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
+        }
+        await mailPollDelay(signal);
+      }
+      signal.throwIfAborted();
+    } catch (error) {
+      if (signal.aborted) throw new Error(timedOut
+        ? "Mail worker timed out. Check operation status before retrying."
+        : "Mail command cancelled. Check operation status before retrying.");
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      if (callerSignal) callerSignal.removeEventListener("abort", cancel);
+    }
+  }
+
+  function mailPollDelay(signal) {
+    return new Promise((resolve, reject) => {
+      signal.throwIfAborted();
+      const finish = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", abort);
+        if (signal.aborted) reject(signal.reason);
+        else resolve();
+      };
+      const abort = () => finish();
+      const timer = setTimeout(finish, 200);
+      signal.addEventListener("abort", abort, { once: true });
+    });
   }
 
   async function apiGet(path, options) {
@@ -2426,7 +2500,10 @@
   }
 
   async function readJson(response) {
-    return response.json().catch(() => ({}));
+    return response.json().catch(error => {
+      if (error && error.name === "AbortError") throw error;
+      return {};
+    });
   }
 
   function responseErrorMessage(data, response) {
@@ -2749,6 +2826,7 @@
         getJson: getAppDataJson,
       }),
     }),
+    mail: Object.freeze({ command: mailCommand }),
     services: Object.freeze({
       list: listAppServices,
       get: getAppService,

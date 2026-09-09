@@ -52,6 +52,8 @@ public final class PlatformApiRouter {
   /** Routes local Trust Graph Preview endpoint families. */
   private final PlatformApiTrustGraphRoutes trustGraphRoutes;
 
+  private final PlatformApiMailRoutes mailRoutes;
+
   /** Routes app, app-catalog, app-update, and vault endpoint families. */
   private final PlatformApiAppRoutes appRoutes;
 
@@ -327,6 +329,7 @@ public final class PlatformApiRouter {
             checkedRuntimePorts,
             checkedAppServices.contentSubscriptionService(),
             checkedAppServices.networkBudgetService());
+    mailRoutes = new PlatformApiMailRoutes(appHost, appVaultService);
     appDataRoutes = new PlatformApiAppDataRoutes(checkedAppServices.appDataService());
     appServiceRoutes =
         new PlatformApiAppServiceRoutes(
@@ -441,6 +444,7 @@ public final class PlatformApiRouter {
       case "app-catalogs" -> appRoutes.routeAppCatalogsRequest(segments, request);
       case "app-review" -> appRoutes.routeAppReviewRequest(segments, request);
       case "apps" -> appRoutes.routeAppsRequest(segments, request);
+      case "mail" -> mailRoutes.route(request);
       case "app-vault" -> appRoutes.routeAppVaultRequest(segments, request);
       case "identity-vault" -> appRoutes.routeIdentityVaultRequest(segments, request);
       case "queue" -> routeQueueRequest(segments, request);
@@ -606,6 +610,16 @@ public final class PlatformApiRouter {
     return switch (resource) {
       case "count" -> routeQueueCount(request);
       case "keys" -> routeQueueKeys(request);
+      case "app-document-status" -> {
+        if (!"GET".equals(request.method())
+            || !"mail-prototype".equals(request.principal().appId())
+            || request.principal().authSource() != PlatformApiAuthSource.APP_TOKEN) {
+          throw new PlatformApiException(403, "forbidden", "App process required.");
+        }
+        yield PlatformApiResponse.ok(
+            queueApiHandler.appDocumentStatus(
+                requireAppPrincipalId(request), request.queryParameters()));
+      }
       case "downloads" -> routeQueueDownloads(request);
       default -> throw new PlatformApiException(404, "not_found", "Platform API route not found.");
     };

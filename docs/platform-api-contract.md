@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=24
+contractVersion=25
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 24,
+    "contractVersion": 25,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "stableBaseline": {
@@ -52,7 +52,7 @@ The response shape is:
       "schemaVersion": 1,
       "baselineName": "1.0",
       "baselineContractVersion": 19,
-      "currentContractVersion": 24,
+      "currentContractVersion": 25,
       "supportPhase": "beta",
       "minimumDeprecationWindowContractVersions": 2,
       "minimumScheduledRemovalWindowContractVersions": 2,
@@ -757,3 +757,17 @@ and redaction checks.
 In release-candidate mode, missing contract evidence, snapshot generation failure, descriptor
 parse failure, or strict compatibility verifier failure blocks promotion unless an explicit
 release-manager waiver is recorded in the aggregate certification report.
+
+## Experimental Mail additions (contract 25)
+
+Contract 25 adds `mail.control`, `vault.mail.sign`, `vault.mail.open`, and
+`vault.mail.storage`. `/api/v1` and frozen baseline 1.0 at contract 19 are unchanged;
+baseline 1.1 is not activated. Mail requires explicit experimental admission and consent.
+
+`POST /api/v1/mail/command` and `/api/v1/mail/result` are restricted to the own Mail browser principal.
+`POST /api/v1/mail/poll`, `/api/v1/mail/reply`, `/api/v1/mail/create-identity`, `/api/v1/mail/sign`, `/api/v1/mail/open`,
+`/api/v1/mail/seal-storage`, and `/api/v1/mail/open-storage` are restricted to the live Mail process.
+The fixed broker is not a generic app-service RPC or endpoint proxy.
+`GET /api/v1/queue/app-document-status` provides a typed process-only result for a stable app-prefixed
+insert identifier; `inserted` is not delivery or reading. See the
+[Mail design](mail-app-service-prototype.md) and [wire specification](mail-wire-specification.md).

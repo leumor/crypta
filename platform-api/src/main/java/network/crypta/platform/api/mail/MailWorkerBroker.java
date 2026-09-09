@@ -1,0 +1,272 @@
+package network.crypta.platform.api.mail;
+
+import java.time.Clock;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.AppTokenPrincipal;
+import org.jetbrains.annotations.NotNull;
+
+/**
+ * Transient, fixed Mail command broker; mailbox business state belongs to the child worker.
+ *
+ * <p>Callers must enforce own-browser identity for submit/result and process-only identity for
+ * poll/reply before invoking this class. The launch identifier must come from authentication. No
+ * method waits for a worker. Public operations serialize access to the pending map and lazily
+ * discard expired frames or frames from a stopped/replaced launch. At most four requests are kept,
+ * each for 30 seconds measured by the injected clock; this is transient state, not a durable queue.
+ *
+ * <p>Polling marks a frame taken once. A lost poll or reply is not retransmitted, so callers must
+ * treat its deadline as an uncertain outcome and recover using the mailbox operation state. A
+ * request identifier alone grants no authority. The broker does not interpret command payloads or
+ * authenticate callers itself, and the redacted frame string is the only diagnostic representation
+ * intended for logging.
+ */
+public final class MailWorkerBroker {
+  /** Failure code for oversized or noncanonical Base64 request/reply framing. */
+  private static final String INVALID_FRAME = "invalid_frame";
+
+  /** Maximum base64 text size including encoding overhead. */
+  public static final int MAX_PAYLOAD_BASE64_BYTES = 384 * 1024;
+
+  /** Maximum outstanding private requests before backpressure. */
+  private static final int MAX_PENDING = 4;
+
+  /** Maximum lifetime of a private request in milliseconds. */
+  private static final long LIFETIME_MILLIS = 30_000;
+
+  /** Closed own-app operation vocabulary accepted by the broker. */
+  private static final Set<String> COMMANDS =
+      Set.of(
+          "initialize",
+          "export-contact",
+          "import-contact",
+          "approve-contact",
+          "revoke-contact",
+          "save-draft",
+          "preview-send",
+          "confirm-send",
+          "import-reference",
+          "retry",
+          "read",
+          "status",
+          "backup",
+          "restore");
+
+  /** Authoritative current verified AppHost launch. */
+  private final AppHost host;
+
+  /** Clock used for private-frame deadlines. */
+  private final Clock clock;
+
+  /** Bounded insertion-ordered requests guarded by the broker monitor. */
+  private final LinkedHashMap<String, Pending> pending = new LinkedHashMap<>();
+
+  /**
+   * Creates a broker using the system clock.
+   *
+   * @param host authoritative process lifecycle
+   */
+  public MailWorkerBroker(AppHost host) {
+    this(host, Clock.systemUTC());
+  }
+
+  /**
+   * Creates a broker with an explicit clock for deadline verification.
+   *
+   * @param host authoritative process lifecycle
+   * @param clock deadline clock
+   */
+  public MailWorkerBroker(AppHost host, Clock clock) {
+    this.host = java.util.Objects.requireNonNull(host);
+    this.clock = java.util.Objects.requireNonNull(clock);
+  }
+
+  /**
+   * Queues one own-browser command for the currently running Mail process.
+   *
+   * @param command fixed allowed operation
+   * @param payloadBase64 non-null canonical padded Base64 text, at most 393,216 characters
+   * @return opaque request identifier for the current launch and app version
+   * @throws IllegalStateException if framing, command, live-launch or pending-capacity checks fail
+   */
+  public synchronized String submit(String command, String payloadBase64) {
+    if (!COMMANDS.contains(command)) throw failure("unsupported_command");
+    validatePayload(payloadBase64);
+    AppTokenPrincipal launch = current();
+    expire(launch);
+    if (pending.size() >= MAX_PENDING) throw failure("worker_busy");
+    String id = UUID.randomUUID().toString();
+    pending.put(
+        id,
+        new Pending(
+            new Frame(id, launch.launchId(), launch.appVersion(), command, payloadBase64),
+            clock.millis() + LIFETIME_MILLIS));
+    return id;
+  }
+
+  /**
+   * Returns the next undelivered frame for an authenticated live Mail process.
+   *
+   * @param launchId launch binding derived by process authentication
+   * @return one previously unpolled frame, or empty if no such frame remains
+   * @throws IllegalStateException if the supplied launch is not the live Mail launch
+   */
+  public synchronized Optional<Frame> poll(String launchId) {
+    AppTokenPrincipal launch = authorize(launchId);
+    expire(launch);
+    for (Pending request : pending.values()) {
+      if (!request.polled) {
+        request.polled = true;
+        return Optional.of(request.frame);
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Completes exactly one polled request from the current authenticated launch.
+   *
+   * @param launchId authenticated process launch binding
+   * @param requestId polled request identifier
+   * @param payloadBase64 canonical bounded reply, subject to the same cap as submitted payloads
+   * @throws IllegalStateException if framing, launch, deadline or one-reply state checks fail
+   */
+  public synchronized void reply(String launchId, String requestId, String payloadBase64) {
+    validatePayload(payloadBase64);
+    AppTokenPrincipal launch = authorize(launchId);
+    expire(launch);
+    Pending request = pending.get(requestId);
+    if (request == null || !request.polled || request.reply != null) throw failure("stale_request");
+    request.reply = payloadBase64;
+  }
+
+  /**
+   * Consumes a completed own-browser result once.
+   *
+   * @param requestId identifier returned from submit
+   * @return completed reply, removing its request, or empty while awaiting completion
+   * @throws IllegalStateException if the worker is unavailable or the request is unknown or stale
+   */
+  public synchronized Optional<String> result(String requestId) {
+    expire(current());
+    Pending request = pending.get(requestId);
+    if (request == null) throw failure("stale_request");
+    if (request.reply == null) return Optional.empty();
+    pending.remove(requestId);
+    return Optional.of(request.reply);
+  }
+
+  /**
+   * Requires a live launch and clears private frames when none exists.
+   *
+   * @return current live launch metadata
+   */
+  private AppTokenPrincipal current() {
+    Optional<AppTokenPrincipal> launch = host.currentLaunch("mail-prototype");
+    if (launch.isEmpty() || launch.get().launchId().isEmpty()) {
+      pending.clear();
+      throw failure("worker_unavailable");
+    }
+    return launch.get();
+  }
+
+  /**
+   * Requires the exact authenticated current launch identifier.
+   *
+   * @param launchId authenticated current launch identifier
+   * @return authorized current identity or launch metadata
+   */
+  private AppTokenPrincipal authorize(String launchId) {
+    AppTokenPrincipal launch = current();
+    if (!launch.launchId().equals(launchId)) throw failure("worker_unavailable");
+    return launch;
+  }
+
+  /**
+   * Discards timed-out frames and frames from another launch or version.
+   *
+   * @param launch current verified launch metadata
+   */
+  private void expire(AppTokenPrincipal launch) {
+    long now = clock.millis();
+    pending
+        .values()
+        .removeIf(
+            request ->
+                request.deadline <= now
+                    || !request.frame.launchId().equals(launch.launchId())
+                    || !request.frame.appVersion().equals(launch.appVersion()));
+  }
+
+  /**
+   * Requires bounded canonical Base64 framing.
+   *
+   * @param value encoded or parsed input value
+   */
+  private static void validatePayload(String value) {
+    if (value == null || value.length() > MAX_PAYLOAD_BASE64_BYTES) throw failure(INVALID_FRAME);
+    try {
+      if (!Base64.getEncoder().encodeToString(Base64.getDecoder().decode(value)).equals(value))
+        throw failure(INVALID_FRAME);
+    } catch (IllegalArgumentException _) {
+      throw failure(INVALID_FRAME);
+    }
+  }
+
+  /**
+   * Creates a fixed broker failure without private request contents.
+   *
+   * @param code fixed bounded failure classification
+   * @return bounded broker exception
+   */
+  private static IllegalStateException failure(String code) {
+    return new IllegalStateException(code);
+  }
+
+  /**
+   * A private transient process frame; its diagnostic representation omits all contents.
+   *
+   * @param requestId one-time request identifier
+   * @param launchId exact launch generation
+   * @param appVersion verified process bundle version
+   * @param command fixed operation
+   * @param payloadBase64 private canonical base64 payload
+   */
+  public record Frame(
+      String requestId, String launchId, String appVersion, String command, String payloadBase64) {
+    @Override
+    public @NotNull String toString() {
+      return "MailWorkerFrame[redacted]";
+    }
+  }
+
+  /** Transient one-launch request bookkeeping, never durable mailbox state. */
+  private static final class Pending {
+    /** Request bound to its verified launch and version. */
+    final Frame frame;
+
+    /** Absolute local-clock expiry time in milliseconds. */
+    final long deadline;
+
+    /** Whether the worker has already taken this request. */
+    boolean polled;
+
+    /** Canonical private reply, or null before completion. */
+    String reply;
+
+    /**
+     * Initializes an undelivered request with an absolute expiry.
+     *
+     * @param frame private request bound to a launch
+     * @param deadline absolute expiry time in local-clock milliseconds
+     */
+    Pending(Frame frame, long deadline) {
+      this.frame = frame;
+      this.deadline = deadline;
+    }
+  }
+}

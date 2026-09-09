@@ -2238,6 +2238,41 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void mailEndpointRequiresHostSelectedLoopbackAndCannotChangeDuringLaunch() throws IOException {
+    LocalProcessAppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp("mail-prototype"));
+    assertThrows(AppHostException.class, () -> host.start("mail-prototype"));
+    URI remoteEndpoint = URI.create("http://example.com:8888/api/v1");
+    assertThrows(
+        IllegalArgumentException.class, () -> host.setMailPlatformApiEndpoint(remoteEndpoint));
+    URI invalidPathEndpoint = URI.create("http://127.0.0.1:8888/arbitrary");
+    assertThrows(
+        IllegalArgumentException.class, () -> host.setMailPlatformApiEndpoint(invalidPathEndpoint));
+    URI endpoint = URI.create("http://127.0.0.1:8888/api/v1");
+    host.setMailPlatformApiEndpoint(endpoint);
+    RunningAppSnapshot running = host.start("mail-prototype");
+    try {
+      Path captureFile = running.paths().runDir().resolve("captured-env.txt");
+      waitForFile(captureFile);
+      AppEnv environment = new AppEnv();
+      Path expectedJava =
+          environment
+              .javaHome()
+              .toRealPath()
+              .resolve("bin")
+              .resolve(environment.isWindows() ? "java.exe" : "java");
+      assertTrue(Files.readString(captureFile).contains("CRYPTAD_MAIL_JAVA=" + expectedJava));
+      assertTrue(host.currentLaunch("mail-prototype").isPresent());
+      assertFalse(
+          host.currentLaunch("mail-prototype").orElseThrow().toString().contains(running.token()));
+      assertThrows(IllegalArgumentException.class, () -> host.setMailPlatformApiEndpoint(endpoint));
+    } finally {
+      host.stop("mail-prototype");
+    }
+    assertTrue(host.currentLaunch("mail-prototype").isEmpty());
+  }
+
+  @Test
   void authenticateLaunchToken_whenTokenBelongsToRunningApp_expectTokenFreePrincipal()
       throws IOException {
     AppHost host = allowUnsignedHost();
@@ -2248,6 +2283,8 @@ class LocalProcessAppHostTest {
       AppTokenPrincipal principal = host.authenticateLaunchToken(running.token()).orElseThrow();
 
       assertEquals(RUNNER_APP_ID, principal.appId());
+      assertFalse(principal.launchId().isEmpty());
+      assertEquals(principal, host.currentLaunch(RUNNER_APP_ID).orElseThrow());
       assertEquals(
           List.of(FILE_READ_PERMISSION, NETWORK_ACCESS_PERMISSION), principal.permissions());
       assertFalse(principal.toString().contains(running.token()));
@@ -2290,12 +2327,15 @@ class LocalProcessAppHostTest {
     AppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
     RunningAppSnapshot firstRun = host.start(RUNNER_APP_ID);
+    String firstLaunch = host.currentLaunch(RUNNER_APP_ID).orElseThrow().launchId();
     assertTrue(host.stop(RUNNER_APP_ID));
+    assertTrue(host.currentLaunch(RUNNER_APP_ID).isEmpty());
 
     RunningAppSnapshot secondRun = host.start(RUNNER_APP_ID);
 
     try {
       assertNotEquals(firstRun.token(), secondRun.token());
+      assertNotEquals(firstLaunch, host.currentLaunch(RUNNER_APP_ID).orElseThrow().launchId());
       assertTrue(host.authenticateLaunchToken(firstRun.token()).isEmpty());
       assertEquals(
           RUNNER_APP_ID, host.authenticateLaunchToken(secondRun.token()).orElseThrow().appId());

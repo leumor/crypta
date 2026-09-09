@@ -18,9 +18,22 @@ import java.util.Objects;
  * deterministic.
  *
  * @param appId stable application identifier for the currently running app
+ * @param launchId token-free unique launch generation, empty for legacy principals
+ * @param appVersion verified launched version, empty for legacy principals
  * @param permissions immutable manifest permission list sorted lexicographically
  */
-public record AppTokenPrincipal(String appId, List<String> permissions) {
+public record AppTokenPrincipal(
+    String appId, List<String> permissions, String launchId, String appVersion) {
+  /**
+   * Creates a legacy principal without authority over a private worker channel.
+   *
+   * @param appId application identifier
+   * @param permissions declared permissions
+   */
+  public AppTokenPrincipal(String appId, List<String> permissions) {
+    this(appId, permissions, "", "");
+  }
+
   /**
    * Creates a principal with a normalized, immutable permission view.
    *
@@ -30,12 +43,16 @@ public record AppTokenPrincipal(String appId, List<String> permissions) {
    * app-host features.
    *
    * @param appId stable application identifier for the authenticated app process
+   * @param launchId token-free launch generation
+   * @param appVersion verified launched version
    * @param permissions manifest permission list captured from the running app snapshot
    * @throws IllegalArgumentException if {@code appId} is blank
    * @throws NullPointerException if {@code appId}, {@code permissions}, or a permission element is
    *     {@code null}
    */
   public AppTokenPrincipal {
+    Objects.requireNonNull(launchId, "launchId");
+    Objects.requireNonNull(appVersion, "appVersion");
     Objects.requireNonNull(appId, "appId");
     Objects.requireNonNull(permissions, "permissions");
     if (appId.isBlank()) {

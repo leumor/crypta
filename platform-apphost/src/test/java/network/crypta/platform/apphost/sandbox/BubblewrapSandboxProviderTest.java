@@ -3,8 +3,10 @@ package network.crypta.platform.apphost.sandbox;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppSandboxMode;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class BubblewrapSandboxProviderTest {
   private static final String SECRET_TOKEN = "secret-token";
@@ -158,6 +161,40 @@ class BubblewrapSandboxProviderTest {
     int firstBindMount = Math.min(firstReadOnlyBind, firstReadWriteBind);
     assertTrue(firstDirectoryMount > 0);
     assertTrue(firstDirectoryMount < firstBindMount);
+  }
+
+  @Test
+  void commandBuilder_whenDebianJavaSecuritySymlinked_expectOnlyPublicFilesMountedReadOnly()
+      throws IOException {
+    Path javaHome = tempDir.resolve("usr/lib/jvm/java-25");
+    Path configuration = tempDir.resolve("etc/java-25-openjdk");
+    Files.createDirectories(javaHome.resolve("conf/security"));
+    Files.createDirectories(configuration.resolve("security"));
+    Path security =
+        Files.writeString(
+            configuration.resolve("security/java.security"), "crypto.policy=unlimited\n");
+    Files.createSymbolicLink(
+        javaHome.resolve("conf/security/java.security"), security.toAbsolutePath());
+    Files.createDirectories(configuration.resolve("management"));
+    Path password =
+        Files.writeString(configuration.resolve("management/jmxremote.password"), "PRIVATE_CANARY");
+    Files.createDirectories(javaHome.resolve("conf/management"));
+    Files.createSymbolicLink(
+        javaHome.resolve("conf/management/jmxremote.password"), password.toAbsolutePath());
+    AppSandboxLaunchContext context =
+        context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    var plan =
+        new BubblewrapCommandBuilder(List.of(tempDir.resolve("usr")), javaHome)
+            .build("bwrap", context);
+
+    assertMount(plan, security.toRealPath(), BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertFalse(plan.bindMounts().stream().anyMatch(mount -> mount.source().equals(configuration)));
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(mount -> mount.source().equals(configuration.getParent())));
+    assertFalse(plan.bindMounts().stream().anyMatch(mount -> mount.source().equals(password)));
+    assertFalse(plan.command().toString().contains("PRIVATE_CANARY"));
   }
 
   @Test
@@ -321,6 +358,170 @@ class BubblewrapSandboxProviderTest {
             return !namespaceAvailable;
           }
         });
+  }
+
+  @Test
+  void mailRuntimeOutsideSystemPathsMountsOnlyExecutableLibrariesAndPublicSecurity()
+      throws IOException {
+    Path home = tempDir.resolve("private host/runtime with spaces");
+    Files.createDirectories(home.resolve("bin"));
+    Files.createDirectories(home.resolve("lib"));
+    Files.createDirectories(home.resolve("conf/security"));
+    Files.writeString(home.resolve("conf/security/java.security"), "crypto.policy=unlimited");
+    Files.createDirectories(home.resolve("conf/management"));
+    Path password = Files.writeString(home.resolve("conf/management/jmxremote.password"), "CANARY");
+    var ordinary = context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+    var mail =
+        new AppSandboxLaunchContext(
+            "mail-prototype",
+            ordinary.installDir(),
+            ordinary.dataDir(),
+            ordinary.cacheDir(),
+            ordinary.runDir(),
+            ordinary.logDir(),
+            ordinary.command(),
+            Map.of("CRYPTAD_MAIL_JAVA", tempDir.resolve("untrusted/java").toString()),
+            ordinary.workingDirectory(),
+            ordinary.policy(),
+            ordinary.appEnv());
+    var builder = new BubblewrapCommandBuilder(List.of(), home);
+
+    var plan = builder.build("bwrap", mail);
+
+    assertMount(plan, home.resolve("bin"), BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(plan, home.resolve("lib"), BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertMount(
+        plan,
+        home.resolve("conf/security/java.security"),
+        BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertFalse(
+        plan.bindMounts().stream()
+            .anyMatch(
+                m ->
+                    m.source().equals(home)
+                        || m.source().equals(home.getParent())
+                        || m.source().equals(home.resolve("conf"))
+                        || m.source().equals(password)
+                        || m.source().toString().contains("untrusted")));
+    assertFalse(
+        builder.build("bwrap", ordinary).bindMounts().stream()
+            .anyMatch(
+                m ->
+                    m.source().equals(home.resolve("bin"))
+                        || m.source().equals(home.resolve("lib"))));
+
+    Path system = Files.createDirectories(tempDir.resolve("system-runtime"));
+    Path linkedHome = Files.createDirectories(system.resolve("jdk"));
+    Files.createDirectories(linkedHome.resolve("bin"));
+    Path sharedLibraries = Files.createDirectories(tempDir.resolve("private-runtime-libraries"));
+    Files.createSymbolicLink(linkedHome.resolve("lib"), sharedLibraries);
+    var linkedPlan = new BubblewrapCommandBuilder(List.of(system), linkedHome).build("bwrap", mail);
+    assertMount(linkedPlan, sharedLibraries, BubblewrapCommandBuilder.MountAccess.READ_ONLY);
+    assertFalse(linkedPlan.bindMounts().stream().anyMatch(m -> m.source().equals(tempDir)));
+  }
+
+  @Test
+  void externalRuntimeSecuritySymlinkIsMountedAtLookupPathEvenWithSystemTarget()
+      throws IOException {
+    Path home = Files.createDirectories(tempDir.resolve("external-jdk"));
+    Path system = Files.createDirectories(tempDir.resolve("system"));
+    Path security = Files.writeString(system.resolve("java.security"), "crypto.policy=unlimited");
+    Path lookup = home.resolve("conf/security/java.security");
+    Files.createDirectories(lookup.getParent());
+    Files.createSymbolicLink(lookup, security);
+    var context = context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+
+    var plan = new BubblewrapCommandBuilder(List.of(system), home).build("bwrap", context);
+
+    assertTrue(
+        plan.bindMounts().stream()
+            .anyMatch(
+                m ->
+                    m.source().equals(security)
+                        && m.destination().equals(lookup)
+                        && m.access() == BubblewrapCommandBuilder.MountAccess.READ_ONLY));
+    assertFalse(
+        plan.bindMounts().stream().anyMatch(m -> m.destination().equals(home.resolve("conf"))));
+  }
+
+  @Test
+  void relocatedJavaWithSymlinkedSecurityStartsInsideRealSandbox() throws Exception {
+    AppEnv appEnv = new AppEnv();
+    var availability = new BubblewrapAvailability(appEnv).probe();
+    assumeTrue(availability.available(), availability.unavailableReason());
+    Path originalHome = appEnv.javaHome().toRealPath();
+    Path home = Files.createDirectories(tempDir.resolve("private runtime/jdk"));
+    Files.createDirectories(home.resolve("bin"));
+    Files.copy(
+        originalHome.resolve("bin/java"),
+        home.resolve("bin/java"),
+        StandardCopyOption.COPY_ATTRIBUTES);
+    Files.createSymbolicLink(home.resolve("lib"), originalHome.resolve("lib"));
+    Path publicConfiguration = Files.createDirectories(tempDir.resolve("public-security"));
+    for (String relative :
+        List.of(
+            "java.security",
+            "policy/unlimited/default_US_export.policy",
+            "policy/unlimited/default_local.policy")) {
+      Path source = publicConfiguration.resolve(relative);
+      Files.createDirectories(source.getParent());
+      Files.copy(originalHome.resolve("conf/security").resolve(relative), source);
+      Path lookup = home.resolve("conf/security").resolve(relative);
+      Files.createDirectories(lookup.getParent());
+      Files.createSymbolicLink(lookup, source);
+    }
+    Path privateConfig = home.resolve("conf/management/jmxremote.password");
+    Files.createDirectories(privateConfig.getParent());
+    Files.writeString(privateConfig, "PRIVATE_CANARY");
+    var ordinary = context(new AppSandboxPolicy(AppSandboxMode.RESTRICTED_PROCESS, false));
+    for (Path directory :
+        List.of(ordinary.installDir(), ordinary.dataDir(), ordinary.cacheDir(), ordinary.runDir()))
+      Files.createDirectories(directory);
+    Path probe = ordinary.installDir().resolve("SecurityProbe.java");
+    Files.writeString(
+        probe,
+        """
+        import java.nio.file.*;
+        import java.security.*;
+        class SecurityProbe {
+          public static void main(String[] args) throws Exception {
+            if (Security.getProperty("crypto.policy") == null || Files.exists(Path.of(args[0])))
+              throw new AssertionError("Security configuration boundary failed");
+            KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+            System.out.println("security-ready");
+          }
+        }
+        """);
+    var mail =
+        new AppSandboxLaunchContext(
+            "mail-prototype",
+            ordinary.installDir(),
+            ordinary.dataDir(),
+            ordinary.cacheDir(),
+            ordinary.runDir(),
+            ordinary.logDir(),
+            List.of(
+                home.resolve("bin/java").toString(), probe.toString(), privateConfig.toString()),
+            Map.of(),
+            ordinary.workingDirectory(),
+            ordinary.policy(),
+            appEnv);
+    var plan =
+        new BubblewrapCommandBuilder(BubblewrapCommandBuilder.DEFAULT_SYSTEM_READ_ONLY_PATHS, home)
+            .build(availability.executable(), mail);
+    Path output = tempDir.resolve("java-probe.log");
+    Process process =
+        new ProcessBuilder(plan.command())
+            .redirectErrorStream(true)
+            .redirectOutput(output.toFile())
+            .start();
+    try {
+      assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Java probe timed out");
+      assertEquals(0, process.exitValue(), Files.readString(output));
+      assertTrue(Files.readString(output).contains("security-ready"));
+    } finally {
+      process.destroyForcibly();
+    }
   }
 
   private AppSandboxLaunchContext context(AppSandboxPolicy policy) {

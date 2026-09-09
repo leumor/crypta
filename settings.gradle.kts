@@ -41,6 +41,7 @@ include(
   ":apps:social-inbox",
   ":apps:site-publisher",
   ":apps:trust-graph",
+  ":apps:mail-prototype",
   ":platform-design-system",
   ":platform-appvault",
   ":platform-appdist",

@@ -2558,7 +2558,11 @@ class AppUpdateServiceTest {
       repository = repository.getParent();
     }
     assertNotNull(repository, "Site Publisher manifest template must be available");
-    String currentTemplate = Files.readString(repository.resolve(template));
+    String currentMaximum =
+        "api.maximumTestedVersion=" + PlatformApiContract.CURRENT_CONTRACT_VERSION;
+    String currentTemplate =
+        Files.readString(repository.resolve(template))
+            .replaceAll("(?m)^api.maximumTestedVersion=[0-9]+$", currentMaximum);
     AppManifest target =
         signedSitePublisherFixture(
             tempDir.resolve("site-target"),
@@ -2583,7 +2587,8 @@ class AppUpdateServiceTest {
             app.permissions=queue.read,queue.write,content.insert
             quota.data.bytes=0
             quota.cache.bytes=0
-            """,
+            """
+                .replace("api.maximumTestedVersion=24", currentMaximum),
             signingKey);
     InstalledAppSnapshot installed =
         new InstalledAppSnapshot(

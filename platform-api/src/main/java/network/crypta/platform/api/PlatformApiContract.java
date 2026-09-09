@@ -62,7 +62,7 @@ public record PlatformApiContract(
    * a way that tooling should be able to compare. Operator-only descriptors do not advance it. It
    * is not the Cryptad build number, and it is not the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 24;
+  public static final int CURRENT_CONTRACT_VERSION = 25;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -164,6 +164,10 @@ public record PlatformApiContract(
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
 
+  private static final String CAPABILITY_MAIL_CONTROL = "mail.control";
+  private static final String CAPABILITY_VAULT_MAIL_SIGN = "vault.mail.sign";
+  private static final String CAPABILITY_VAULT_MAIL_OPEN = "vault.mail.open";
+  private static final String CAPABILITY_VAULT_MAIL_STORAGE = "vault.mail.storage";
   private static final String ROUTE_FAMILY_APPS = "apps";
   private static final String ROUTE_FAMILY_APP_DATA = "app-data";
   private static final String ROUTE_FAMILY_APP_SERVICES = "app-services";
@@ -445,6 +449,18 @@ public record PlatformApiContract(
 
   private static List<PlatformApiCapabilityDescriptor> capabilityDescriptors() {
     return List.of(
+        experimentalCapabilitySince(
+            CAPABILITY_MAIL_CONTROL, 25, "Use the fixed own-app Mail worker channel."),
+        experimentalCapabilitySince(
+            CAPABILITY_VAULT_MAIL_SIGN,
+            25,
+            "Sign bounded Mail contact and message objects in the vault."),
+        experimentalCapabilitySince(
+            CAPABILITY_VAULT_MAIL_OPEN,
+            25,
+            "Open fixed Mail network envelopes for the current Mail process."),
+        experimentalCapabilitySince(
+            CAPABILITY_VAULT_MAIL_STORAGE, 25, "Protect the Mail process private local dataset."),
         capability(PlatformApiCapabilities.ALERTS_READ, "Read current runtime alerts."),
         capability(PlatformApiCapabilities.ALERTS_WRITE, "Dismiss operator-visible alerts."),
         capability(
@@ -1008,6 +1024,36 @@ public record PlatformApiContract(
         PlatformApiCapabilities.PLATFORM_CONTRACT_READ,
         PlatformApiCapabilities.PLATFORM_CONTRACT_READ,
         "Read the deterministic Platform API compatibility contract.");
+    builder.endpoint(
+        new EndpointSpec(
+            ROUTE_FAMILY_QUEUE,
+            "GET",
+            "/queue/app-document-status",
+            "queue.app-document-status",
+            List.of("queue.read", CAPABILITY_MAIL_CONTROL),
+            25,
+            false,
+            true,
+            false,
+            PlatformApiStabilityLevel.EXPERIMENTAL,
+            "Read typed completion for one app-namespaced generated document insert."));
+    builder.mailEndpoint("command", List.of(CAPABILITY_MAIL_CONTROL), true, false);
+    builder.mailEndpoint("result", List.of(CAPABILITY_MAIL_CONTROL), true, false);
+    builder.mailEndpoint("poll", List.of(CAPABILITY_MAIL_CONTROL), false, true);
+    builder.mailEndpoint("reply", List.of(CAPABILITY_MAIL_CONTROL), false, true);
+    builder.mailEndpoint(
+        "create-identity",
+        List.of(
+            "vault.identities.create",
+            CAPABILITY_VAULT_MAIL_SIGN,
+            CAPABILITY_VAULT_MAIL_OPEN,
+            CAPABILITY_VAULT_MAIL_STORAGE),
+        false,
+        true);
+    builder.mailEndpoint("sign", List.of(CAPABILITY_VAULT_MAIL_SIGN), false, true);
+    builder.mailEndpoint("open", List.of(CAPABILITY_VAULT_MAIL_OPEN), false, true);
+    builder.mailEndpoint("seal-storage", List.of(CAPABILITY_VAULT_MAIL_STORAGE), false, true);
+    builder.mailEndpoint("open-storage", List.of(CAPABILITY_VAULT_MAIL_STORAGE), false, true);
     return builder.build();
   }
 
@@ -2169,6 +2215,23 @@ public record PlatformApiContract(
               false,
               PlatformApiStabilityLevel.OPERATOR_ONLY,
               description));
+    }
+
+    private void mailEndpoint(
+        String action, List<String> capabilities, boolean browser, boolean process) {
+      endpoint(
+          new EndpointSpec(
+              "mail",
+              "POST",
+              "/mail/" + action,
+              "mail." + action,
+              capabilities,
+              25,
+              false,
+              process,
+              browser,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Fixed experimental own-app Mail operation."));
     }
 
     private List<PlatformApiEndpointDescriptor> build() {

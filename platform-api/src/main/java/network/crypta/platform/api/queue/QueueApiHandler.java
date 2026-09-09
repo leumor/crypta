@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import network.crypta.crypt.mail.MailHpke;
 import network.crypta.keys.FreenetURI;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
@@ -55,6 +56,7 @@ import network.crypta.support.MediaType;
  * free to add richer insert flows without reworking the basic control-plane contract.
  */
 public final class QueueApiHandler {
+  private static final String MAIL_APP_ID = "mail-prototype";
   private static final String ALERT_SUMMARY_PLACEHOLDER = "<!--CRYPTA_ALERT_SUMMARY-->";
   private static final String COMPATIBILITY_MODE_CURRENT = "COMPAT_CURRENT";
   private static final String COMPATIBILITY_MODE_DEFAULT = "COMPAT_DEFAULT";
@@ -571,7 +573,21 @@ public final class QueueApiHandler {
     String insertUri = PlatformApiParameters.requireString(queryParameters, PARAMETER_INSERT_URI);
     FreenetURI parsedInsertUri = requireInsertUri(insertUri);
     String identifier = PlatformApiParameters.requireString(queryParameters, PARAMETER_IDENTIFIER);
+    if (MAIL_APP_ID.equals(appId) || identifier.startsWith("app-document-mail-prototype-")) {
+      requireAppDocumentIdentifier(appId, identifier);
+    }
+    if (MAIL_APP_ID.equals(appId) && !"CHK@".equals(insertUri)) {
+      throw new PlatformApiException(
+          400, "mail_insert_target_invalid", "Mail inserts require CHK.");
+    }
     byte[] document = decodeAppDocument(queryParameters);
+    if (MAIL_APP_ID.equals(appId)) {
+      try {
+        MailHpke.validateNetworkEnvelope(document);
+      } catch (IllegalArgumentException _) {
+        throw new PlatformApiException(400, "mail_envelope_rejected", "Mail envelope rejected.");
+      }
+    }
     String contentType = resolveAppDocumentContentType(queryParameters);
     validateJsonDocumentIfNeeded(contentType, document);
     String targetFilename =
@@ -617,6 +633,39 @@ public final class QueueApiHandler {
     if (!queueSupportPort.isQueueBackendEnabled()) {
       throw new PlatformApiException(
           409, "queue_backend_disabled", "Queue backend is currently disabled.");
+    }
+  }
+
+  /**
+   * Reads typed completion state for an app-namespaced generated-document operation.
+   *
+   * @param appId authenticated owning app id
+   * @param parameters exact identifier parameter
+   * @return bounded state and successful CHK reference, never a delivery/read receipt
+   */
+  public Map<String, Object> appDocumentStatus(String appId, Map<String, List<String>> parameters) {
+    String identifier = PlatformApiParameters.requireString(parameters, PARAMETER_IDENTIFIER);
+    requireAppDocumentIdentifier(appId, identifier);
+    ensureQueueBackendEnabled();
+    try {
+      var status = queuePagePort.readInsertStatus(identifier);
+      Map<String, Object> result = new LinkedHashMap<>();
+      result.put("state", status.state());
+      result.put("reference", status.reference());
+      return result;
+    } catch (RequestQueueUnavailableException _) {
+      throw queueUnavailable();
+    }
+  }
+
+  private static void requireAppDocumentIdentifier(String appId, String identifier) {
+    String prefix = "app-document-" + appId + "-";
+    if (!identifier.startsWith(prefix)
+        || !identifier.substring(prefix.length()).matches("[0-9a-f]{32}")) {
+      throw new PlatformApiException(
+          403,
+          "app_document_identifier_denied",
+          "Generated-document identifier is not scoped to this app.");
     }
   }
 

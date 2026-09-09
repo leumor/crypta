@@ -67,3 +67,9 @@ Load only the docs needed for the change:
 - Stable 1.0 support lifecycle and deprecation governance:
   `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
+
+Experimental Mail implementation uses [Mail design](../../../../docs/mail-app-service-prototype.md),
+[wire specification](../../../../docs/mail-wire-specification.md),
+[vault boundary](../../../../docs/mail-vault-boundary.md), and
+[worker channel](../../../../docs/mail-worker-channel.md). Keep private Mail state in the Java
+worker, purpose crypto in the vault, and historical five-profile selection unchanged.

@@ -34,9 +34,10 @@ class ContentFormatProfileRegistryTest {
             EXPECTED_FEED_SNAPSHOT_ID,
             EXPECTED_TRUST_STATEMENT_ID,
             EXPECTED_SOCIAL_MESSAGE_ID,
-            EXPECTED_SOCIAL_OUTBOX_ID),
+            EXPECTED_SOCIAL_OUTBOX_ID,
+            "crypta.mail.envelope.v1"),
         profiles.stream().map(ContentFormatProfile::id).toList());
-    assertEquals(5, profiles.stream().map(ContentFormatProfile::id).distinct().count());
+    assertEquals(6, profiles.stream().map(ContentFormatProfile::id).distinct().count());
     assertTrue(profiles.stream().allMatch(profile -> profile.majorVersion() == 1));
     assertTrue(
         profiles.stream()

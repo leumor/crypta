@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mail Prototype — experimental</title>
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+  <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body class="cr-app">
+<main class="cr-shell mail-layout">
+  <header class="cr-header"><h1>Mail Prototype</h1><p>Experimental · manual reference handoff · one recipient · plain text</p></header>
+  <section class="cr-card" data-first-party-beta-readiness data-beta-empty-state data-beta-error-state data-beta-retry-action data-beta-recovery-action data-beta-app-data-status data-beta-support-metadata data-beta-diagnostics-redaction data-beta-ui-consistency>
+    <h2>Before using Mail</h2>
+    <p>Compare full contact fingerprints through a trusted separate channel. A self-signed contact proves control of a key, not a person's identity. Send and fetch require your explicit action.</p>
+    <p>Inserted means encrypted content entered the network; it does not mean delivered or read. Exchange the resulting CHK reference manually. Opening Mail or a contact does not send, fetch or acknowledge messages.</p>
+    <p>No automatic inbox delivery, anonymity, forward secrecy, SMTP/IMAP or Freemail compatibility. This composition has no independent security review or production certification. Endpoints, daemon and vault must remain trusted.</p>
+    <p>Support: crypta-core, repository issue tracker. Never include message text, contact cards, CHK references, backups or private diagnostics in public reports.</p>
+  </section>
+  <section class="cr-permission-summary" data-crypta-permission-summary data-beta-permission-rationale>
+    <h2>Permission disclosure</h2>
+    <p>Mail uses app-scoped encrypted durable data, dedicated non-exportable vault identities, a fixed own-app worker channel, generated ciphertext insertion, queue status and bounded Crypta content fetch. New cryptographic operations are process-only. The browser has no private key or process token access.</p>
+    <ul>
+      <li><code>mail.control</code> operates the fixed own-app worker channel.</li>
+      <li><code>vault.identities.read</code> reads retained public identity metadata.</li>
+      <li><code>vault.identities.create</code> creates dedicated independent Mail identities.</li>
+      <li><code>vault.mail.sign</code> signs validated Mail objects in the worker.</li>
+      <li><code>vault.mail.open</code> opens authenticated recipient envelopes in the worker.</li>
+      <li><code>vault.mail.storage</code> protects app state under a separate storage purpose.</li>
+      <li><code>app.data.read</code> restores encrypted app-owned state.</li>
+      <li><code>app.data.write</code> commits encrypted state and replay evidence atomically.</li>
+      <li><code>queue.read</code> checks explicit insertion progress.</li>
+      <li><code>queue.write</code> queues or retries committed ciphertext.</li>
+      <li><code>content.insert.app-document</code> inserts generated encrypted envelopes.</li>
+      <li><code>content.fetch</code> fetches only explicitly approved bounded references.</li>
+    </ul>
+  </section>
+  <section class="cr-card"><h2>Account</h2>
+    <button class="cr-button" data-command="initialize" type="button">Initialize or unlock retained account</button>
+    <button class="cr-button" data-command="export-contact" type="button">Export own public contact card</button>
+    <button class="cr-button" data-command="status" type="button">Refresh private mailbox status</button>
+  </section>
+  <section class="cr-card"><h2>Pin a contact</h2>
+    <label for="card">Contact card from the other person</label><textarea id="card" spellcheck="false"></textarea>
+    <button class="cr-button" data-command="import-contact" type="button">Inspect contact card</button>
+    <label for="fingerprint">Full fingerprint, compared out of band</label><input id="fingerprint" autocomplete="off" spellcheck="false">
+    <button class="cr-button" data-command="approve-contact" type="button">I compared this fingerprint — approve contact</button>
+    <button class="cr-button" data-command="revoke-contact" type="button">Revoke this contact locally and disable sending/intake</button>
+    <p>Local revocation invalidates pending approval and retains old records. It does not recall published ciphertext.</p>
+  </section>
+  <section class="cr-card"><h2>Compose and explicitly send</h2>
+    <p>The fingerprint above selects one approved recipient. Preview shows the exact recipient and key epoch. Changing a draft or contact invalidates its approval.</p>
+    <label for="subject">Subject</label><input id="subject" maxlength="200" autocomplete="off">
+    <label for="body">Plain-text body (at most 16 KiB UTF-8)</label><textarea id="body" spellcheck="false"></textarea>
+    <button class="cr-button" data-command="save-draft" type="button">Save encrypted draft</button>
+    <button class="cr-button" data-command="preview-send" type="button">Preview exact send</button>
+    <button class="cr-button" id="confirm-send" data-command="confirm-send" type="button" disabled>Confirm preview and insert encrypted envelope</button>
+  </section>
+  <section class="cr-card"><h2>Import a manually received reference</h2>
+    <label for="reference">CHK read reference</label><input id="reference" autocomplete="off" spellcheck="false">
+    <button class="cr-button" data-command="import-reference" type="button">I approve network fetch — authenticate and import</button>
+    <label for="messageId">Accepted message identifier from private status</label><input id="messageId" autocomplete="off">
+    <button class="cr-button" data-command="read" type="button">Read verified message as literal text</button>
+    <p>To reply, select the sender's approved contact, compose a new draft and repeat the explicit send and reference handoff.</p>
+  </section>
+  <section class="cr-card"><h2>Retry and recovery</h2>
+    <label for="operation">Pending operation identifier from private status</label><input id="operation" autocomplete="off">
+    <button class="cr-button" data-command="retry" type="button" data-beta-retry-action>Retry committed encrypted operation</button>
+    <p>Retries reuse sealed bytes. An uncertain publication outcome cannot establish exactly-once network insertion.</p>
+    <button class="cr-button" data-command="backup" type="button">Export private encrypted data backup</button>
+    <label for="backup">Private backup to restore into the same retained compatible vault</label><textarea id="backup" spellcheck="false"></textarea>
+    <button class="cr-button" data-command="restore" type="button" data-beta-recovery-action>I approve private data restore and recovery restrictions</button>
+    <p>A data backup contains no private keys. Missing keys mean key-unavailable. Do not generate replacement keys and expect old data to recover. Restore merges available replay evidence and pauses new sending and receiving; this prototype has no resume operation after restore. Retained messages remain readable. Default uninstall deletes required vault keys even if app data is preserved, making data-only backups unreadable. Bundle rollback does not restore data or grants.</p>
+  </section>
+  <section class="cr-card"><h2>Private result</h2><p>Keep this output private. Copy a contact card, CHK reference or backup only through your intended separate channel.</p><pre id="result">No operation performed.</pre><label for="export-value">Exact private export or handoff value (copy only to your intended destination)</label><textarea id="export-value" readonly spellcheck="false"></textarea></section>
+  <p class="cr-status" id="status" role="status" aria-live="polite" data-beta-accessibility-status></p>
+</main>
+<script src="./crypta-ui/crypta-ui-components.js" defer></script>
+<script src="./crypta-platform.js" defer></script>
+<script src="./app.js" defer></script>
+</body>
+</html>

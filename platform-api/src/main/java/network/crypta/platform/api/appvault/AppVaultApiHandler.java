@@ -164,13 +164,23 @@ public final class AppVaultApiHandler {
    * <p>Visibility is grant-aware and app-id-bound. App-owned identities are still represented
    * through their active grants, so revocation or uninstall cleanup removes them from this
    * app-facing view. Each entry is public metadata only: private signing material and local vault
-   * paths remain inside the service.
+   * paths remain inside the service. The experimental Mail owner fails closed when any retained
+   * Mail identity lacks current authority, rather than interpreting a filtered empty list as a new
+   * account. Its preflight and listing share the vault monitor.
    *
    * @param appId authenticated app principal id supplied by the router, not request data
    * @return JSON-compatible identity metadata visible to the calling app
    */
   public List<Map<String, Object>> listIdentities(String appId) {
     appVaultService.requireAppAccessAllowed(appId);
+    if ("mail-prototype".equals(appId)) {
+      synchronized (appVaultService) {
+        appVaultService.requireMailIdentityAuthority(appId);
+        return appVaultService.listIdentitiesForApp(appId).stream()
+            .map(AppVaultApiHandler::identitySummary)
+            .toList();
+      }
+    }
     return appVaultService.listIdentitiesForApp(appId).stream()
         .map(AppVaultApiHandler::identitySummary)
         .toList();

@@ -20,6 +20,34 @@ from cryptad_certification.workspace import prepare_context, prepare_run_root
 
 
 class ProductionBetaCharacterizationTest(unittest.TestCase):
+    def test_shipped_sdk_passes_redaction_but_embedded_payloads_are_rejected(self) -> None:
+        sdk = workspace_root() / (
+            "platform-sdk-js/src/main/resources/"
+            "network/crypta/platform/sdk/js/crypta-platform.js"
+        )
+        source = sdk.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            settings = production_beta_release.cleanup_test_settings(
+                workspace, workspace / "release"
+            )
+            findings = production_beta_release.scan_text_for_findings(
+                source, "static/crypta-platform.js", settings
+            )
+            self.assertEqual([], findings)
+
+            for embedded in (
+                '{"payloadBase64":"cHVibGljLXN5bnRoZXRpYy1wYXlsb2Fk"}',
+                'const leaked = {payloadBase64: "cHVibGljLXN5bnRoZXRpYy1wYXlsb2Fk"};',
+            ):
+                with self.subTest(embedded=embedded):
+                    findings = production_beta_release.scan_text_for_findings(
+                        source + "\n" + embedded, "static/crypta-platform.js", settings
+                    )
+                    self.assertIn(
+                        "raw-content-or-app-data", [item["kind"] for item in findings]
+                    )
+
     def test_self_test_git_disables_automatic_maintenance(self) -> None:
         workspace = Path("fixture-workspace")
         with mock.patch.object(

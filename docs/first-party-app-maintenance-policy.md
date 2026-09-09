@@ -237,3 +237,13 @@ signed catalog or trusted-review governance model.
 
 A new core maintenance build does not reset an app's deprecation clock or silently rename,
 uninstall, or replace the app. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).
+
+## Additional experimental prototypes
+
+Mail Prototype is selected separately in
+`tools/release-certification/first-party-experimental-apps.json`: beta-only, explicit experimental
+opt-in, no automatic installation, and no Stable eligibility. Its support level is prototype and
+independent security review/live two-node observation remain unobserved until actual evidence is
+supplied. The existing seven-app readiness and historical Stable selections remain exact. Mail's
+private data backup requires the same compatible retained vault identities; bundle rollback never
+restores keys or grants. See `apps/mail-prototype/README.md` for the manual reference workflow.
