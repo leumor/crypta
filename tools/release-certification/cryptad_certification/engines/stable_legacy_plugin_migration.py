@@ -93,10 +93,12 @@ def validate_observation(value: Any) -> dict[str, Any]:
     return data
 
 
-def summarize(observation: Any, mode: str) -> dict[str, Any]:
+def summarize(observation: Any, mode: str, *, authenticated_runtime: Any = None) -> dict[str, Any]:
     """Keep local reported results independent of unobserved operational/release status."""
     if mode not in MODES:
         raise ValueError("migration-mode-invalid")
+    if isinstance(observation, dict) and observation.get("schemaVersion") == 2:
+        return _summarize_runtime(observation, mode, authenticated_runtime)
     data = validate_observation(observation)
     failed = sorted(key for key, result in data["outcomes"].items() if result == "fail")
     blocked = mode in {"verify-runtime", "closeout"}
@@ -129,6 +131,68 @@ def summarize(observation: Any, mode: str) -> dict[str, Any]:
             "pr296-protected-subject-projection-pending",
         ],
     }
+
+
+def _summarize_runtime(data: dict[str, Any], mode: str, authority: Any) -> dict[str, Any]:
+    """Validate the closed producer path while preserving synthetic and incomplete dimensions."""
+    required = {"schemaVersion", "kind", "classification", "status", "selectedCount", "outcomes",
+                "publication", "realDataMigration", "releaseEligibility", "planDigest", "bundleDigest", "producer", "producerTools"}
+    if set(data) not in (required, required | {"failureCode"}):
+        raise ValueError("migration-runtime-fields-invalid")
+    if (data["kind"] != "sharesite-runtime-observation" or data["classification"] not in {"upstream-writer-synthetic", "operator-owned-private-observation"}
+            or data["status"] not in {"partial", "failed", "complete"}
+            or type(data["selectedCount"]) is not int or data["selectedCount"] != 1
+            or data["publication"] != "not-observed" or data["realDataMigration"] != "not-observed"
+            or data["releaseEligibility"] != "blocked"
+            or not _matches(DIGEST, data["planDigest"]) or not _matches(DIGEST, data["bundleDigest"])):
+        raise ValueError("migration-runtime-classification-invalid")
+    _closed(data["outcomes"], CHECKS)
+    if any(value not in OUTCOMES for value in data["outcomes"].values()):
+        raise ValueError("migration-runtime-outcome-invalid")
+    if data["outcomes"]["newChkPublication"] != "not-observed":
+        raise ValueError("migration-runtime-publication-not-executed")
+    if data["status"] == "complete" and any(data["outcomes"][case] != "pass" for case in CHECKS - {"newChkPublication"}):
+        raise ValueError("migration-runtime-complete-contradicts-outcomes")
+    if (data["status"] == "failed") != (data.get("failureCode") == "migration-runtime-incomplete"):
+        raise ValueError("migration-runtime-failure-status-inconsistent")
+    _closed(data["producer"], {"sourceCommit", "workflowPath", "runId", "runAttempt", "environment"})
+    tools = _closed(data["producerTools"], {"toolTreeDigest", "javaTreeDigest", "controllerDigest", "driverDigest", "nodeDigest"})
+    if any(not _matches(DIGEST, digest) for digest in tools.values()):
+        raise ValueError("migration-runtime-tool-identity-invalid")
+    producer = data["producer"]
+    if (producer["workflowPath"] != ".github/workflows/stable-1.0-sharesite-runtime-observation.yml"
+            or producer["environment"] != "stable-1-0-sharesite-runtime-observation"
+            or not _matches(COMMIT, producer["sourceCommit"])
+            or any(type(producer[field]) is not int or producer[field] < 1 for field in ("runId", "runAttempt"))):
+        raise ValueError("migration-runtime-producer-identity-invalid")
+    if "failureCode" in data and data["failureCode"] != "migration-runtime-incomplete":
+        raise ValueError("migration-runtime-failure-code-invalid")
+    if scan_value(data):
+        raise ValueError("migration-runtime-private-material")
+    authenticated = False
+    try:
+        from sharesite_observation import AuthenticatedMigration, validate_observation
+        validate_observation(data, require_producer=True)
+        authenticated = isinstance(authority, AuthenticatedMigration) and authority.matches(data)
+    except ImportError:
+        pass
+    failed = sorted(key for key, value in data["outcomes"].items() if value == "fail")
+    missing = sorted(key for key, value in data["outcomes"].items() if value == "not-observed")
+    # Publication is a separate explicit opt-in and never a condition for private synthetic work.
+    required_missing = [key for key in missing if key != "newChkPublication"]
+    completed = authenticated and data["status"] == "complete" and not failed and not required_missing
+    return {"schemaVersion": 2, "kind": "stable-legacy-plugin-migration-summary", "mode": mode,
+            "status": ("authenticated-synthetic-runtime-complete" if data["classification"] == "upstream-writer-synthetic"
+                       else "authenticated-private-runtime-complete") if completed else "blocked",
+            "classification": data["classification"], "observedOutcomes": data["outcomes"] if authenticated else {},
+            "runtimeObservation": ("authenticated-synthetic" if data["classification"] == "upstream-writer-synthetic"
+                                   else "authenticated-operator-private") if authenticated else "not-authenticated",
+            "failedChecks": failed, "notObservedChecks": missing,
+            "realDataMigration": "not-observed", "publication": "not-observed", "releaseEligibility": "blocked",
+            "promotionReady": False, "operationallyComplete": False,
+            "prerequisites": ([] if authenticated else ["original-protected-migration-artifact-required"])
+                             + (["required-runtime-cases-not-observed"] if required_missing else [])
+                             + ["separate-real-user-migration-authorization-and-observation-required"]}
 
 
 def _confined(workspace: Path, requested: Path) -> Path:
