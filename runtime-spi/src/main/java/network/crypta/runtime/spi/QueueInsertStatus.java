@@ -3,10 +3,18 @@ package network.crypta.runtime.spi;
 import java.util.Set;
 
 /**
- * Detached completion state for one exact persistent insert identifier.
+ * Immutable detached completion state for one exact persistent insert identifier.
  *
- * @param state one of missing, pending, inserted or failed; inserted never means delivered or read
- * @param reference successful public CHK read reference, otherwise null
+ * <p>The producing queue port is responsible for looking up the correct identifier and reporting
+ * actual insertion state. This value checks only the allowed state vocabulary and a bounded,
+ * printable CHK-prefixed reference; it does not parse or fetch the key, authenticate mail, or prove
+ * delivery. The reference accessor is intended for authorized callers; {@link #toString()} redacts
+ * it for diagnostics.
+ *
+ * @param state non-null missing, pending, inserted or failed; inserted never means delivered or
+ *     read
+ * @param reference successful CHK read reference, otherwise null; at most 2,048 printable ASCII
+ *     characters without spaces
  */
 public record QueueInsertStatus(String state, String reference) {
   /**
@@ -15,6 +23,7 @@ public record QueueInsertStatus(String state, String reference) {
    * @param state fixed persistent-insert state
    * @param reference printable CHK reference only when insertion succeeded
    * @throws IllegalArgumentException if state and reference are inconsistent or out of bounds
+   * @throws NullPointerException if state is null
    */
   public QueueInsertStatus {
     if (!Set.of("missing", "pending", "inserted", "failed").contains(state)) {

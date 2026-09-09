@@ -15,9 +15,18 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>Callers must enforce own-browser identity for submit/result and process-only identity for
  * poll/reply before invoking this class. The launch identifier must come from authentication. No
- * method waits for a worker. Expired, stopped and replaced launch frames are discarded.
+ * method waits for a worker. Public operations serialize access to the pending map and lazily
+ * discard expired frames or frames from a stopped/replaced launch. At most four requests are kept,
+ * each for 30 seconds measured by the injected clock; this is transient state, not a durable queue.
+ *
+ * <p>Polling marks a frame taken once. A lost poll or reply is not retransmitted, so callers must
+ * treat its deadline as an uncertain outcome and recover using the mailbox operation state. A
+ * request identifier alone grants no authority. The broker does not interpret command payloads or
+ * authenticate callers itself, and the redacted frame string is the only diagnostic representation
+ * intended for logging.
  */
 public final class MailWorkerBroker {
+  /** Failure code for oversized or noncanonical Base64 request/reply framing. */
   private static final String INVALID_FRAME = "invalid_frame";
 
   /** Maximum base64 text size including encoding overhead. */
@@ -80,8 +89,9 @@ public final class MailWorkerBroker {
    * Queues one own-browser command for the currently running Mail process.
    *
    * @param command fixed allowed operation
-   * @param payloadBase64 canonical base64 payload, never logged or parsed here
-   * @return opaque request identifier
+   * @param payloadBase64 non-null canonical padded Base64 text, at most 393,216 characters
+   * @return opaque request identifier for the current launch and app version
+   * @throws IllegalStateException if framing, command, live-launch or pending-capacity checks fail
    */
   public synchronized String submit(String command, String payloadBase64) {
     if (!COMMANDS.contains(command)) throw failure("unsupported_command");
@@ -102,7 +112,8 @@ public final class MailWorkerBroker {
    * Returns the next undelivered frame for an authenticated live Mail process.
    *
    * @param launchId launch binding derived by process authentication
-   * @return one frame or empty when no request is queued
+   * @return one previously unpolled frame, or empty if no such frame remains
+   * @throws IllegalStateException if the supplied launch is not the live Mail launch
    */
   public synchronized Optional<Frame> poll(String launchId) {
     AppTokenPrincipal launch = authorize(launchId);
@@ -121,7 +132,8 @@ public final class MailWorkerBroker {
    *
    * @param launchId authenticated process launch binding
    * @param requestId polled request identifier
-   * @param payloadBase64 canonical bounded reply
+   * @param payloadBase64 canonical bounded reply, subject to the same cap as submitted payloads
+   * @throws IllegalStateException if framing, launch, deadline or one-reply state checks fail
    */
   public synchronized void reply(String launchId, String requestId, String payloadBase64) {
     validatePayload(payloadBase64);
@@ -136,7 +148,8 @@ public final class MailWorkerBroker {
    * Consumes a completed own-browser result once.
    *
    * @param requestId identifier returned from submit
-   * @return completed reply or empty while pending
+   * @return completed reply, removing its request, or empty while awaiting completion
+   * @throws IllegalStateException if the worker is unavailable or the request is unknown or stale
    */
   public synchronized Optional<String> result(String requestId) {
     expire(current());

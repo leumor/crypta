@@ -8,15 +8,43 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appvault.AppIdentityKind;
 import network.crypta.platform.appvault.AppVaultService;
 
-/** Fixed own-app mediation and process-only vault routes; no mailbox state lives here. */
+/**
+ * Fixed own-app mediation and process-only vault routes for the experimental Mail application.
+ *
+ * <p>The central router must authenticate the principal, enforce experimental admission and check
+ * the route capability before calling this handler. This layer additionally restricts callers to
+ * {@code mail-prototype}, separates browser command/result access from process operations, and
+ * checks current launch identity and permissions. Private responses are fenced again against a
+ * replaced launch before release.
+ *
+ * <p>Only the enumerated actions and exact parameter sets are accepted; this is not an arbitrary
+ * RPC, URL proxy or browser decryption interface. The broker holds transient request frames and the
+ * vault performs purpose-scoped cryptography. Contacts, approval and mailbox persistence remain
+ * owned by the child worker. Response bodies may contain private data and must not be logged.
+ */
 final class PlatformApiMailRoutes {
+  /** Only app identity admitted to this fixed route family. */
   private static final String MAIL_APP_ID = "mail-prototype";
+
+  /** Browser submission action and field naming the bounded worker operation. */
   private static final String COMMAND = "command";
+
+  /** Browser action that consumes a completed worker result once. */
   private static final String RESULT_ACTION = "result";
+
+  /** Parameter and response field carrying the canonical Base64 private payload. */
   private static final String PAYLOAD_BASE64 = "payloadBase64";
+
+  /** Parameter and response field binding one transient worker request. */
   private static final String REQUEST_ID = "requestId";
+
+  /** Process-only action protecting state under a retained storage identity. */
   private static final String SEAL_STORAGE = "seal-storage";
+
+  /** Private-operation parameter and public metadata field naming a vault identity. */
   private static final String IDENTITY_ID = "identityId";
+
+  /** Bounded response classification field. */
   private static final String STATUS = "status";
 
   /** Authoritative current verified AppHost launch. */

@@ -6,7 +6,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Bounded nested JSON reader for trusted local Platform API responses, never the mail wire codec.
+ * Bounded nested JSON reader for local Platform API responses and own-app command payloads.
+ *
+ * <p>Each parse uses its own cursor. This reader accepts ordinary JSON whitespace and escapes;
+ * network envelopes and signed objects instead use the stricter {@code MailWire} codec. HTTP and
+ * worker callers must enforce raw byte limits and UTF-8 decoding before supplying a Java string.
+ * Parsed values remain untrusted until the caller validates their expected shape.
  */
 final class MailApiJsonParser {
   /** Maximum accepted local JSON container nesting depth. */
@@ -28,16 +33,18 @@ final class MailApiJsonParser {
   }
 
   /**
-   * Parses a bounded app-data JSON value.
+   * Parses one complete value with at most 1,048,576 UTF-16 code units and 16 container levels.
    *
-   * <p>The returned object graph uses {@link Map}, {@link List}, {@link String}, {@link Boolean},
-   * {@link Long}, and {@code null}. Callers remain responsible for validating the expected export
-   * payload shape and applying app-data quota checks before any imported value is committed.
+   * <p>The result uses insertion-ordered mutable maps, unmodifiable lists, strings, booleans,
+   * signed 64-bit integers, and {@code null}; arrays may contain {@code null}. Duplicate object
+   * keys, fractional/exponent numbers, and trailing content are rejected. String parsing does not
+   * enforce Unicode surrogate pairing; callers requiring canonical Mail text must use the wire
+   * codec.
    *
-   * @param text UTF-16 Java string containing UTF-8-decoded app-data JSON
-   * @return parsed JSON value tree using platform-owned collection types
-   * @throws IllegalArgumentException if the input is malformed or uses unsupported JSON number
-   *     forms
+   * @param text non-null, already decoded local JSON text
+   * @return parsed value tree, possibly {@code null} for the JSON null literal
+   * @throws IllegalArgumentException if syntax, number range, length or nesting limits are violated
+   * @throws NullPointerException if {@code text} is null
    */
   static Object parse(String text) {
     if (text.length() > 1048576) throw error();

@@ -7,7 +7,22 @@ import java.util.Map;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.hpke.HPKE;
 
-/** Single-use RFC 9180 base-mode contexts with fixed network and local-storage separation. */
+/**
+ * Library-backed HPKE envelopes with separate network and local-storage purposes.
+ *
+ * <p>Every operation uses RFC 9180 base mode with DHKEM(X25519, HKDF-SHA256), HKDF-SHA256 and
+ * AES-128-GCM (suite IDs 32/1/1). The profile's UTF-8 bytes are HPKE {@code info}; the canonical
+ * profile, suite and selector header is authenticated as AAD. Each seal creates a fresh sender
+ * context. There is no algorithm negotiation or fallback to plaintext.
+ *
+ * <p>The visible selector is a role-qualified public-key fingerprint, not an authorization token or
+ * anonymity mechanism. Base-mode authentication does not identify the sender: network Mail still
+ * requires the inner Ed25519 signature and locally approved contact policy. These primitives
+ * provide neither replay prevention nor forward secrecy against retained-recipient-key compromise.
+ *
+ * <p>Private keys are supplied by the trusted vault boundary. Operations do not retain caller
+ * arrays or expose HPKE exporters; callers remain responsible for private-key custody and erasure.
+ */
 public final class MailHpke {
   /** Experimental network envelope profile and exact HPKE info string. */
   public static final String NETWORK_PROFILE = "crypta.mail.envelope.v1";
@@ -15,10 +30,19 @@ public final class MailHpke {
   /** Maximum complete UTF-8 network envelope, including JSON and Base64 overhead. */
   public static final int MAX_NETWORK_ENVELOPE_BYTES = 65536;
 
+  /** Outer-header field fixing both the envelope profile and HPKE info domain. */
   private static final String FIELD_PROFILE = "profile";
+
+  /** Visible outer-header field containing the role-qualified recipient fingerprint. */
   private static final String FIELD_SELECTOR = "selector";
+
+  /** Outer-envelope field containing Base64 ciphertext and its authentication tag. */
   private static final String FIELD_CIPHERTEXT = "ciphertext";
+
+  /** Purpose selecting the incoming network Mail envelope format. */
   private static final String NETWORK = "network";
+
+  /** Purpose selecting the distinct private local-storage envelope format. */
   private static final String STORAGE = "storage";
 
   /** Exact ordered HPKE authenticated-header fields. */
@@ -45,7 +69,7 @@ public final class MailHpke {
   /**
    * Generates an independent X25519 private key using the maintained provider's secure randomness.
    *
-   * @return new private 32-byte X25519 key
+   * @return new private 32-byte X25519 key; the caller owns its protection and eventual erasure
    */
   public static byte[] generatePrivateKey() {
     HPKE h = suite();
@@ -124,8 +148,8 @@ public final class MailHpke {
    * @param purpose network or storage; no other purpose is supported
    * @param selector role-qualified fingerprint of the actual public key
    * @param recipientPublic raw 32-byte recipient public key
-   * @param plaintext complete bounded plaintext
-   * @return complete canonical encrypted envelope
+   * @param plaintext complete plaintext, at most 45,056 bytes for network or 131,072 for storage
+   * @return newly allocated canonical envelope, at most 65,536 network or 196,608 storage bytes
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static byte[] seal(
@@ -161,7 +185,8 @@ public final class MailHpke {
    * @param selector role-qualified fingerprint of the actual public key
    * @param privateKey private 32-byte X25519 key, retained inside the vault
    * @param envelope complete canonical encrypted envelope
-   * @return complete authenticated plaintext, never partial AEAD output
+   * @return newly allocated, complete authenticated plaintext, never partial AEAD output; network
+   *     sender identity and message policy still require separate inner-object validation
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static byte[] open(String purpose, String selector, byte[] privateKey, byte[] envelope) {
@@ -198,7 +223,8 @@ public final class MailHpke {
    *
    * <p>This is structural validation only: it neither uses private keys nor proves authentication,
    * recipient authorization or sender trust. Actual recipient opening and inner verification remain
-   * mandatory. Ciphertext contents are opaque to this operation.
+   * mandatory. Ciphertext contents are opaque to this operation. Encapsulation length is checked
+   * here; canonical X25519 public-key validation and AEAD authentication occur during opening.
    *
    * @param envelope complete canonical network envelope
    * @throws IllegalArgumentException if fields, suite, encodings or bounds are invalid

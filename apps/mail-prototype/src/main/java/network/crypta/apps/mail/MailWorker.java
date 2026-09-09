@@ -11,9 +11,17 @@ import network.crypta.crypt.mail.MailWire;
 
 /**
  * AppHost-managed Java process; private IPC uses authenticated API calls and never process logs.
+ *
+ * <p>The Java 25 entry point obtains the endpoint and token only from the verified launch
+ * environment. One scheduler thread owns serial mailbox calls and polls the fixed broker with a 250
+ * ms delay after each completed attempt. Starting the worker does not itself send messages or
+ * discover content; mailbox operations require an explicit own-app command.
  */
 public final class MailWorker {
+  /** Private response field carrying a bounded operation classification. */
   private static final String STATUS = "status";
+
+  /** Bounded response classification for a malformed own-app command. */
   private static final String INVALID = "invalid";
 
   /** Prevents instances of the process entry point. */
@@ -40,6 +48,10 @@ public final class MailWorker {
 
   /**
    * Runs serial, paced polls and cancels the current request when the entry thread is interrupted.
+   *
+   * @param backend authenticated connection for broker and mailbox operations
+   * @param mailbox process-owned state machine used only by the scheduler thread
+   * @throws InterruptedException if the entry thread is interrupted while awaiting termination
    */
   private static void runWorker(MailBackend backend, MailMailbox mailbox)
       throws InterruptedException {
@@ -50,7 +62,14 @@ public final class MailWorker {
     }
   }
 
-  /** Cancels active work before resource closure, including when waiting is interrupted. */
+  /**
+   * Cancels active work before resource closure, including when waiting is interrupted.
+   *
+   * @param scheduler worker-owned executor awaiting termination
+   * @throws InterruptedException if the waiting thread is interrupted, after requesting
+   *     cancellation
+   * @throws IllegalStateException if the termination wait exhausts its maximum nanosecond timeout
+   */
   private static void awaitSchedulerTermination(ScheduledExecutorService scheduler)
       throws InterruptedException {
     try {
@@ -62,7 +81,16 @@ public final class MailWorker {
     }
   }
 
-  /** Handles one broker poll; transient failures are retried at the next scheduled poll. */
+  /**
+   * Handles one broker poll; transient transport failures do not stop subsequent scheduled polls.
+   *
+   * <p>A failed reply is not automatically resubmitted. The broker deadline and mailbox's durable
+   * operation state govern later explicit recovery; this method does not promise exactly-once
+   * command execution or reply delivery.
+   *
+   * @param backend authenticated connection for the fixed poll/reply endpoints
+   * @param mailbox process-owned state machine for the returned command
+   */
   private static void pollAndReply(MailBackend backend, MailMailbox mailbox) {
     try {
       var frame =

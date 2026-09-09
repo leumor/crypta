@@ -16,46 +16,135 @@ import network.crypta.crypt.mail.MailWire;
 /**
  * Single-writer mailbox state machine owned exclusively by the Mail child process. Each mutation
  * protects and CAS-publishes one complete dataset; network insertion follows seal commit.
+ *
+ * <p>Use one instance in the AppHost-managed Mail worker. Private keys remain behind typed vault
+ * operations; contact pins, drafts, sent copies, accepted messages and replay evidence belong to
+ * this process and are persisted together under a separate storage key. Returned maps may contain
+ * intentional plaintext for the own-app UI and must not enter public logs.
+ *
+ * <p>The prototype accepts one recipient and plain UTF-8 text through explicit CHK handoff. The
+ * protected dataset has a 112 KiB plaintext cap, 16 contacts, 16 inbox records, eight outbox
+ * operations and 128 replay entries; encoded byte limits may be reached before record limits.
+ * Data-only restore requires retained vault identities, merges available replay/revocation
+ * evidence, and pauses new sending and receiving. This class supplies no rollback-proof replay
+ * guarantee.
  */
 public final class MailMailbox {
+  /** Command that imports protected state and pauses new sending and receiving. */
   private static final String RESTORE = "restore";
+
+  /** Result field and command for the private local mailbox status. */
   private static final String STATUS = "status";
+
+  /** Dataset field containing the signed public card for this retained account. */
   private static final String OWN_CARD = "ownCard";
+
+  /** Command/result field identifying an immutable outbox operation. */
   private static final String OPERATION = "operation";
+
+  /** Export command and field containing Base64-protected state without vault keys. */
   private static final String BACKUP = "backup";
+
+  /** Dataset and wrapper field binding state to its retained storage identity. */
   private static final String STORAGE_ID = "storageId";
+
+  /** Field containing a complete Base64-encoded encrypted envelope. */
   private static final String ENVELOPE = "envelope";
+
+  /** Dataset field identifying the retained Mail signing identity. */
   private static final String SIGNING_ID = "signingId";
+
+  /** Dataset field identifying the retained Mail decryption identity. */
   private static final String RECIPIENT_ID = "recipientId";
+
+  /** Vault request/response field naming a retained identity. */
   private static final String IDENTITY_ID = "identityId";
+
+  /** Dataset and status field describing whether sending and receiving are paused. */
   private static final String RECOVERY = "recovery";
+
+  /** Recovery state that permits explicitly approved sending and receiving. */
   private static final String NORMAL = "normal";
+
+  /** Dataset field marking resumed setup without claiming rollback-proof history. */
   private static final String INITIALIZATION_RECOVERY_EPOCH = "initializationRecoveryEpoch";
+
+  /** Contact field containing the Base64-encoded Ed25519 public key. */
   private static final String SIGNING_KEY = "signingKey";
+
+  /** Contact field containing the role-qualified signing-key fingerprint. */
   private static final String SIGNING_FINGERPRINT = "signingFingerprint";
+
+  /** Public metadata and command field selecting a locally pinned signing identity. */
   private static final String FINGERPRINT = "fingerprint";
+
+  /** Contact and public metadata field binding keys to one Mail account. */
   private static final String ACCOUNT = "account";
+
+  /** Contact field containing the canonical signing-key epoch. */
   private static final String SIGNING_EPOCH = "signingEpoch";
+
+  /** Contact and preview field identifying the intended encryption key. */
   private static final String RECIPIENT_FINGERPRINT = "recipientFingerprint";
+
+  /** Contact, message and preview field containing the recipient-key epoch. */
   private static final String RECIPIENT_EPOCH = "recipientEpoch";
+
+  /** Signed payload field containing creation time in epoch seconds. */
   private static final String CREATED = "created";
+
+  /** Signed payload field containing exclusive expiry time in epoch seconds. */
   private static final String EXPIRES = "expires";
+
+  /** Dataset field retaining a card awaiting explicit fingerprint approval. */
   private static final String PENDING_CONTACT = "pendingContact";
+
+  /** Dataset and command field binding send approval to exact draft and contact bytes. */
   private static final String APPROVAL = "approval";
+
+  /** Record prefix for locally pinned contact cards in the protected dataset. */
   private static final String CONTACT_PREFIX = "contact.";
+
+  /** Record prefix for contact revocations retained through data restore. */
   private static final String REVOKED_PREFIX = "revoked.";
+
+  /** Draft and signed-message field containing literal plain-text subject text. */
   private static final String SUBJECT = "subject";
+
+  /** Dataset field and status value for the single saved draft. */
   private static final String DRAFT = "draft";
+
+  /** Record prefix for committed outbound envelopes and insertion state. */
   private static final String OUTBOX_PREFIX = "outbox.";
+
+  /** Outbox field describing the local publication state. */
   private static final String FIELD_STATE = "state";
+
+  /** Command and result field containing a manually handed-off CHK read reference. */
   private static final String REFERENCE = "reference";
+
+  /** Signed random message identifier or, in local results, the inbox replay key. */
   private static final String MESSAGE_ID = "messageId";
+
+  /** Signed-message field identifying the sender signing-key fingerprint. */
   private static final String SENDER = "sender";
+
+  /** Signed-message field containing the sender signing-key epoch. */
   private static final String SENDER_EPOCH = "senderEpoch";
+
+  /** Signed-message and read-result field fixing content to plain text. */
   private static final String FORMAT = "format";
+
+  /** Publication state indicating insertion, without delivery or read confirmation. */
   private static final String INSERTED = "inserted";
+
+  /** Queue field naming the stable app-scoped insertion operation. */
   private static final String IDENTIFIER = "identifier";
+
+  /** Record prefix for authenticated payload digests used for replay/conflict detection. */
   private static final String REPLAY_PREFIX = "replay.";
+
+  /** Record prefix for accepted signed messages inside the protected dataset. */
   private static final String INBOX_PREFIX = "inbox.";
 
   /** Maximum encoded plaintext dataset bytes, leaving private-channel backup headroom. */
@@ -77,7 +166,7 @@ public final class MailMailbox {
   /** Clock used for explicit local validity and acceptance policy. */
   private final Clock clock;
 
-  /** Secure source for independent keys and random identifiers. */
+  /** Secure source for random message, operation and recovery identifiers. */
   private final SecureRandom random = new SecureRandom();
 
   /** Current private string-valued dataset, reloaded before each command. */
@@ -140,7 +229,11 @@ public final class MailMailbox {
     }
   }
 
-  /** Reloads state while permitting explicit restore to replace malformed stored data. */
+  /**
+   * Reloads state while permitting explicit restore to replace malformed stored data.
+   *
+   * @param command fixed own-app operation; only restore may replace malformed state
+   */
   private void loadForCommand(String command) {
     try {
       load();
@@ -628,7 +721,14 @@ public final class MailMailbox {
     return Map.of(STATUS, "accepted", MESSAGE_ID, replay, "senderTrust", "locally-pinned");
   }
 
-  /** Checks authenticated account bindings and both contact validity intervals before admission. */
+  /**
+   * Checks authenticated account bindings and both contact validity intervals before admission.
+   *
+   * @param msg complete message fields after signature and sender-pin verification
+   * @param sender approved sender contact for the signed account and epoch
+   * @param own retained local contact bound to the decryption identity
+   * @throws MailFailure if account/key bindings or local timestamp policy reject the message
+   */
   private void validateIncomingBindings(
       Map<String, String> msg, Map<String, String> sender, Map<String, String> own) {
     for (String[] pair :
@@ -922,9 +1022,9 @@ public final class MailMailbox {
   /**
    * Decodes bounded canonical Base64.
    *
-   * @param value encoded or parsed input value
-   * @param max maximum decoded or encoded byte count
-   * @return decoded bytes
+   * @param value canonical padded Base64 text
+   * @param max maximum decoded byte count; the encoded limit is derived from it
+   * @return newly decoded bytes
    */
   private static byte[] decode(String value, int max) {
     if (value.length() > 4 * ((max + 2) / 3)) throw new MailFailure("quota");
@@ -937,9 +1037,9 @@ public final class MailMailbox {
   /**
    * Decodes a bounded canonical flat JSON object.
    *
-   * @param value encoded or parsed input value
-   * @param max maximum decoded or encoded byte count
-   * @return parsed private string fields
+   * @param value canonical flat JSON text containing only string fields
+   * @param max maximum UTF-8 encoded byte count
+   * @return mutable private string fields in input order
    */
   private static Map<String, String> fields(String value, int max) {
     return new LinkedHashMap<>(MailWire.decode(value.getBytes(StandardCharsets.UTF_8), max));

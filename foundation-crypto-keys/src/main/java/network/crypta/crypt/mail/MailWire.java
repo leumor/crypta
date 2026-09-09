@@ -16,14 +16,43 @@ import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
 
-/** Closed, canonical wire encoding and pure Ed25519 framing for experimental Mail. */
+/**
+ * Canonical flat JSON encoding and pure Ed25519 framing for experimental Mail.
+ *
+ * <p>Objects contain string-valued fields only. The encoder preserves supplied iteration order;
+ * profile validators impose their own exact field lists. UTF-8 is not normalized. Quote and
+ * backslash are escaped, control characters use lowercase four-digit Unicode escapes, and
+ * supplementary characters use their valid surrogate pairs. Decoding requires an exact re-encoding,
+ * rejecting duplicate keys, alternative escapes, whitespace and trailing content.
+ *
+ * <p>Signature preimages are the validated profile identifier, one newline, and the exact unsigned
+ * payload bytes. This is application framing for pure Ed25519, not Ed25519ctx or Ed25519ph.
+ * Signature verification establishes key possession only; contact approval, current grants,
+ * recipient binding, time policy and replay admission belong to the vault and worker layers.
+ *
+ * <p>Static operations retain no mutable state. Callers must not mutate input maps or arrays during
+ * a call, and must protect and erase private key material according to their own custody policy.
+ */
 public final class MailWire {
+  /** Field naming the fixed experimental contact or message profile. */
   private static final String FIELD_PROFILE = "profile";
+
+  /** Canonical decimal recipient-key epoch field. */
   private static final String RECIPIENT_EPOCH = "recipientEpoch";
+
+  /** Creation-time field, in nonnegative epoch seconds. */
   private static final String CREATED = "created";
+
+  /** Exclusive expiry-time field, in nonnegative epoch seconds. */
   private static final String EXPIRES = "expires";
+
+  /** Message recipient field and corresponding encryption-key fingerprint role. */
   private static final String FIELD_RECIPIENT = "recipient";
+
+  /** Signed-wrapper field containing the Base64-encoded unsigned object. */
   private static final String FIELD_PAYLOAD = "payload";
+
+  /** Signed-wrapper field containing the Base64-encoded Ed25519 signature. */
   private static final String FIELD_SIGNATURE = "signature";
 
   /** Experimental contact profile and signing domain. */
@@ -70,9 +99,9 @@ public final class MailWire {
   /**
    * Encodes ordered string fields with no Unicode normalization.
    *
-   * @param fields complete string-valued fields; insertion order controls raw encoding
-   * @return canonical UTF-8 bytes
-   * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
+   * @param fields non-null map of non-null strings; iteration order controls raw encoding
+   * @return newly allocated canonical UTF-8 bytes, without a profile or size-limit check
+   * @throws IllegalArgumentException if a key or value is null or contains a lone surrogate
    */
   public static byte[] encode(Map<String, String> fields) {
     StringBuilder out = new StringBuilder("{");
@@ -113,8 +142,8 @@ public final class MailWire {
    *
    * @param bytes encoded UTF-8 object
    * @param maximum maximum accepted encoded byte count
-   * @return mutable insertion-ordered parsed fields
-   * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
+   * @return mutable insertion-ordered parsed fields; profile-specific field sets are not checked
+   * @throws IllegalArgumentException if bytes are null, oversized, malformed or noncanonical
    */
   public static Map<String, String> decode(byte[] bytes, int maximum) {
     if (bytes == null || bytes.length > maximum) throw invalid();
@@ -183,6 +212,10 @@ public final class MailWire {
   /**
    * Validates and canonicalizes an unsigned message; temporal trust policy remains with the worker.
    *
+   * <p>Subject and body limits are 256 and 16,384 UTF-8 bytes respectively, with a 32,768-byte cap
+   * after JSON encoding. Identifiers, fingerprints and positive epochs are checked. Expiry must be
+   * after creation, but freshness, contact validity intervals and replay history are not checked.
+   *
    * @param fields complete string-valued fields; insertion order controls raw encoding
    * @return validated canonical message bytes
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
@@ -245,8 +278,8 @@ public final class MailWire {
   /**
    * Parses canonical nonnegative signed-64-bit decimal.
    *
-   * @param value value to encode or parse
-   * @return nonnegative integer value
+   * @param value ASCII decimal text with no sign or leading zero except the single value zero
+   * @return integer in the inclusive range zero through {@link Long#MAX_VALUE}
    * @throws IllegalArgumentException if the input violates the fixed Mail format or limits
    */
   public static long decimal(String value) {
@@ -547,7 +580,11 @@ public final class MailWire {
       throw invalid();
     }
 
-    /** Consumes one supported escape after its leading backslash. */
+    /**
+     * Consumes one supported escape after its leading backslash.
+     *
+     * @return decoded quote, backslash or Unicode code unit
+     */
     private char escapedCharacter() {
       if (pos >= text.length()) throw invalid();
       char escaped = text.charAt(pos++);
@@ -558,7 +595,11 @@ public final class MailWire {
       };
     }
 
-    /** Consumes four hexadecimal digits; canonical spelling is checked after parsing. */
+    /**
+     * Consumes four hexadecimal digits; canonical spelling is checked after parsing.
+     *
+     * @return decoded UTF-16 code unit, with surrogate validation deferred to re-encoding
+     */
     private char unicodeEscape() {
       if (pos + 4 > text.length()) throw invalid();
       char decoded;

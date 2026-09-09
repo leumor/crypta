@@ -10,7 +10,18 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** Bounded process-token HTTP client for the AppHost-selected loopback Platform API only. */
+/**
+ * Bounded synchronous HTTP client for the AppHost-selected loopback Platform API.
+ *
+ * <p>The launch token is sent only in the process authentication header. The endpoint must use an
+ * explicit port and the {@code /api/v1} mount on literal {@code 127.0.0.1} or {@code ::1};
+ * redirects are disabled. Connection setup is bounded to five seconds and each HTTP request has a
+ * 25-second timeout. Form and response byte caps are enforced separately.
+ *
+ * <p>Responses may contain private plaintext and are returned only to the worker. Ordinary failure
+ * responses are mapped to fixed codes without retaining remote error text. Interrupted requests
+ * restore the thread's interrupt flag and raise a bounded unavailable failure.
+ */
 final class MailPlatformClient implements MailBackend {
   /** Validated literal loopback Platform API mount. */
   private final URI endpoint;
@@ -80,7 +91,14 @@ final class MailPlatformClient implements MailBackend {
     }
   }
 
-  /** Reads and closes a bounded response before interpreting its status and complete JSON body. */
+  /**
+   * Reads and closes a bounded response before interpreting its status and complete JSON body.
+   *
+   * @param response received response whose body is consumed and closed here
+   * @return parsed object for a successful HTTP status
+   * @throws java.io.IOException if reading or closing the response body fails
+   * @throws MailFailure if the body exceeds 1 MiB or the response indicates an operation failure
+   */
   private static Map<String, Object> readResponse(HttpResponse<java.io.InputStream> response)
       throws java.io.IOException {
     byte[] bytes;
@@ -93,7 +111,13 @@ final class MailPlatformClient implements MailBackend {
     return object(MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8)));
   }
 
-  /** Maps only allowlisted error codes or HTTP statuses to private, bounded failure messages. */
+  /**
+   * Maps only allowlisted error codes or HTTP statuses to private, bounded failure messages.
+   *
+   * @param statusCode unsuccessful HTTP status code
+   * @param bytes complete bounded error response body
+   * @return fixed local failure, giving recognized structured codes precedence over HTTP status
+   */
   private static MailFailure responseFailure(int statusCode, byte[] bytes) {
     Object code = errorCode(bytes);
     if ("key_unavailable".equals(code) || "mail_identity_denied".equals(code))
@@ -108,7 +132,12 @@ final class MailPlatformClient implements MailBackend {
     };
   }
 
-  /** Extracts an error code without exposing malformed response text or parser diagnostics. */
+  /**
+   * Extracts an error code without exposing malformed response text or parser diagnostics.
+   *
+   * @param bytes complete bounded error response body
+   * @return the untrusted code value, or null if absent or malformed; callers must allowlist it
+   */
   private static Object errorCode(byte[] bytes) {
     try {
       Object parsed = MailApiJsonParser.parse(new String(bytes, StandardCharsets.UTF_8));

@@ -11,13 +11,31 @@ import java.util.Set;
 import network.crypta.crypt.mail.MailHpke;
 import network.crypta.crypt.mail.MailWire;
 
-/** Typed experimental Mail operations; invoked only under the owning vault service lock. */
+/**
+ * Typed experimental Mail cryptography under the owning vault service monitor.
+ *
+ * <p>Every entry point rechecks the fixed owner app and the relevant retained identity/grants.
+ * Callers in the API layer must separately enforce a current process principal and manifest
+ * capability; this helper has no browser/session or AppHost transport context. It must be called
+ * while holding the owning {@link AppVaultService} monitor.
+ *
+ * <p>Signing, incoming decryption and local-storage protection use independently generated keys
+ * with distinct purposes. Private bytes are read from encrypted vault storage for one operation and
+ * erased in finally blocks. Plaintext is visible to this trusted daemon/vault endpoint; key
+ * non-exportability does not protect against its compromise. Mailbox and contact-trust decisions
+ * remain with the app process, and these methods do not perform network I/O.
+ */
 final class MailVaultOperations {
   /** Only app permitted to own or invoke these Mail identities. */
   private static final String APP = "mail-prototype";
 
+  /** Public identity summary field containing the raw key in canonical Base64. */
   private static final String PUBLIC_KEY_BASE64 = "publicKeyBase64";
+
+  /** Public identity summary field binding separate purpose keys to one account. */
   private static final String ACCOUNT = "account";
+
+  /** Key role and HPKE purpose reserved for private local state. */
   private static final String STORAGE_ROLE = "storage";
 
   /** Authoritative identity lifecycle and grants, accessed under its monitor. */
@@ -48,7 +66,13 @@ final class MailVaultOperations {
     this.random = random;
   }
 
-  /** Checks all retained Mail authority without exposing grant-hidden identity metadata. */
+  /**
+   * Checks all retained Mail authority without exposing grant-hidden identity metadata.
+   *
+   * @param app authenticated Mail app identifier
+   * @throws AppVaultException if any retained Mail identity lacks current metadata/purpose
+   *     authority
+   */
   void requireIdentityAuthority(String app) {
     requireApp(app);
     for (AppIdentityRecord retained : service.listIdentities()) {
@@ -65,6 +89,11 @@ final class MailVaultOperations {
 
   /**
    * Creates an independent purpose identity and its narrow owner grant.
+   *
+   * <p>At most three retained identities per Mail kind are allowed, and generated metadata uses
+   * epoch one. Recipient/storage creation binds to the sole currently authorized Mail signer;
+   * signing identities receive a fresh random account identifier. This primitive does not implement
+   * rotation or repair revoked grants. A failed grant attempts to delete the just-stored identity.
    *
    * @param app authenticated Mail app identifier
    * @param kind dedicated signing, recipient or storage identity kind
@@ -141,7 +170,12 @@ final class MailVaultOperations {
     }
   }
 
-  /** Grants the new identity's purpose scopes, deleting the identity if granting fails. */
+  /**
+   * Grants the new identity's purpose scopes, deleting the identity if granting fails.
+   *
+   * @param id newly persisted identity to authorize or remove on failure
+   * @param scopes exact metadata/purpose scopes granted to the fixed Mail owner
+   */
   private void grantCreatedIdentity(String id, Set<AppIdentityGrantScope> scopes) {
     try {
       service.grantIdentity(id, APP, scopes, APP, "Dedicated Mail purpose", null, null);
@@ -202,6 +236,12 @@ final class MailVaultOperations {
 
   /**
    * Opens a fixed-purpose envelope under current grants and retained account binding.
+   *
+   * <p>Network opening authenticates the HPKE envelope, validates the complete inner message
+   * structure and checks the recipient account/key epoch. It checks signature encoding but does not
+   * verify the sender signature, contact pin, freshness or replay history. The worker must complete
+   * those checks before accepting or displaying the message. Storage opening uses a distinct HPKE
+   * domain and returns opaque local-state plaintext without applying network message rules.
    *
    * @param app authenticated Mail app identifier
    * @param id retained recipient or storage identity identifier
@@ -277,7 +317,7 @@ final class MailVaultOperations {
    * @param app authenticated Mail app identifier
    * @param id retained identity or record identifier
    * @param kind dedicated Mail identity kind
-   * @return authorized current identity or launch metadata
+   * @return authorized retained identity metadata
    */
   private AppIdentityRecord authorize(String app, String id, AppIdentityKind kind) {
     requireApp(app);
