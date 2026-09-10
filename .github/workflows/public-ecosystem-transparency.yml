@@ -162,7 +162,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
   observe:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && vars.PUBLIC_ECOSYSTEM_SITE_URL != ''
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && needs.build.outputs.site_url != ''
     needs: [build, deploy]
     runs-on: ubuntu-latest
     environment: public-ecosystem-transparency-observation
@@ -181,7 +181,7 @@ jobs:
         id: observation
         env:
           EXPECTED_DIGEST: ${{ needs.build.outputs.manifest_digest }}
-          SITE_URL: ${{ vars.PUBLIC_ECOSYSTEM_SITE_URL }}
+          SITE_URL: ${{ needs.build.outputs.site_url }}
         run: |
           python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "sha256:$EXPECTED_DIGEST"
           observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)

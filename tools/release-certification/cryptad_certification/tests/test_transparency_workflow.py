@@ -104,6 +104,14 @@ class TransparencyWorkflowTest(unittest.TestCase):
                 result = subprocess.run(['bash','-e','-c',transfer], env=env, capture_output=True)
                 self.assertNotEqual(result.returncode, 0)
 
+    def test_observation_uses_build_approved_site_url(self):
+        workflow = (Path(__file__).resolve().parents[4] / '.github/workflows/public-ecosystem-transparency.yml').read_text()
+        observe = workflow.split('  observe:\n', 1)[1]
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && needs.build.outputs.site_url != ''", observe)
+        self.assertIn('needs: [build, deploy]', observe)
+        self.assertIn('SITE_URL: ${{ needs.build.outputs.site_url }}', observe)
+        self.assertNotIn('vars.PUBLIC_ECOSYSTEM_SITE_URL', observe)
+
     def test_observation_report_survives_failed_step_without_masking_failure(self):
         import os
         import subprocess
