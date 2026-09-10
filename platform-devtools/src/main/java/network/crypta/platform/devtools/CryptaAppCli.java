@@ -266,7 +266,7 @@ public final class CryptaAppCli implements Runnable {
     CommandLine commandLine = new CommandLine(new CryptaAppCli());
     if (arguments.length > 0 && arguments[0].equals("migration")) {
       commandLine.setParameterExceptionHandler(
-          (exception, _) -> {
+          (_, _) -> {
             err.println("sharesite_invalid_arguments");
             return CommandLine.ExitCode.USAGE;
           });

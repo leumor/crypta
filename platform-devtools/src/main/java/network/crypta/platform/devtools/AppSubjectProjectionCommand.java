@@ -45,7 +45,7 @@ import picocli.CommandLine.Spec;
     description = "Derive public compatibility metadata from exact signed catalog and app bytes.")
 public final class AppSubjectProjectionCommand implements Callable<Integer> {
   private static final String SHA256_PREFIX = "sha256:";
-  @Spec private CommandSpec spec;
+  private CommandSpec spec;
 
   @Option(names = "--catalog", required = true)
   private Path catalog;
@@ -83,6 +83,13 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
   /** Creates an invocation whose inputs are populated by Picocli. */
   public AppSubjectProjectionCommand() {
     // Picocli supplies invocation fields after constructing this command.
+  }
+
+  // Picocli discovers this method through @Spec when it builds the command model.
+  @SuppressWarnings("unused")
+  @Spec
+  void setSpec(CommandSpec spec) {
+    this.spec = spec;
   }
 
   /**

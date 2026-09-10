@@ -169,7 +169,7 @@ class AppSubjectProjectionCommandTest {
 
   private int project(Fixture fixture, Path output, String... extra) {
     var arguments =
-        new ArrayList<String>(
+        new ArrayList<>(
             List.of(
                 "subject-projection",
                 "--catalog",
