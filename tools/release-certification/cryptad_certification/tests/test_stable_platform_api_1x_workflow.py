@@ -180,6 +180,8 @@ class StablePlatformApi1xWorkflowTest(unittest.TestCase):
         self.assertIn("--mode closeout", self.producer)
         self.assertIn("actions: read", self.producer)
         self.assertIn("deployments: read", self.producer)
+        self.assertIn("attestations: read", self.producer)
+        self.assertNotIn("attestations: write", self.producer)
         self.assertNotIn("contents: write", self.producer)
 
     def test_producers_whenEvidenceDirectorySelected_expectEveryAncestorConfined(
