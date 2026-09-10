@@ -33,6 +33,20 @@ class CrossVersionCommandTest(unittest.TestCase):
         self.assertNotIn('Traceback', output.getvalue())
         self.assertIn('no complete soak evidence', output.getvalue())
 
+    def test_plan_with_no_probe_headroom_is_rejected_before_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            value = fixture_plan()
+            value['policy']['maxGapSeconds'] = value['probeIntervalSeconds']
+            plan = root / 'plan.json'
+            plan.write_text(json.dumps(value))
+            output = root / 'public'
+            args = build_parser().parse_args(['cross-version-soak', 'plan', '--plan', str(plan),
+                                             '--out-dir', str(output)])
+            with self.assertRaisesRegex(ValueError, 'maximum-gap-invalid'):
+                run(args)
+            self.assertFalse(output.exists())
+
     def test_live_without_explicit_execution_cannot_create_private_root(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

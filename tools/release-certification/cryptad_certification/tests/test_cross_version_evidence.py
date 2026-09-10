@@ -170,6 +170,19 @@ class CrossVersionEvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(EvidenceError, "cohort-binding"):
             self.verify_fixture(plan, events)
 
+    def test_probe_interval_must_be_strictly_below_maximum_gap(self):
+        for interval in (0.01, 1, 300):
+            for gap in (interval - 0.001, interval, interval + 0.001):
+                with self.subTest(interval=interval, gap=gap):
+                    plan = fixture_plan()
+                    plan["probeIntervalSeconds"] = interval
+                    plan["policy"]["maxGapSeconds"] = gap
+                    if gap <= interval:
+                        with self.assertRaisesRegex(EvidenceError, "maximum-gap-invalid"):
+                            validate_plan(plan)
+                    else:
+                        validate_plan(plan)
+
     def test_malformed_plan_types_fail_with_closed_error(self):
         for field, value in (("profile", []), ("provenanceClass", {}), ("requiredScenarios", [{}]), ("schemaVersion", True), ("experimentId", 42)):
             plan = fixture_plan()

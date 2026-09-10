@@ -83,6 +83,8 @@ def validate_plan(plan):
         raise EvidenceError("policy-id-invalid")
     _number(policy["minimumObservedSeconds"], 0, 5 * 86400, "minimum-duration")
     _number(policy["maxGapSeconds"], plan["probeIntervalSeconds"], 600, "maximum-gap")
+    if plan["probeIntervalSeconds"] >= policy["maxGapSeconds"]:
+        raise EvidenceError("maximum-gap-invalid")
     _number(policy["maxEvents"], 10, 1000000, "event-budget")
     if type(policy["maxEvents"]) is not int or policy["minimumObservedSeconds"] > plan["requestedSeconds"]:
         raise EvidenceError("policy-budget-invalid")
