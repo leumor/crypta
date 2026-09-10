@@ -28,6 +28,10 @@ class PublicObservationTransportError(RuntimeError):
     """One public-safe failure at the read-only observation transport boundary."""
 
 
+class PublicObservationNotFound(PublicObservationTransportError):
+    """The selected public resource explicitly returned HTTP 404."""
+
+
 @dataclass(frozen=True)
 class ObservedBytes:
     """The bounded size and SHA-256 identity observed for one public object."""
@@ -266,6 +270,8 @@ class PublicObservationTransport:
                         retain=retain,
                         visited=visited | {canonical},
                     )
+                if response.status == 404:
+                    raise PublicObservationNotFound("http-response-not-found")
                 if response.status != 200:
                     raise PublicObservationTransportError("http-response-not-success")
                 declared = _content_length(response)

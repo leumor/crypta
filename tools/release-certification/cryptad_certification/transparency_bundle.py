@@ -270,6 +270,8 @@ def check_history(current, previous):
 
 
 def build(package, output, *, previous=None, previous_manifest=None):
+    if previous_manifest is not None and previous is None:
+        fail('checkpoint-bundle-required')
     output = confined(output)
     if output.exists() or not output.parent.is_dir():
         fail('output-must-be-fresh')
@@ -384,3 +386,58 @@ def observe(root, base_url, observed_at, *, expected_manifest=None, fetcher=None
             'exactFiles': exact, 'unavailableFiles': missing, 'conflictingFiles': changed,
             'scope': 'one-bounded-observation-not-independent-infrastructure',
             'propagation': 'cdn-propagation-uncertainty', 'sourcePublication': 'unchanged'}
+
+
+def collect_checkpoint(base_url, output, *, previous_manifest=None, bootstrap_manifest=None, fetcher=None):
+    """Fetch a pinned current public bundle, or prove explicit first-publication absence.
+
+    Approval pins come from the protected operator configuration, never from fetched bytes.
+    No source-selected code runs, and no output is retained after incomplete collection.
+    """
+    from .transparency_sources import fetch_site, SiteNotFound
+    from .schema_validation import validate_schema
+    if bool(previous_manifest) == bool(bootstrap_manifest):
+        fail('checkpoint-approval-required')
+    pin = previous_manifest or bootstrap_manifest
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', pin):
+        fail('checkpoint-pin-invalid')
+    output = confined(output)
+    if output.exists() or not output.parent.is_dir() or not base_url.endswith('/'):
+        fail('checkpoint-output-invalid')
+    fetcher = fetcher or (lambda url, limit: fetch_site(url, limit, base_url))
+    deadline = time.monotonic() + 60
+    try:
+        raw_manifest = fetcher(base_url + MANIFEST, MAX_FILE)
+    except SiteNotFound:
+        if not bootstrap_manifest:
+            fail('checkpoint-current-missing')
+        return {'status': 'bootstrap-authorized', 'manifestDigest': bootstrap_manifest}
+    if bootstrap_manifest:
+        fail('checkpoint-bootstrap-site-exists')
+    if len(raw_manifest) > MAX_FILE or digest(raw_manifest) != previous_manifest:
+        fail('checkpoint-current-conflict')
+    manifest = parse(raw_manifest)
+    if validate_schema(manifest, 'public-ecosystem-site-bundle-v1.schema.json') or manifest['mode'] != 'production':
+        fail('checkpoint-contract')
+    rows = manifest['files']
+    names = [safe_name(row['path']) for row in rows]
+    if (MANIFEST in names or len(names) >= MAX_FILES or len(set(names)) != len(names)
+            or any(row['size'] > MAX_FILE for row in rows)
+            or sum(row['size'] for row in rows) + len(raw_manifest) > MAX_TOTAL):
+        fail('checkpoint-inventory')
+    with tempfile.TemporaryDirectory(prefix='.checkpoint-', dir=output.parent) as temporary:
+        stage = Path(temporary)/'site'
+        stage.mkdir()
+        (stage/MANIFEST).write_bytes(raw_manifest)
+        for row in rows:
+            if time.monotonic() >= deadline:
+                fail('checkpoint-time-limit')
+            raw = fetcher(base_url + row['path'], row['size'])
+            if len(raw) != row['size'] or digest(raw) != row['digest']:
+                fail('checkpoint-content')
+            path = stage/row['path']
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(raw)
+        verify_checkpoint(stage, previous_manifest)
+        stage.rename(output)
+    return {'status': 'checkpoint-verified', 'manifestDigest': previous_manifest}

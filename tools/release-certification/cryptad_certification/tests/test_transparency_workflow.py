@@ -36,6 +36,74 @@ class TransparencyWorkflowTest(unittest.TestCase):
         self.assertNotIn('--demo', build)
         self.assertNotIn('--mode collect', build)
 
+    def test_deployment_requires_current_checkpoint_before_build_and_packaging(self):
+        workflow = (Path(__file__).resolve().parents[4] / '.github/workflows/public-ecosystem-transparency.yml').read_text()
+        build = workflow.split('  build:\n', 1)[1].split('  transfer-verify:\n', 1)[0]
+        transfer = workflow.split('  transfer-verify:\n', 1)[1].split('  deploy:\n', 1)[0]
+        self.assertLess(build.index('--mode checkpoint'), build.index('--mode build'))
+        self.assertLess(transfer.index('--mode checkpoint'), transfer.index('actions/upload-pages-artifact'))
+        for stage in (build, transfer):
+            self.assertIn('--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST"', stage)
+            self.assertIn('"${history[@]}"', stage)
+            self.assertNotIn('continue-on-error', stage)
+        self.assertIn('vars.PUBLIC_ECOSYSTEM_CURRENT_MANIFEST_DIGEST', build)
+        self.assertIn('vars.PUBLIC_ECOSYSTEM_BOOTSTRAP_MANIFEST_DIGEST', build)
+        self.assertIn('--expected-manifest-digest "$BOOTSTRAP_MANIFEST"', build)
+        self.assertIn('test "sha256:$EXPECTED_DIGEST" = "$BOOTSTRAP_MANIFEST"', transfer)
+
+    def test_actual_workflow_build_and_transfer_enforce_checkpoint(self):
+        import os
+        import shutil
+        import subprocess
+        import sys
+        import tempfile
+        from cryptad_certification import transparency_bundle as bundle, transparency_sources as sources
+        workflow = (Path(__file__).resolve().parents[4] / '.github/workflows/public-ecosystem-transparency.yml').read_text()
+        def script(name):
+            step = workflow.split('      - name: '+name+'\n', 1)[1].split('      - ', 1)[0]
+            return '\n'.join(line[10:] for line in step.split('        run: |\n', 1)[1].splitlines())
+        checkpoint = script('Verify approved current public checkpoint or first-publication absence')
+        render = script('Render reviewed production successor offline')
+        transfer = script('Recheck current public checkpoint and successor before Pages packaging')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            published = root/'published'
+            package = sources.collect({'schemaVersion':1,'mode':'production','asOf':'2026-09-10T00:00:00Z','sources':[]}, root)
+            bundle.build(package, published)
+            prior = bundle.digest((published/bundle.MANIFEST).read_bytes())
+            shim = root/'python3'
+            shim.write_text('#!'+sys.executable+'\n'+
+                'import os,sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path("tools/release-certification").resolve()))\n'+
+                'from cryptad_certification import transparency_sources as s\n'+
+                'from cryptad_certification.cli import main\n'+
+                'def fetch(url,limit,base):\n    name=url.removeprefix(base)\n    return (Path(os.environ["SYNTHETIC_PUBLISHED"])/name).read_bytes()\n'+
+                's.fetch_site=fetch\nsys.exit(main(sys.argv[2:]))\n')
+            shim.chmod(0o700)
+            for time, accepted in (('2026-09-09T00:00:00Z', False), ('2026-09-11T00:00:00Z', True)):
+                runner = root/('accepted' if accepted else 'rollback')
+                runner.mkdir()
+                env = {**os.environ, 'PATH':str(root)+os.pathsep+os.environ['PATH'],
+                       'RUNNER_TEMP':str(runner), 'GITHUB_OUTPUT':str(runner/'outputs'),
+                       'PRIOR_MANIFEST':prior, 'BOOTSTRAP_MANIFEST':'',
+                       'SITE_URL':'https://example.org/site/', 'SNAPSHOT_TIME':time,
+                       'SYNTHETIC_PUBLISHED':str(published)}
+                result = subprocess.run(['bash','-e','-c',checkpoint+'\n'+render], env=env, capture_output=True)
+                self.assertEqual(result.returncode == 0, accepted, result.stdout.decode())
+                if not accepted:
+                    self.assertFalse((runner/'public-site').exists())
+                    continue
+                transfer_root = root/'transfer'
+                transfer_root.mkdir()
+                shutil.copytree(runner/'public-site', transfer_root/'public-site')
+                env['RUNNER_TEMP'] = str(transfer_root)
+                env['EXPECTED_DIGEST'] = bundle.digest((transfer_root/'public-site'/bundle.MANIFEST).read_bytes())[7:]
+                result = subprocess.run(['bash','-e','-c',transfer], env=env, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout.decode())
+                shutil.rmtree(transfer_root/'previous-site')
+                (published/'index.html').write_bytes(b'changed-current-deployment')
+                result = subprocess.run(['bash','-e','-c',transfer], env=env, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+
     def test_observation_report_survives_failed_step_without_masking_failure(self):
         import os
         import subprocess

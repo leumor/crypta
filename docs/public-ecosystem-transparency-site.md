@@ -250,6 +250,49 @@ results. Its artifact-retention step runs even after that failure when the fixed
 `public-observation.json` report was produced. It uploads only that file; a failed transfer
 verification or an observer that produces no report does not enable retention.
 
+## Required deployment checkpoint approval
+
+Every protected Pages dispatch now verifies the currently served checkpoint before rendering,
+and verifies it again in the transfer job before packaging for Pages. The workflow remains
+serialized for the site target. Configure the exact approved URL in `siteTargets` and the
+protected build environment's `PUBLIC_ECOSYSTEM_SITE_URL`.
+
+For a successor, set `PUBLIC_ECOSYSTEM_CURRENT_MANIFEST_DIGEST` to the independently approved
+`sha256:` digest of the currently published site manifest. Leave
+`PUBLIC_ECOSYSTEM_BOOTSTRAP_MANIFEST_DIGEST` empty. The explicit `checkpoint` command fetches
+that manifest through the bounded, DNS-pinned site transport, checks its approved digest before
+fetching members, and verifies all exact files and snapshot bindings. Only the resulting verified
+prior bundle enters the build's `--previous-bundle` / `--previous-manifest-digest` checks.
+Transfer verification repeats collection and history checking; an older timestamp, removed row,
+changed current manifest, missing asset or expired checkpoint availability blocks packaging.
+No partial checkpoint or network-error fallback is used. Old tool code is never executed.
+
+For the first publication only, independently prepare and approve the exact initial production
+bundle with the intended tool/policy/source bytes and fixed `as_of`. Set its manifest digest in
+`PUBLIC_ECOSYSTEM_BOOTSTRAP_MANIFEST_DIGEST`, leaving the current-manifest variable empty.
+Both preflights require an actual HTTP 404 at the approved manifest URL; 403, 410, redirects,
+timeouts and other failures do not establish absence. The generated and transferred bundle must
+match the approved initial digest exactly. This is a protected first-publication approval, not
+permission to reclaim an existing site. After publication, retire the bootstrap approval and
+advance the current-manifest pin through protected operator approval. If the pin is not advanced,
+a subsequent dispatch fails against the changed current bytes. Withdrawal or missing-current-site
+recovery requires separate reviewed authorization; never reuse bootstrap approval as a rollback.
+
+Example read-only successor checkpoint collection:
+
+```bash
+python3 tools/release-certification/certify.py public-ecosystem-transparency \
+  --mode checkpoint --url "$APPROVED_SITE_URL" \
+  --previous-manifest-digest "$APPROVED_CURRENT_MANIFEST_DIGEST" \
+  --output build/transparency/previous-site
+```
+
+The two checkpoint checks bound the observed state; they are not a global transparency log or a
+cross-provider lock. The target must be dedicated to this serialized publication workflow.
+Concurrent external writes, a compromised host serving stale bytes, and stale operator approvals
+remain outside that guarantee. No environment variables were configured and no deployment or
+live checkpoint acquisition was performed while implementing these checks.
+
 ## History, corrections and withdrawal
 
 Repository-status statements have revision identities bound to their exact public-byte digests.

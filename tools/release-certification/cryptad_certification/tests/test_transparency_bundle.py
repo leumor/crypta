@@ -418,6 +418,89 @@ class BundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'source-identity-conflict'):
             b.check_history(current, previous)
 
+    def test_checkpoint_pin_without_bundle_is_rejected_before_output(self):
+        from cryptad_certification.cli import main
+        pin = 'sha256:' + 'a'*64
+        with self.assertRaisesRegex(ValueError, 'checkpoint-bundle-required'):
+            b.build(self.package, self.root/'orphan', previous_manifest=pin)
+        with contextlib.redirect_stdout(io.StringIO()):
+            status = main(['public-ecosystem-transparency', '--mode', 'build',
+                           '--as-of', '2026-09-11T00:00:00Z', '--previous-manifest-digest', pin,
+                           '--output', str(self.root/'orphan')])
+        self.assertEqual(status, 2)
+        self.assertFalse((self.root/'orphan').exists())
+
+    def test_current_checkpoint_collection_binds_every_byte_and_blocks_rollback(self):
+        old = self.build('published')
+        files = b.inventory(old)
+        pin = b.digest(files[b.MANIFEST])
+        base = 'https://example.org/site/'
+        calls = []
+        def fetch(url, limit):
+            name = url.removeprefix(base)
+            calls.append(name)
+            self.assertLessEqual(len(files[name]), limit)
+            return files[name]
+        checkpoint = self.root/'checkpoint'
+        result = b.collect_checkpoint(base, checkpoint, previous_manifest=pin, fetcher=fetch)
+        self.assertEqual(result['status'], 'checkpoint-verified')
+        self.assertEqual(calls[0], b.MANIFEST)
+        self.assertEqual(set(calls), set(files))
+        self.assertEqual(b.inventory(checkpoint), files)
+        with self.assertRaisesRegex(ValueError, 'snapshot-not-successor'):
+            b.build(self.package, self.root/'rollback', previous=checkpoint, previous_manifest=pin)
+        self.package['selection']['asOf'] = '2026-09-11T00:00:00Z'
+        b.build(self.package, self.root/'successor', previous=checkpoint, previous_manifest=pin)
+        for mode in ('wrong-pin', 'mixed', 'missing', 'timeout'):
+            with self.subTest(mode=mode):
+                def broken(url, limit):
+                    if mode == 'timeout':
+                        raise TimeoutError('synthetic')
+                    if url.endswith('index.html') and mode == 'missing':
+                        raise s.SiteNotFound('site-not-found')
+                    if url.endswith('index.html') and mode == 'mixed':
+                        return b'other-generation'
+                    return fetch(url, limit)
+                destination = self.root/mode
+                with self.assertRaises((ValueError, TimeoutError)):
+                    b.collect_checkpoint(base, destination, previous_manifest=('sha256:'+'f'*64 if mode == 'wrong-pin' else pin), fetcher=broken)
+                self.assertFalse(destination.exists())
+
+    def test_bootstrap_requires_exact_approval_and_explicit_404(self):
+        pin = 'sha256:' + 'a'*64
+        base = 'https://example.org/site/'
+        def absent(*_):
+            raise s.SiteNotFound('site-not-found')
+        destination = self.root/'bootstrap'
+        self.assertEqual(b.collect_checkpoint(base, destination, bootstrap_manifest=pin, fetcher=absent),
+                         {'status': 'bootstrap-authorized', 'manifestDigest': pin})
+        self.assertFalse(destination.exists())
+        for prior, initial in ((None, None), (pin, pin), (pin, None)):
+            with self.assertRaises(ValueError):
+                b.collect_checkpoint(base, destination, previous_manifest=prior, bootstrap_manifest=initial, fetcher=absent)
+        with self.assertRaisesRegex(ValueError, 'checkpoint-bootstrap-site-exists'):
+            b.collect_checkpoint(base, destination, bootstrap_manifest=pin, fetcher=lambda *_: b'existing')
+        def unavailable(*_):
+            raise s.SourceError('site-fetch-unavailable')
+        with self.assertRaises(s.SourceError):
+            b.collect_checkpoint(base, destination, bootstrap_manifest=pin, fetcher=unavailable)
+
+    def test_checkpoint_transport_distinguishes_404_from_other_failures(self):
+        from unittest import mock
+        from cryptad_certification.engines import stable_1_0_public_observation as transport
+        from cryptad_certification.tests.test_stable_public_observation import _FakeHttpResponse, _scripted_connections
+        base = 'https://example.org/site/'
+        rules, pin = s.policy()
+        for status in (404, 403, 410, 500, 302):
+            with self.subTest(status=status):
+                factory, _ = _scripted_connections([_FakeHttpResponse(status)])
+                with mock.patch.object(s, 'policy', return_value=({**rules, 'siteTargets':[base]}, pin)), \
+                     mock.patch.object(transport, '_global_addresses', return_value=('8.8.8.8',)), \
+                     mock.patch.object(transport, '_PinnedHTTPSConnection', side_effect=factory):
+                    with self.assertRaises(s.SourceError) as failure:
+                        s.fetch_site(base+b.MANIFEST, b.MAX_FILE, base)
+                self.assertEqual(isinstance(failure.exception, s.SiteNotFound), status == 404)
+
     def test_cli_failure_has_only_fixed_diagnostic_and_no_public_output(self):
         from cryptad_certification.cli import main
         output = self.root/'site'

@@ -59,19 +59,39 @@ jobs:
       contents: read
     outputs:
       manifest_digest: ${{ steps.identity.outputs.manifest_digest }}
+      prior_manifest: ${{ steps.checkpoint.outputs.prior_manifest }}
+      bootstrap_manifest: ${{ steps.checkpoint.outputs.bootstrap_manifest }}
+      site_url: ${{ steps.checkpoint.outputs.site_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Render reviewed empty production selection offline
+      - name: Verify approved current public checkpoint or first-publication absence
+        id: checkpoint
+        env:
+          PRIOR_MANIFEST: ${{ vars.PUBLIC_ECOSYSTEM_CURRENT_MANIFEST_DIGEST }}
+          BOOTSTRAP_MANIFEST: ${{ vars.PUBLIC_ECOSYSTEM_BOOTSTRAP_MANIFEST_DIGEST }}
+          SITE_URL: ${{ vars.PUBLIC_ECOSYSTEM_SITE_URL }}
+        run: |
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode checkpoint --url "$SITE_URL" --output "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST" --bootstrap-manifest-digest "$BOOTSTRAP_MANIFEST"
+          echo "prior_manifest=$PRIOR_MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "bootstrap_manifest=$BOOTSTRAP_MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "site_url=$SITE_URL" >> "$GITHUB_OUTPUT"
+      - name: Render reviewed production successor offline
         env:
           SNAPSHOT_TIME: ${{ inputs.as_of }}
-        run: >-
-          python3 tools/release-certification/certify.py public-ecosystem-transparency
-          --mode build --selection tools/ecosystem-transparency/production-selection.json
-          --source-root tools/ecosystem-transparency --output "$RUNNER_TEMP/public-site"
-          --as-of "$SNAPSHOT_TIME"
+          PRIOR_MANIFEST: ${{ steps.checkpoint.outputs.prior_manifest }}
+          BOOTSTRAP_MANIFEST: ${{ steps.checkpoint.outputs.bootstrap_manifest }}
+        run: |
+          history=()
+          if [ -n "$PRIOR_MANIFEST" ]; then
+            history=(--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST")
+          fi
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode build --selection tools/ecosystem-transparency/production-selection.json --source-root tools/ecosystem-transparency --output "$RUNNER_TEMP/public-site" --as-of "$SNAPSHOT_TIME" "${history[@]}"
+          if [ -n "$BOOTSTRAP_MANIFEST" ]; then
+            python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "$BOOTSTRAP_MANIFEST"
+          fi
       - name: Verify complete public export
         run: python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site"
       - id: identity
@@ -108,6 +128,21 @@ jobs:
           test "$(sha256sum "$RUNNER_TEMP/public-site/site-bundle-manifest.json" | cut -d ' ' -f 1)" = "$EXPECTED_DIGEST"
           python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site"
           python3 -c 'import json,os; from pathlib import Path; assert json.loads((Path(os.environ["RUNNER_TEMP"])/"public-site/data/public-index.json").read_text())["mode"] == "production"'
+      - name: Recheck current public checkpoint and successor before Pages packaging
+        env:
+          PRIOR_MANIFEST: ${{ needs.build.outputs.prior_manifest }}
+          BOOTSTRAP_MANIFEST: ${{ needs.build.outputs.bootstrap_manifest }}
+          SITE_URL: ${{ needs.build.outputs.site_url }}
+          EXPECTED_DIGEST: ${{ needs.build.outputs.manifest_digest }}
+        run: |
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode checkpoint --url "$SITE_URL" --output "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST" --bootstrap-manifest-digest "$BOOTSTRAP_MANIFEST"
+          history=()
+          if [ -n "$PRIOR_MANIFEST" ]; then
+            history=(--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST")
+          else
+            test "sha256:$EXPECTED_DIGEST" = "$BOOTSTRAP_MANIFEST"
+          fi
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "sha256:$EXPECTED_DIGEST" "${history[@]}"
       - name: Package verified site for Pages
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:

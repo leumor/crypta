@@ -89,10 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
     cross_version.add_argument("--self-test", action="store_true")
 
     transparency = subparsers.add_parser("public-ecosystem-transparency")
-    transparency.add_argument("--mode", choices=("plan", "project", "collect", "build", "verify", "observe"))
+    transparency.add_argument("--mode", choices=("plan", "project", "collect", "build", "verify", "observe", "checkpoint"))
     for option in ("selection", "source-root", "source-package", "authority-manifest", "private-root", "output", "bundle", "previous-bundle"):
         transparency.add_argument("--" + option, type=Path)
-    for option in ("as-of", "url", "observed-at", "expected-manifest-digest", "previous-manifest-digest"):
+    for option in ("as-of", "url", "observed-at", "expected-manifest-digest", "previous-manifest-digest", "bootstrap-manifest-digest"):
         transparency.add_argument("--" + option)
     transparency.add_argument("--role", choices=("release", "maintenance", "advisories"))
     for option in ("demo", "production", "online", "self-test"):

@@ -29,6 +29,10 @@ class SourceError(ValueError):
     """Fixed public-safe source failure code."""
 
 
+class SiteNotFound(SourceError):
+    """The exact approved site resource returned HTTP 404."""
+
+
 class SiteContentMismatch(SourceError):
     """A successful public response exceeded the approved asset's byte bound."""
 
@@ -377,13 +381,15 @@ def fetch_site(url, maximum_bytes, base_url):
             or type(maximum_bytes) is not int or not 0 <= maximum_bytes <= LIMIT):
         raise SourceError("site-fetch-boundary")
     from .engines.stable_1_0_public_observation import (
-        PublicObservationTransport, PublicObservationTransportError,
+        PublicObservationTransport, PublicObservationTransportError, PublicObservationNotFound,
     )
     try:
         raw, _ = PublicObservationTransport(timeout=10)._read(
             url, headers={"Accept-Encoding": "identity"}, maximum_bytes=maximum_bytes,
             exact_size=None, redirect_budget=0, retain=True, visited=frozenset())
         return raw
+    except PublicObservationNotFound:
+        raise SiteNotFound("site-not-found") from None
     except PublicObservationTransportError as error:
         if str(error) == 'http-response-too-large':
             raise SiteContentMismatch('site-content-size-mismatch') from None

@@ -49,7 +49,16 @@ def run(args):
     try:
         if args.demo and args.production or args.online and args.mode not in ('collect', 'project'):
             bundle.fail('mode-options-conflict')
-        if args.mode == 'plan':
+        if args.mode != 'checkpoint' and args.previous_manifest_digest and not args.previous_bundle:
+            bundle.fail('checkpoint-bundle-required')
+        if args.bootstrap_manifest_digest and args.mode != 'checkpoint':
+            bundle.fail('bootstrap-mode-invalid')
+        if args.mode == 'checkpoint':
+            if not args.url or not args.output or args.demo:
+                bundle.fail('checkpoint-input-required')
+            result = bundle.collect_checkpoint(args.url, args.output,
+                previous_manifest=args.previous_manifest_digest, bootstrap_manifest=args.bootstrap_manifest_digest)
+        elif args.mode == 'plan':
             rules, pin = sources.policy()
             result = {'schemaVersion': 1, 'policyDigest': pin, 'roles': rules['roles'],
                       'productionSourceCount': len(rules['approvedSources']),
@@ -94,6 +103,9 @@ def run(args):
                 bundle.fail('bundle-required')
             result = bundle.verify(args.bundle, expected_manifest=args.expected_manifest_digest,
                                    production=args.production)
+            if args.previous_bundle:
+                prior = bundle.verify_checkpoint(args.previous_bundle, args.previous_manifest_digest) if args.previous_manifest_digest else bundle.verify(args.previous_bundle)['index']
+                bundle.check_history(result['index'], prior)
             result.pop('index')
         elif args.mode == 'observe':
             if not args.bundle or not args.url or not args.observed_at or not args.expected_manifest_digest:
