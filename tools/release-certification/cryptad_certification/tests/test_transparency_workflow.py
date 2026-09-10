@@ -46,6 +46,8 @@ class TransparencyWorkflowTest(unittest.TestCase):
             self.assertIn('--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST"', stage)
             self.assertIn('"${history[@]}"', stage)
             self.assertNotIn('continue-on-error', stage)
+        self.assertLess(build.index('check_publication_time'), build.index('--mode build'))
+        self.assertLess(transfer.index('check_publication_time'), transfer.index('actions/upload-pages-artifact'))
         self.assertIn('vars.PUBLIC_ECOSYSTEM_CURRENT_MANIFEST_DIGEST', build)
         self.assertIn('vars.PUBLIC_ECOSYSTEM_BOOTSTRAP_MANIFEST_DIGEST', build)
         self.assertIn('--expected-manifest-digest "$BOOTSTRAP_MANIFEST"', build)
@@ -73,14 +75,14 @@ class TransparencyWorkflowTest(unittest.TestCase):
             prior = bundle.digest((published/bundle.MANIFEST).read_bytes())
             shim = root/'python3'
             shim.write_text('#!'+sys.executable+'\n'+
-                'import os,sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path("tools/release-certification").resolve()))\n'+
+                'import os,sys\nif sys.argv[1] == \'-c\':\n    from datetime import datetime, timezone\n    from cryptad_certification import transparency_bundle as b\n    original = b.check_publication_time\n    b.check_publication_time = lambda value: original(value, now=datetime(2026,9,12,tzinfo=timezone.utc))\n    exec(sys.argv[2]); sys.exit(0)\nfrom pathlib import Path\nsys.path.insert(0,str(Path("tools/release-certification").resolve()))\n'+
                 'from cryptad_certification import transparency_sources as s\n'+
                 'from cryptad_certification.cli import main\n'+
                 'def fetch(url,limit,base):\n    name=url.removeprefix(base)\n    return (Path(os.environ["SYNTHETIC_PUBLISHED"])/name).read_bytes()\n'+
                 's.fetch_site=fetch\nsys.exit(main(sys.argv[2:]))\n')
             shim.chmod(0o700)
-            for time, accepted in (('2026-09-09T00:00:00Z', False), ('2026-09-11T00:00:00Z', True)):
-                runner = root/('accepted' if accepted else 'rollback')
+            for time, accepted in (('2026-09-09T00:00:00Z', False), ('2099-01-01T00:00:00Z', False), ('2026-09-11T00:00:00Z', True)):
+                runner = root/time[:10]
                 runner.mkdir()
                 env = {**os.environ, 'PATH':str(root)+os.pathsep+os.environ['PATH'],
                        'RUNNER_TEMP':str(runner), 'GITHUB_OUTPUT':str(runner/'outputs'),
@@ -100,6 +102,18 @@ class TransparencyWorkflowTest(unittest.TestCase):
                 result = subprocess.run(['bash','-e','-c',transfer], env=env, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stdout.decode())
                 shutil.rmtree(transfer_root/'previous-site')
+                shutil.rmtree(transfer_root/'public-site')
+                future_package = sources.collect({'schemaVersion':1,'mode':'production',
+                    'asOf':'2099-01-01T00:00:00Z','sources':[]}, root)
+                bundle.build(future_package, transfer_root/'public-site')
+                env['EXPECTED_DIGEST'] = bundle.digest((transfer_root/'public-site'/bundle.MANIFEST).read_bytes())[7:]
+                result = subprocess.run(['bash','-e','-c',transfer], env=env, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('snapshot-after-publication-time', result.stderr.decode())
+                shutil.rmtree(transfer_root/'previous-site')
+                shutil.rmtree(transfer_root/'public-site')
+                shutil.copytree(runner/'public-site', transfer_root/'public-site')
+                env['EXPECTED_DIGEST'] = bundle.digest((transfer_root/'public-site'/bundle.MANIFEST).read_bytes())[7:]
                 (published/'index.html').write_bytes(b'changed-current-deployment')
                 result = subprocess.run(['bash','-e','-c',transfer], env=env, capture_output=True)
                 self.assertNotEqual(result.returncode, 0)

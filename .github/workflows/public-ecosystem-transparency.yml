@@ -84,6 +84,7 @@ jobs:
           PRIOR_MANIFEST: ${{ steps.checkpoint.outputs.prior_manifest }}
           BOOTSTRAP_MANIFEST: ${{ steps.checkpoint.outputs.bootstrap_manifest }}
         run: |
+          PYTHONPATH=tools/release-certification python3 -c 'import os; from cryptad_certification.transparency_bundle import check_publication_time; check_publication_time(os.environ["SNAPSHOT_TIME"])'
           history=()
           if [ -n "$PRIOR_MANIFEST" ]; then
             history=(--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST")
@@ -143,6 +144,7 @@ jobs:
             test "sha256:$EXPECTED_DIGEST" = "$BOOTSTRAP_MANIFEST"
           fi
           python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "sha256:$EXPECTED_DIGEST" "${history[@]}"
+          PYTHONPATH=tools/release-certification python3 -c 'import os; from pathlib import Path; from cryptad_certification.transparency_bundle import check_publication_time, parse; check_publication_time(parse((Path(os.environ["RUNNER_TEMP"])/"public-site/data/public-index.json").read_bytes())["asOf"])'
       - name: Package verified site for Pages
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:

@@ -252,6 +252,10 @@ verification or an observer that produces no report does not enable retention.
 
 ## Required deployment checkpoint approval
 
+Every protected Pages dispatch rejects a snapshot `as_of` later than the runner's current UTC time
+before rendering. Transfer verification repeats this check against the actual bundled public index
+before Pages packaging. Offline generation remains deterministic and does not consult the clock.
+
 Every protected Pages dispatch now verifies the currently served checkpoint before rendering,
 and verifies it again in the transfer job before packaging for Pages. The workflow remains
 serialized for the site target. Configure the exact approved URL in `siteTargets` and the

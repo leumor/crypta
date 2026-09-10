@@ -10,7 +10,7 @@ import re
 import stat
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 MAX_FILES = 256
 MAX_FILE = 4 * 1024 * 1024
@@ -79,6 +79,15 @@ def timestamp(value):
         return datetime.strptime(value, '%Y-%m-%dT%H:%M:%SZ')
     except ValueError:
         fail('timestamp-invalid')
+
+
+def check_publication_time(as_of, *, now=None):
+    """Reject future snapshots at an explicit publication gate, never during offline rendering."""
+    current = now if now is not None else datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        fail('publication-clock-invalid')
+    if timestamp(as_of).replace(tzinfo=timezone.utc) > current:
+        fail('snapshot-after-publication-time')
 
 
 def safe_name(name):

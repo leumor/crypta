@@ -501,6 +501,19 @@ class BundleTests(unittest.TestCase):
                         s.fetch_site(base+b.MANIFEST, b.MAX_FILE, base)
                 self.assertEqual(isinstance(failure.exception, s.SiteNotFound), status == 404)
 
+    def test_publication_time_rejects_future_without_changing_offline_builds(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+        for value in ('2026-09-09T00:00:00Z', '2026-09-10T12:00:00Z'):
+            b.check_publication_time(value, now=now)
+        for value in ('2026-09-10T12:00:01Z', '2099-01-01T00:00:00Z'):
+            with self.assertRaisesRegex(ValueError, 'snapshot-after-publication-time'):
+                b.check_publication_time(value, now=now)
+        with self.assertRaisesRegex(ValueError, 'publication-clock-invalid'):
+            b.check_publication_time('2026-09-10T12:00:00Z', now=now.replace(tzinfo=None))
+        self.package['selection']['asOf'] = '2099-01-01T00:00:00Z'
+        self.assertEqual(b.verify(self.build('offline-future'))['index']['asOf'], '2099-01-01T00:00:00Z')
+
     def test_cli_failure_has_only_fixed_diagnostic_and_no_public_output(self):
         from cryptad_certification.cli import main
         output = self.root/'site'
