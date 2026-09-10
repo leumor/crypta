@@ -12,9 +12,33 @@ from cryptad_certification import maintenance_drill_command as drill
 
 
 class MaintenanceDrillTest(unittest.TestCase):
+    def test_owned_temp_fixture_resolves_symlink_parent_without_weakening_runner(self):
+        from cryptad_certification import maintenance_drill_train as train
+
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary).resolve()
+            alias = parent / "temp-alias"
+            alias.symlink_to(parent, target_is_directory=True)
+            with tempfile.TemporaryDirectory(dir=alias) as owned:
+                # macOS temporary paths can contain a symlinked ancestor. Resolve only the
+                # test-owned fixture; the operational entrypoints must still reject aliases.
+                unresolved = Path(owned)
+                with self.assertRaisesRegex(ValueError, "must-be-new"):
+                    drill.run(unresolved / "drill", execute_isolated=True)
+                with self.assertRaisesRegex(ValueError, "root-invalid"):
+                    train.execute(unresolved)
+                root = unresolved.resolve() / "drill"
+                record = drill.run(root, execute_isolated=True)
+                self.assertEqual("executed", record["status"])
+                self.assertEqual(list(drill.CASES), record["observedCases"])
+                self.assertEqual("owned-synthetic-state-removed", record["cleanup"])
+                self.assertEqual(record, drill._read(root / "summary.json"))
+                with self.assertRaisesRegex(ValueError, "input-invalid"):
+                    drill._read(unresolved / "drill" / "summary.json")
+
     def test_disk_rehearsal_executes_failure_recovery_and_cleans_owned_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "new-drill"
+            root = Path(temporary).resolve() / "new-drill"
             with mock.patch("socket.create_connection", side_effect=AssertionError("network-denied")):
                 record = drill.run(root, execute_isolated=True)
             self.assertEqual("executed", record["status"])
@@ -29,7 +53,7 @@ class MaintenanceDrillTest(unittest.TestCase):
 
     def test_execution_requires_authority_and_rejects_preexisting_or_symlink_root(self):
         with tempfile.TemporaryDirectory() as temporary:
-            parent = Path(temporary)
+            parent = Path(temporary).resolve()
             with self.assertRaisesRegex(ValueError, "explicit-isolated"):
                 drill.run(parent / "new")
             with self.assertRaisesRegex(ValueError, "must-be-new"):
@@ -82,14 +106,14 @@ class MaintenanceDrillTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with mock.patch("cryptad_certification.maintenance_drill_runtime.execute",
                             side_effect=RuntimeError("private-contact-canary")):
-                record = drill.run(Path(temporary) / "drill", execute_isolated=True)
+                record = drill.run(Path(temporary).resolve() / "drill", execute_isolated=True)
             self.assertEqual("failed", record["status"])
             self.assertNotIn("private-contact-canary", json.dumps(record))
             self.assertEqual("failed", drill.closeout(record)["isolatedExecution"])
 
     def test_duplicate_json_members_and_oversized_record_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "record.json"
+            path = Path(temporary).resolve() / "record.json"
             path.write_text('{"status":"planned","status":"executed"}')
             with self.assertRaisesRegex(ValueError, "duplicate"):
                 drill._read(path)
@@ -101,7 +125,7 @@ class MaintenanceDrillTest(unittest.TestCase):
         from cryptad_certification.maintenance_drill_provider import IsolatedTransport, _provider
         from cryptad_certification.maintenance_drill_runtime import fixture, publication
         with tempfile.TemporaryDirectory() as temporary:
-            bundle = fixture.BundleFixture(Path(temporary) / "bundle")
+            bundle = fixture.BundleFixture(Path(temporary).resolve() / "bundle")
             transport = IsolatedTransport(bundle)
             with self.assertRaisesRegex(ValueError, "target-denied"):
                 transport.request("GET", "https://unapproved.invalid/", headers={})

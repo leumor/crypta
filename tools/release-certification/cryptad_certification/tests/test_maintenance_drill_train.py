@@ -14,7 +14,7 @@ from cryptad_certification import maintenance_drill_train as train
 class MaintenanceDrillTrainTest(unittest.TestCase):
     def test_real_cherry_pick_conflict_resolution_and_accounting_execute_and_clean(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             calls = []
             actual_run = subprocess.run
             def observed_run(arguments, **kwargs):
@@ -30,7 +30,7 @@ class MaintenanceDrillTrainTest(unittest.TestCase):
 
     def test_ambient_git_repository_and_configuration_cannot_redirect_execution(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             with mock.patch.dict(os.environ, {
                 "GIT_DIR": str(root / "absent-object-database"),
                 "GIT_WORK_TREE": str(root / "absent-worktree"),
@@ -42,7 +42,7 @@ class MaintenanceDrillTrainTest(unittest.TestCase):
 
     def test_failed_regression_removes_only_owned_repository(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             unrelated = root / "keep.txt"
             unrelated.write_bytes(b"existing-owned-parent-file")
             with mock.patch.object(train.ScratchGit, "regression", side_effect=ValueError("synthetic-regression")):
@@ -53,7 +53,7 @@ class MaintenanceDrillTrainTest(unittest.TestCase):
 
     def test_symlink_backed_parent_denied_and_mutation_command_budget_enforced(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             alias = root / "alias"
             alias.symlink_to(root, target_is_directory=True)
             with self.assertRaisesRegex(ValueError, "root-invalid"):
