@@ -364,7 +364,7 @@ class CrossVersionEvidenceTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "posix" and Path("/proc/sys/kernel/random/boot_id").exists(), "Linux owned-journal integration")
     def test_exclusive_lease_rejects_second_controller(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "journal"
+            root = Path(directory).resolve() / "journal"
             with Journal(root, fixture_plan()) as first:
                 first.append("start")
                 with self.assertRaises((EvidenceError, BlockingIOError)):
@@ -375,7 +375,7 @@ class CrossVersionEvidenceTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "posix" and Path("/proc/sys/kernel/random/boot_id").exists(), "Linux owned-journal integration")
     def test_interrupted_run_preserves_partial_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "journal"
+            root = Path(directory).resolve() / "journal"
             with self.assertRaises(RuntimeError):
                 with Journal(root, fixture_plan()) as journal:
                     journal.append("start")
@@ -388,14 +388,14 @@ class CrossVersionEvidenceTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "posix" and Path("/proc/sys/kernel/random/boot_id").exists(), "Linux owned-journal integration")
     def test_failed_checkpoint_cannot_be_overwritten_by_complete(self):
         with tempfile.TemporaryDirectory() as directory:
-            with Journal(Path(directory) / "journal", fixture_plan()) as journal:
+            with Journal(Path(directory).resolve() / "journal", fixture_plan()) as journal:
                 journal.append("start", outcome="fail")
                 self.assertEqual("failed", journal.checkpoint("complete")["status"])
 
     @unittest.skipUnless(os.name == "posix" and Path("/proc/sys/kernel/random/boot_id").exists(), "Linux owned-journal integration")
     def test_atomic_checkpoint_failure_keeps_old_complete_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
-            with Journal(Path(directory) / "journal", fixture_plan()) as journal:
+            with Journal(Path(directory).resolve() / "journal", fixture_plan()) as journal:
                 journal.append("start")
                 journal.checkpoint()
                 before = (journal.root / "checkpoint.json").read_bytes()
@@ -408,7 +408,7 @@ class CrossVersionEvidenceTest(unittest.TestCase):
     def continuation_fixture(self, directory, failed=False):
         plan = fixture_plan()
         plan["profile"] = "bounded-live"
-        root = Path(directory) / "journal"
+        root = Path(directory).resolve() / "journal"
         with Journal(root, plan) as journal:
             journal.append("start", outcome="fail" if failed else "pass")
         checkpoint = json.loads((root / "checkpoint.json").read_text())
@@ -468,7 +468,7 @@ class CrossVersionEvidenceTest(unittest.TestCase):
         import shutil
         with tempfile.TemporaryDirectory() as directory:
             plan, root, authorization = self.continuation_fixture(directory)
-            clone = Path(directory) / "clone"
+            clone = Path(directory).resolve() / "clone"
             shutil.copytree(root, clone)
             authorization["root"] = str(clone)
             with self.assertRaisesRegex(EvidenceError, "root-owner-boot-substituted"):
@@ -518,9 +518,9 @@ class CrossVersionEvidenceTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "posix" and Path("/proc/sys/kernel/random/boot_id").exists(), "Linux owned-journal integration")
     def test_symlink_root_and_public_permissions_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            public = Path(directory) / "public"
+            public = Path(directory).resolve() / "public"
             public.mkdir(mode=0o755)
-            link = Path(directory) / "link"
+            link = Path(directory).resolve() / "link"
             link.symlink_to(public)
             for path in (public, link):
                 with self.assertRaises(EvidenceError):

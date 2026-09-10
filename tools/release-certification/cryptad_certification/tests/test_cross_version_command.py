@@ -35,7 +35,7 @@ class CrossVersionCommandTest(unittest.TestCase):
 
     def test_live_without_explicit_execution_cannot_create_private_root(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             plan = root / 'plan.json'
             plan.write_text(json.dumps(fixture_plan()))
             args = build_parser().parse_args(['cross-version-soak', 'run', '--plan', str(plan),
@@ -47,7 +47,7 @@ class CrossVersionCommandTest(unittest.TestCase):
 
     def test_duplicate_input_and_public_private_config_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'input.json'
+            path = Path(directory).resolve() / 'input.json'
             path.write_text('{"root":1,"root":2}')
             with self.assertRaisesRegex(ValueError, 'duplicate-json'):
                 read(path)
@@ -55,9 +55,23 @@ class CrossVersionCommandTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'private-input-permissions'):
                 read(path, private=True)
 
+    def test_symlinked_fixture_ancestor_is_still_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            actual = root / 'actual'
+            actual.mkdir()
+            link = root / 'linked'
+            link.symlink_to(actual, target_is_directory=True)
+            (actual / 'input.json').write_text('{}')
+            with self.assertRaisesRegex(ValueError, 'input-path-or-size-invalid'):
+                read(link / 'input.json')
+            with self.assertRaisesRegex(ValueError, 'output-must-be-new'):
+                publish(link / 'public', {'status': 'partial'})
+            self.assertFalse((actual / 'public').exists())
+
     def test_export_cannot_overwrite_old_success(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / 'public'
+            root = Path(directory).resolve() / 'public'
             publish(root, {'status': 'partial'})
             with self.assertRaisesRegex(ValueError, 'output-must-be-new'):
                 publish(root, {'status': 'pass'})
@@ -74,7 +88,7 @@ class CrossVersionCommandTest(unittest.TestCase):
                  'producerTools': dict.fromkeys(('toolTreeDigest', 'javaTreeDigest',
                     'controllerDigest', 'driverDigest', 'nodeDigest'), 'sha256:' + '3' * 64)}
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / 'public'
+            root = Path(directory).resolve() / 'public'
             with self.assertRaises(ValueError):
                 publish(root, {'status': 'partial'}, migration={**value, 'privateBodyHash': '0' * 64})
             self.assertFalse(root.exists())
@@ -86,7 +100,7 @@ class CrossVersionCommandTest(unittest.TestCase):
     @unittest.skipUnless(os.name == 'posix' and Path('/proc').is_dir(), 'Linux owned journal')
     def test_interrupted_runtime_preserves_partial_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             private = root / 'private'
             inputs = {'plan': fixture_plan(), 'private-config': {'root': str(private)}, 'authorization': {}}
             for name, value in inputs.items():

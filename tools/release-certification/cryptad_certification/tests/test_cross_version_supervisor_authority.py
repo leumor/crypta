@@ -65,7 +65,7 @@ class SupervisorAuthorityTest(unittest.TestCase):
         rows = []
         with tempfile.TemporaryDirectory() as directory:
             for node in plan['nodes']:
-                path = Path(directory) / (node['role'] + '.tar.gz')
+                path = Path(directory).resolve() / (node['role'] + '.tar.gz')
                 payload = b'selected candidate' if node['role'].startswith('candidate') else node['role'].encode()
                 path.write_bytes(payload)
                 node['artifactDigest'] = 'sha256:' + hashlib.sha256(payload).hexdigest()
@@ -90,7 +90,7 @@ class SupervisorAuthorityTest(unittest.TestCase):
 
     def test_selected_files_use_single_descriptor_bytes_and_reject_symlink_swap(self):
         with tempfile.TemporaryDirectory() as directory:
-            state = Path(directory)
+            state = Path(directory).resolve()
             selected = state / 'selected'
             selected.mkdir(mode=0o700)
             for name in ('plan', 'private-config', 'authorization', 'service-selection'):
@@ -112,9 +112,21 @@ class SupervisorAuthorityTest(unittest.TestCase):
                 with self.assertRaises(OSError):
                     authority.read_selected(state, os.getuid())
 
+    def test_selected_state_with_symlinked_ancestor_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            actual = root / 'actual'
+            actual.mkdir()
+            state = actual / 'state'
+            state.mkdir(mode=0o700)
+            link = root / 'linked'
+            link.symlink_to(actual, target_is_directory=True)
+            with self.assertRaises(OSError):
+                authority.read_selected(link / 'state', os.getuid())
+
     def test_selected_directory_link_and_hardlinked_file_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            state = Path(directory)
+            state = Path(directory).resolve()
             actual = state / 'actual'
             actual.mkdir(mode=0o700)
             (state / 'selected').symlink_to(actual, target_is_directory=True)
@@ -131,12 +143,12 @@ class SupervisorAuthorityTest(unittest.TestCase):
 
     def test_secured_input_rejects_group_writable_and_links(self):
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / 'input.json'
+            target = Path(directory).resolve() / 'input.json'
             target.write_text('{}')
             target.chmod(0o666)
             with self.assertRaises(authority.AuthorityError):
                 authority.secured(target, owner=os.getuid())
-            link = Path(directory) / 'link.json'
+            link = Path(directory).resolve() / 'link.json'
             link.symlink_to(target)
             with self.assertRaises(authority.AuthorityError):
                 authority.secured(link, owner=os.getuid())
@@ -159,23 +171,23 @@ class SupervisorAuthorityTest(unittest.TestCase):
         invocation = 'https://github.com/crypta-network/cryptad/actions/runs/9/attempts/2'
         verified = [{'verificationResult': {'signature': {'certificate': {'runInvocationURI': invocation}}}}]
         with tempfile.TemporaryDirectory() as directory, patch.object(authority, 'authenticate_original', return_value=original), patch.object(authority, '_environment', return_value={}), patch.object(authority, '_gh', return_value=verified) as gh:
-            observed, _ = authority.authenticate_report(original.coordinates, Path(directory))
+            observed, _ = authority.authenticate_report(original.coordinates, Path(directory).resolve())
             self.assertEqual(report, observed)
             self.assertIn('--signer-digest', gh.call_args.args[0])
             gh.return_value = [{'verificationResult': {'signature': {'certificate': {'runInvocationURI': invocation[:-1] + '1'}}}}]
             with self.assertRaisesRegex(authority.AuthorityError, 'attested-attempt'):
-                authority.authenticate_report(original.coordinates, Path(directory))
+                authority.authenticate_report(original.coordinates, Path(directory).resolve())
             gh.return_value = verified
             changed = self.original({'job': {**report['job'], 'runAttempt': 1}})
             with patch.object(authority, 'authenticate_original', return_value=changed):
                 with self.assertRaisesRegex(authority.AuthorityError, 'original-job'):
-                    authority.authenticate_report(original.coordinates, Path(directory))
+                    authority.authenticate_report(original.coordinates, Path(directory).resolve())
 
     def test_zip_substitution_rejected_before_attestation(self):
         original = self.original({}, '../cross-version-supervisor.json')
         with tempfile.TemporaryDirectory() as directory, patch.object(authority, 'authenticate_original', return_value=original), patch.object(authority, '_gh') as gh:
             with self.assertRaisesRegex(authority.AuthorityError, 'artifact-shape'):
-                authority.authenticate_report(original.coordinates, Path(directory))
+                authority.authenticate_report(original.coordinates, Path(directory).resolve())
             gh.assert_not_called()
 
     def test_authorize_is_non_mutating_and_start_requires_completed_original_authorization(self):
@@ -183,7 +195,7 @@ class SupervisorAuthorityTest(unittest.TestCase):
         job = {'sourceCommit': plan['producer']['sourceCommit'], 'runId': 1, 'runAttempt': 1}
         bindings = {'serviceDigest': 'sha256:' + 'b' * 64}
         with tempfile.TemporaryDirectory() as directory:
-            private['root'] = str(Path(directory) / 'not-created')
+            private['root'] = str(Path(directory).resolve() / 'not-created')
             with patch.object(authority.os, 'geteuid', return_value=0), patch.object(authority, 'selected_inputs', return_value=(plan, private, auth, os.getuid(), bindings)), patch.object(authority, 'run_identity', return_value=job), patch.object(authority, '_service_state', return_value='stopped'), patch.object(authority.subprocess, 'run') as run:
                 report = authority.control('authorize')
                 self.assertEqual('authorize', report['operation'])
@@ -203,8 +215,8 @@ class SupervisorAuthorityTest(unittest.TestCase):
         previous = {'schemaVersion': 1, 'operation': 'authorize', 'experimentId': plan['experimentId'],
                     'planDigest': digest(plan), 'producer': plan['producer'], 'selectionDigest': digest(bindings), 'plan': plan}
         with tempfile.TemporaryDirectory() as directory:
-            private['root'] = str(Path(directory) / 'never-created')
-            protected = Path(directory) / 'authority'
+            private['root'] = str(Path(directory).resolve() / 'never-created')
+            protected = Path(directory).resolve() / 'authority'
             with patch.object(authority.os, 'geteuid', return_value=0), patch.object(authority, 'AUTHORITY', protected), patch.object(authority, 'authority_directory', side_effect=lambda: protected.mkdir(exist_ok=True)), patch.object(authority, 'selected_inputs', return_value=(plan, private, auth, os.getuid(), bindings)), patch.object(authority, 'run_identity', return_value=job), patch.object(authority, 'secured', side_effect=lambda p, **kw: p), patch.object(authority, 'read_json', return_value={}), patch.object(authority, 'authenticate_report', return_value=(previous, {'artifactId': 1})), patch.object(authority, '_service_state', side_effect=['stopped', 'running', 'stopped']), patch.object(authority.subprocess, 'run') as run:
                 report = authority.control('start')
                 self.assertEqual('running', report['serviceState'])
@@ -220,7 +232,7 @@ class SupervisorAuthorityTest(unittest.TestCase):
     def test_checkpoint_reads_atomic_prefix_and_rejects_prior_tail_substitution(self):
         plan = fixture_plan()
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / 'journal'
+            root = Path(directory).resolve() / 'journal'
             with Journal(root, plan) as journal:
                 journal.append('start')
                 journal.append('probe', counters={'operations': 0})
@@ -236,7 +248,7 @@ class SupervisorAuthorityTest(unittest.TestCase):
     def test_checkpoint_rejects_unbounded_sequence_and_completed_trailing_bytes(self):
         plan = fixture_plan()
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / 'journal'
+            root = Path(directory).resolve() / 'journal'
             with Journal(root, plan) as journal:
                 journal.append('start')
                 journal.append('finish')

@@ -65,13 +65,13 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_rc_uses_existing_freeze_product_checksums_and_archive_consumer(self):
         with tempfile.TemporaryDirectory() as temporary:
-            selected = self.selected(Path(temporary))
+            selected = self.selected(Path(temporary).resolve())
             self.assertEqual("a" * 40, selected.freeze["candidate"]["sourceCommit"])
             self.assertEqual(selected.product_digest, selected.freeze["candidate"]["productionDistributionDigest"])
 
     def test_portable_subject_reopens_exact_original_member_and_preserves_source(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             selected = self.selected(root)
             original, node, payload = self.portable(selected)
             row = products.verify_portable_artifact(original, selected, node, root / "portable.tar.gz")
@@ -82,7 +82,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_portable_wrong_role_digest_source_contract_and_target_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             selected = self.selected(root)
             original, node, _payload = self.portable(selected)
             for field, value in (("artifactDigest", "sha256:" + "f" * 64), ("sourceCommit", "b" * 40),
@@ -93,7 +93,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_rc_source_cannot_be_rebound_to_current_producer(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             original = self.rc(root)
             original.coordinates["sourceCommit"] = "b" * 40
             with self.assertRaisesRegex(products.ProductAdmissionError, "source-mismatch"):
@@ -113,7 +113,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_rc_checksum_corruption_is_rejected_by_existing_consumer(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             original = self.rc(root)
             with zipfile.ZipFile(io.BytesIO(original.content)) as source:
                 files = {name: source.read(name) for name in source.namelist()}
@@ -124,7 +124,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_portable_attestation_requires_original_attempt_for_both_members(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             selected = self.selected(root)
             original, node, _payload = self.portable(selected)
             package = root / "portable.tar.gz"
@@ -138,7 +138,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_portable_reuploaded_attestation_attempt_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             selected = self.selected(root)
             original, node, _payload = self.portable(selected)
             package = root / "portable.tar.gz"
@@ -156,7 +156,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
         plan["provenanceClass"] = "production-artifact-comparison"
         with tempfile.TemporaryDirectory() as temporary, patch.object(products, "authenticate_original") as authenticate:
             with self.assertRaisesRegex(products.ProductAdmissionError, "required-roster"):
-                products.authenticate_products(plan, {"schemaVersion": 1, "roles": {}}, Path(temporary) / "private")
+                products.authenticate_products(plan, {"schemaVersion": 1, "roles": {}}, Path(temporary).resolve() / "private")
             authenticate.assert_not_called()
 
     def test_protected_long_product_selection_still_requires_original_roster(self):
@@ -166,7 +166,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
         plan["policy"]["minimumObservedSeconds"] = 72 * 3600
         with tempfile.TemporaryDirectory() as temporary, patch.object(products, "authenticate_original") as authenticate:
             with self.assertRaisesRegex(products.ProductAdmissionError, "required-roster"):
-                products.authenticate_products(plan, {}, Path(temporary) / "private")
+                products.authenticate_products(plan, {}, Path(temporary).resolve() / "private")
             authenticate.assert_not_called()
 
     def test_full_original_rc_and_portable_pipeline_binds_four_roles(self):
@@ -177,7 +177,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
         plan.update({"profile": "bounded-live", "provenanceClass": "production-artifact-comparison"})
         originals = {}
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             for source_commit, build in (("a" * 40, "284"), ("b" * 40, "283")):
                 release_id = "stable-1-0-rc-" + build
                 def current_freeze():
@@ -263,7 +263,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_app_projection_checks_real_signed_declarations_against_frozen_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             projection, authenticated, selected, node, selection = self.app_projection_fixture(root, optional=["future.optional"])
             with patch.object(projection, "authenticate_inventory", return_value=authenticated):
                 rows = products.verify_app_projection(selected, node, selection, root)
@@ -273,7 +273,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_unknown_required_app_capability_blocks_before_node_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             projection, authenticated, selected, node, selection = self.app_projection_fixture(root, required=["unknown.required"])
             with patch.object(projection, "authenticate_inventory", return_value=authenticated):
                 with self.assertRaisesRegex(products.ProductAdmissionError, "required-capability-unknown"):
@@ -281,7 +281,7 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
 
     def test_genuine_projection_cannot_substitute_different_selected_bundle_or_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             projection, authenticated, selected, node, selection = self.app_projection_fixture(root)
             with patch.object(projection, "authenticate_inventory", return_value=authenticated):
                 with self.assertRaisesRegex(products.ProductAdmissionError, "selected-bundle-missing"):
