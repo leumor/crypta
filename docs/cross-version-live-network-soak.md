@@ -123,6 +123,15 @@ launch. Pure `verify` does not fetch GitHub metadata or turn local hash integrit
 
 ## Measurement and continuation
 
+`requestedSeconds` is the measured workload window, beginning at the opening probe after setup.
+Authorization must cover setup as well as that window, one maximum probe-gap allowance and a
+240-second cleanup reserve. The runner rejects an obviously insufficient bound during admission,
+then rechecks actual remaining authority before the opening probe; it never shortens the requested
+window to fit. The probe interval must be shorter than the maximum gap so actual work has time to
+complete. Each sleep is followed by scheduled work and a closing probe, including the final window.
+The normal deadline and protected authority still bound execution, and an overrun remains failed
+or partial rather than inventing covered time.
+
 Each append binds the exact plan, sequence, preceding digest, controller epoch, node runtime epoch,
 scenario, operation and bounded counters. Checkpoints are atomically replaced after journal fsync.
 The journal cap stops growth; no failure is discarded to make room for another sample.
@@ -191,7 +200,12 @@ Its canonical digest must match `workloadInputs.catalog` and `catalogInputsDiges
 publisher registry and baseline app must equal the node's already admitted subjects. The runner
 stages only the separately selected public catalog/reviewer registries for that disposable role;
 it does not import global publisher keys. Actual normal catalog routes observe signed admission,
-exact mirror subject preservation, untrusted-signature denial and source-switch consent denial.
+exact mirror subject preservation and untrusted-signature denial. Source-switch consent remains
+`not-observed`, including when `otherCatalog` is selected: staged-directory app installation does
+not establish an installed catalog origin, and the selection does not establish a federation-scoped
+update plan. The runner verifies the alternate subject but does not register it, stop the app or
+attempt its update. Exercising this denial requires a separately implemented normal catalog-origin
+installation and authenticated federation scope; adding catalogs after a staged install is insufficient.
 Cleanup removes only newly owned catalog IDs and compares the final inventory privately. Mirror
 registration is not fallback traffic, and the incomplete channel/conflict/rollback matrix remains
 partial. Interrupted catalog operations retain reconciliation state and cannot rerun automatically.
@@ -265,6 +279,11 @@ account and unit, and the narrowly scoped
 permits only the installed isolated Python command with each of the four literal operation
 arguments. Validate it with the host's `visudo` before installation. No service or sudoers change
 is performed by local tests or by reading this runbook.
+
+The service's runner-identity Git command supplies a command-local `safe.directory` exception for
+its exact executing checkout, after clearing any inherited safe-directory list. No global Git
+configuration or wildcard exception is needed. This permits the unprivileged account to read the
+administrator-owned checkout without relaxing the protected helper's ownership checks.
 
 The service account owns the private selected/experiment/public directories. The root control
 helper owns `/var/lib/cryptad-cross-version-authority`; the activation is root-written and readable
@@ -380,6 +399,14 @@ upstream fixture cannot be relabeled private. Private paths, body/source hashes,
 backups and comparison data remain local even when conversion fails. Retained snapshots and
 backups require the reviewed private retention/cleanup procedure; temporary-file deletion does
 not prove the full migration cleanup case.
+
+Before launching each migration JavaScript stage, the supervisor durably reserves its entire HTTP
+allowance: 64 requests for import, 96 for recovery, and 256 for restore including quota cleanup.
+The fixed driver enforces one shared request counter across all operations in that stage. Reads,
+writes and denied requests consume capacity. Insufficient capacity prevents launch; a failed or
+unknown child outcome retains the full charge, and the runner does not automatically refund or
+repeat it. These reservations are included in the approved `maxOperations` budget in addition to
+normal supervisor bootstrap and restart operations.
 
 No private source or live migration was executed for this change. Even an authenticated
 operator-private observation retains `realDataMigration: not-observed`; independently verified

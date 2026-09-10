@@ -39,6 +39,7 @@ MAX_ARCHIVE = 4 * 1024**3
 MAX_FILES = 30000
 MAX_EXPANDED = 8 * 1024**3
 MAX_LOG_BYTES = 64 * 1024**2
+MEASUREMENT_CLEANUP_HEADROOM_SECONDS = 240
 
 _mail_spec = importlib.util.spec_from_file_location("cryptad_mail_demo", Path(__file__).resolve().parents[1] / "mail-prototype/two_node_demo.py")
 mail_demo = importlib.util.module_from_spec(_mail_spec)
@@ -425,6 +426,15 @@ def validate_recovery_selection(plan, private_config, authorization):
         raise RuntimeFailure("recovery-previous-signed-app-missing")
 
 
+def validate_measurement_authorization(plan, authorization):
+    """Reject bounds that cannot contain the requested observations even with zero setup."""
+    required = plan["requestedSeconds"] + plan["policy"]["maxGapSeconds"] + MEASUREMENT_CLEANUP_HEADROOM_SECONDS
+    if (plan["probeIntervalSeconds"] >= plan["policy"]["maxGapSeconds"]
+            or authorization is not None and (type(authorization.get("maxSeconds")) is not int
+                                             or authorization["maxSeconds"] < required)):
+        raise RuntimeFailure("measurement-authorization-headroom-insufficient")
+
+
 def validate_budget_selection(plan, private_config, authorization):
     selection = private_config.get("budget")
     declared = plan.get("workloadInputs", {}).get("budget")
@@ -803,6 +813,7 @@ class Supervisor:
                 or type(auth["maxOperations"]) is not int or not 1 <= auth["maxOperations"] <= 1000000
                 or auth["maxSeconds"] < self.plan["requestedSeconds"]):
             raise RuntimeFailure("exact-topology-authorization-invalid")
+        validate_measurement_authorization(self.plan, self.authorization)
         if (not self.root.is_absolute() or self.root.is_symlink() or not self.root.is_dir()
                 or str(self.root.resolve()) != str(self.root) or auth["root"] != str(self.root)
                 or self.root.stat().st_mode & 0o077 or self.root.stat().st_uid != os.geteuid()):
@@ -871,6 +882,8 @@ class Supervisor:
     def remaining(self, limit=180):
         self._check_resources()
         remaining = min(limit, self.deadline - time.monotonic())
+        if getattr(self, "measurement_window_deadline", None) is not None:
+            remaining = min(remaining, self.measurement_window_deadline - time.monotonic())
         if getattr(self, "runner_admission", None) is not None:
             current = authenticate_runner_selection(self.plan, self.private, self.authorization)
             if current.public_identity() != self.runner_admission.public_identity():
@@ -894,7 +907,7 @@ class Supervisor:
     def emit(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, peer_role="", node_epoch=None, cohort=""):
         if kind == "operation" and outcome == "pass" and not cohort:
             self.observed_operations += 1
-        self.journal.append(kind, role=role, scenario=scenario, operation=operation,
+        return self.journal.append(kind, role=role, scenario=scenario, operation=operation,
                             outcome=outcome, counters=counters or {}, peer_role=peer_role, node_epoch=node_epoch, cohort=cohort)
 
     def prepare(self):
@@ -1407,6 +1420,16 @@ class Supervisor:
         if monotonic - probe["lastGood"] <= self.plan["policy"]["maxGapSeconds"]:
             self.mail_origin_observations["candidate-recipient:expiredBrowserSession"] = "observed"
         self.expiry_probe = None
+
+    def reserve_operations(self, count):
+        """Durably charge a bounded child allowance before it can perform any requests."""
+        if type(count) is not int or count <= 0:
+            raise RuntimeFailure("operation-reservation-invalid")
+        self.remaining(1)
+        if count > self.authorization["maxOperations"] - self.operations:
+            raise RuntimeFailure("operation-budget-exceeded")
+        self.operations += count
+        self.save_state()
 
     def next_operation(self):
         if getattr(self, "runner_admission", None) is not None:
@@ -1957,6 +1980,48 @@ class Supervisor:
         self.emit("cleanup", outcome="pass" if complete else "fail", counters={"operations": 0})
         return "complete" if complete else "cleanup-incomplete"
 
+    def measured_workloads(self):
+        """Cover the requested duration after setup, ending on a qualifying workload probe."""
+        requested = self.plan["requestedSeconds"]
+        maximum_gap = self.plan["policy"]["maxGapSeconds"]
+        interval = self.plan["probeIntervalSeconds"]
+        required = requested + maximum_gap + MEASUREMENT_CLEANUP_HEADROOM_SECONDS
+        if interval >= maximum_gap or self.remaining(required) < required:
+            raise RuntimeFailure("measurement-authorization-headroom-insufficient")
+        opening = self.emit("probe", counters={"operations": self.observed_operations})
+        last_probe = opening["monotonicNs"] / 1e9
+        target = last_probe + requested
+        try:
+            while True:
+                self.measurement_window_deadline = min(last_probe + maximum_gap, target + maximum_gap,
+                    self.deadline - MEASUREMENT_CLEANUP_HEADROOM_SECONDS)
+                delay = min(interval, max(0, target - time.monotonic()))
+                if delay:
+                    if self.remaining(delay) < delay:
+                        raise RuntimeFailure("measurement-window-headroom-insufficient")
+                    time.sleep(delay)
+                self.content("candidate-sender", "previous")
+                self.content("previous", "candidate-recipient")
+                for role in ROLES:
+                    with absolute_deadline(self.remaining(30)), self.client(role) as client:
+                        interop.get_node_reference(client, "scheduled-health")
+                self.sample_app_lifecycle()
+                self.observe_mail_expiry()
+                self.sample_resources()
+                self.scan_mail_surfaces()
+                self.remaining(1)
+                closing = self.emit("probe", counters={"operations": self.observed_operations})
+                observed = closing["monotonicNs"] / 1e9
+                if not last_probe < observed <= self.measurement_window_deadline:
+                    raise RuntimeFailure("measurement-probe-interval-invalid")
+                last_probe = observed
+                self.save_state()
+                self.journal.checkpoint("partial")
+                if last_probe >= target:
+                    return
+        finally:
+            self.measurement_window_deadline = None
+
     def execute(self):
         failure = None
         try:
@@ -1988,24 +2053,7 @@ class Supervisor:
             self.restart()
             self.partition_rejoin()
             self.begin_mail_expiry_probe()
-            # Content work, not idle heartbeats, establishes repeated measured observation windows.
-            target = self.started + self.plan["requestedSeconds"]
-            interval = self.plan["probeIntervalSeconds"]
-            self.emit("probe", counters={"operations": self.observed_operations})
-            while time.monotonic() < target:
-                self.content("candidate-sender", "previous")
-                self.content("previous", "candidate-recipient")
-                for role in ROLES:
-                    with absolute_deadline(self.remaining(30)), self.client(role) as client:
-                        interop.get_node_reference(client, "scheduled-health")
-                self.sample_app_lifecycle()
-                self.observe_mail_expiry()
-                self.sample_resources()
-                self.scan_mail_surfaces()
-                self.emit("probe", counters={"operations": self.observed_operations})
-                self.save_state()
-                self.journal.checkpoint("partial")
-                time.sleep(max(0, min(interval, target - time.monotonic(), self.deadline - time.monotonic())))
+            self.measured_workloads()
         except (RuntimeFailure, interop.InteropFailure, mail_demo.DemoFailure, OSError, ValueError, EOFError, subprocess.SubprocessError) as error:
             failure = str(error) if isinstance(error, RuntimeFailure) else "private-runtime-operation-failed"
             self.emit("fault", outcome="fail")
@@ -2060,7 +2108,10 @@ def runner_python_identity():
 def runner_identity():
     """Bind the closed executing helper set independently of participant artifact revisions."""
     root = Path(__file__).resolve().parents[2]
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True, timeout=10).strip()
+    # Protected installations are root-owned and read by the unprivileged service. Trust only
+    # this executing checkout for this command, clearing any broader inherited safe-directory list.
+    commit = subprocess.check_output(["git", "-c", "safe.directory=", "-c", f"safe.directory={root}",
+                                      "rev-parse", "HEAD"], cwd=root, text=True, timeout=10).strip()
     names = ["tools/interop/cross_version_runtime.py", "tools/mail-prototype/two_node_demo.py",
              "tools/release-certification/cryptad_certification/cross_version_evidence.py",
              "tools/release-certification/cryptad_certification/cross_version_command.py",
@@ -2100,6 +2151,7 @@ def _preflight(plan, private_config, authorization=None, product_admission=None)
         raise RuntimeFailure("selected-runner-identity-mismatch")
     if plan["profile"] not in {"bounded-live", "protected-long-live"} or plan["provenanceClass"] not in {"source-build-comparison", "production-artifact-comparison"}:
         raise RuntimeFailure("protected-producer-admission-not-configured")
+    validate_measurement_authorization(plan, authorization)
     runner_admission = None
     if plan["profile"] == "protected-long-live":
         runner_admission = authenticate_runner_selection(plan, private_config, authorization)

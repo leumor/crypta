@@ -21,6 +21,50 @@ class RecoveryTest(unittest.TestCase):
         value.stop_current = Mock()
         return value
 
+    def test_constructed_cohort_reaches_inherited_spawn_without_catalog_injection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = recovery.runtime.Supervisor.__new__(recovery.runtime.Supervisor)
+            parent.root = Path(directory)
+            (parent.root / "runtime").mkdir()
+            selection = {"cohortId": recovery.COHORT, "fnpPort": 11001, "fcpPort": 11002, "httpPort": 11003}
+            binding = recovery.runtime.canonical_digest(selection)
+            parent.authorization = {"recoveryInputsDigest": binding}
+            parent.plan = {"cohorts": [{"id": recovery.COHORT, "sourceRole": "previous",
+                                       "targetRole": "candidate-sender", "configDigest": binding}],
+                           "nodes": [{"role": role, "artifactDigest": role, "runtimeDigest": "tree"}
+                                     for role in recovery.SUBJECTS]}
+            parent.private = {"nodes": {"previous": {"fnpPort": 12001, "fcpPort": 12002,
+                              "httpPort": 12003, "apps": [{"appId": "site-publisher"}]}}}
+            parent.remaining = Mock(return_value=10)
+            # A selected main catalog must not be inherited by the recovery process.
+            parent.catalog_prepared = Mock()
+            parent.catalog_environment = {"CRYPTAD_APPCATALOG_TRUSTED_KEYS_FILE": "main-only"}
+
+            def prepare(cohort):
+                node_root = cohort.root / "node"
+                (node_root / "logs").mkdir(parents=True)
+                cohort.prepared["previous"] = (cohort.root / "package", node_root,
+                    recovery.runtime.interop.Ports(11001, 11002, 0, 0), cohort.root / "jdk", "config")
+                cohort.package_identities["previous"] = "tree"
+                cohort.private["nodes"]["previous"] = parent.private["nodes"]["previous"]
+                cohort.trust_paths["previous"] = cohort.root / "publisher.keys"
+                cohort.phase = "prepared"
+
+            with patch.object(recovery.OwnedRecoveryCohort, "_prepare", prepare):
+                cohort = recovery.OwnedRecoveryCohort(parent, selection, Mock())
+            # Only the process boundary is stopped: launch() and inherited start() run normally.
+            with patch.object(recovery.runtime, "tree_digest", return_value="tree"), patch.object(
+                    recovery.runtime.subprocess, "Popen", side_effect=RuntimeError("offline-spawn-boundary")) as spawn:
+                with self.assertRaisesRegex(RuntimeError, "offline-spawn-boundary"):
+                    cohort.launch("previous")
+            environment = spawn.call_args.kwargs["env"]
+            self.assertEqual("bubblewrap", environment["CRYPTAD_APPHOST_SANDBOX_PROVIDER"])
+            self.assertIn("CRYPTAD_APPHOST_TRUSTED_KEYS_FILE", environment)
+            self.assertNotIn("CRYPTAD_APPCATALOG_TRUSTED_KEYS_FILE", environment)
+            self.assertNotIn("CRYPTAD_APPREVIEW_TRUSTED_REVIEWER_KEYS_FILE", environment)
+            self.assertTrue(spawn.call_args.kwargs["stdout"].closed)
+            self.assertTrue(spawn.call_args.kwargs["stderr"].closed)
+
     def test_previous_and_current_apis_compare_actual_values_and_keep_backup_private(self):
         with tempfile.TemporaryDirectory() as directory:
             cohort = self.cohort(directory)

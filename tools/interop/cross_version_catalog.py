@@ -32,8 +32,6 @@ class Supervisor(Protocol):
     def remaining(self, seconds: float) -> float: ...
     def catalog_request(self, role: str, method: str, path: str, form: dict | None = None) -> tuple[int, dict]: ...
     def app_subject(self, role: str, app_id: str) -> dict: ...
-    def stop_app(self, role: str, app_id: str) -> None: ...
-    def start_app(self, role: str, app_id: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -151,7 +149,7 @@ def run_catalog_cases(supervisor: Supervisor, role: str, tool: Tool, baseline: F
     outcomes = {case: "not-observed" for case in sorted(CASES)}
     result = {"schemaVersion": 1, "kind": "cross-version-catalog-observation", "status": "partial",
               "outcomes": outcomes, "releaseEligibility": "blocked", "cleanup": "not-observed"}
-    owned, stopped, before = [], False, None
+    owned, before = [], None
     try:
         declaration = verify_fixture(supervisor, tool, baseline)
         for identifier in (baseline.catalog_id, baseline.app_id):
@@ -204,25 +202,16 @@ def run_catalog_cases(supervisor: Supervisor, role: str, tool: Tool, baseline: F
             installed = supervisor.app_subject(role, baseline.app_id)["bundleDigest"]
             if installed != baseline.bundle_digest:
                 raise CatalogFailure("catalog-installed-baseline-mismatch")
-            owned.append(other_catalog.catalog_id)
-            _ok(supervisor, role, "POST", "/api/v1/app-catalogs/add", "catalog",
-                {"source": other_catalog.catalog.as_uri(), "expectedCatalogId": other_catalog.catalog_id})
-            supervisor.stop_app(role, baseline.app_id)
-            stopped = True
-            status, response = _request(supervisor, role, "POST", "/api/v1/app-catalogs/" + other_catalog.catalog_id + "/apps/" + baseline.app_id + "/update", {})
-            if status != 409 or response.get("error", {}).get("code") != "catalog_source_switch_consent_required":
-                raise CatalogFailure("catalog-source-switch-not-blocked")
-            if supervisor.app_subject(role, baseline.app_id)["bundleDigest"] != installed:
-                raise CatalogFailure("catalog-source-switch-mutated-installed-app")
-            outcomes["sourceSwitchConsent"] = "pass"
+            # provision_apps installs signed staged directories, which establish no catalog
+            # origin. Registering a catalog does not retrofit that origin, and this selection
+            # has no authenticated federation-scoped install/update plan either. The production
+            # consent gate skips those cases, so an update here could replace the baseline.
+            # Keep sourceSwitchConsent not-observed until both prerequisites can be established
+            # through normal platform gates; do not stop the app or attempt the alternate update.
     except (OSError, ValueError, KeyError, TypeError):
         result["status"] = "failed"
     finally:
         try:
-            if stopped:
-                if supervisor.app_subject(role, baseline.app_id)["bundleDigest"] != baseline.bundle_digest:
-                    raise CatalogFailure("catalog-installed-recovery-required")
-                supervisor.start_app(role, baseline.app_id)
             for catalog_id in reversed(owned):
                 _ok(supervisor, role, "DELETE", "/api/v1/app-catalogs/" + catalog_id, "catalog")
             if before is not None and _inventory(supervisor, role) != before:

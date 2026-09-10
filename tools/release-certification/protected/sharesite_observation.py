@@ -37,6 +37,8 @@ CHECKS = frozenset({"literalFidelity", "sourcePreservation", "secretExclusionSta
                     "restartPersistence", "editSave", "literalPreview", "replay", "stalePreview",
                     "quotaFailure", "interruptionRecovery", "dataUndo", "privateRestore",
                     "bundleRollback", "cleanup", "newChkPublication"})
+# Conservative complete-stage allowances include reads, writes, denials and quota cleanup.
+STAGE_REQUEST_LIMITS = {"import": 64, "recover": 96, "restore": 256}
 STAGE_CHECKS = {"import": {"literalFidelity", "importCommit", "replay"},
                 "recover": {"restartPersistence", "interruptionRecovery", "editSave", "stalePreview", "dataUndo"},
                 "restore": {"privateRestore", "quotaFailure"}}
@@ -54,6 +56,8 @@ class AdmittedSupervisor(Protocol):
         """Issue a fresh legitimate own-app browser session for the admitted signed app."""
     def restart_node(self, role: str) -> None:
         """Restart only the exact owned node, re-probe health and preserve its data stores."""
+    def reserve_operations(self, count: int) -> None:
+        """Durably charge request capacity before issuing it to a subprocess; no implicit refund."""
     def remaining(self, seconds: float) -> float:
         """Bound one operation by the remaining approved experiment deadline."""
 
@@ -98,6 +102,14 @@ def _execute(arguments: list[str], payload: dict | None = None, *, java_home: Pa
                                 "LANG": "C.UTF-8", "TMPDIR": str(temporary)}, output_limit=16384, timeout=timeout)
     except (OSError, ValueError):
         raise MigrationFailure("migration-adapter-operation-failed") from None
+
+
+def _run_stage(supervisor, inputs, stage, config, driver, private):
+    maximum = STAGE_REQUEST_LIMITS[stage]
+    supervisor.reserve_operations(maximum)
+    raw = _execute([str(inputs.node_executable), str(driver)], {**config, "maximumRequests": maximum},
+                   java_home=inputs.java_home, temporary=private, timeout=supervisor.remaining(180))
+    return validate_stage(json.loads(raw), stage)
 
 
 def validate_stage(value: object, stage: str) -> dict:
@@ -216,6 +228,10 @@ def observe_operator_private(supervisor: AdmittedSupervisor, inputs: MigrationIn
             self.remaining(1)
             return supervisor.app_session(role, app_id)
 
+        def reserve_operations(self, count: int) -> None:
+            self.remaining(1)
+            supervisor.reserve_operations(count)
+
         def restart_node(self, role: str) -> None:
             self.remaining(1)
             supervisor.restart_node(role)
@@ -291,9 +307,7 @@ def _observe(supervisor: AdmittedSupervisor, inputs: MigrationInputs, source_dig
                       "controllerDigest": inputs.controller_digest, "migrationFile": str(migration),
                       "backupFile": str(private / "before-import.json"),
                       "retainedBackupFile": str(private / "after-import.json")}
-            raw = _execute([str(inputs.node_executable), str(driver)], config,
-                           java_home=inputs.java_home, temporary=private, timeout=supervisor.remaining(180))
-            stage_result = validate_stage(json.loads(raw), stage)
+            stage_result = _run_stage(supervisor, inputs, stage, config, driver, private)
             outcomes.update(stage_result["checks"])
         if _digest(inputs.fixture) != source_digest:
             raise MigrationFailure("migration-source-changed")

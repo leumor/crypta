@@ -15,6 +15,8 @@ function target(value, api) {
   return parsed;
 }
 function client(config) {
+  if (!Number.isSafeInteger(config.maximumRequests) || config.maximumRequests < 1 || config.maximumRequests > 256) fail();
+  let remaining = config.maximumRequests;
   const endpoint = target(config.api, true);
   target(config.origin, false);
   if (typeof config.session !== "string" || !config.session || config.session.length > 4096
@@ -24,6 +26,8 @@ function client(config) {
         && !/^\/app-data\/records\/soak-quota\/case-[0-9]{2}$/.test(route)) fail();
     const body = value ? new URLSearchParams(Object.entries(value).map(([key, item]) => [key, String(item)])).toString() : null;
     if (body && Buffer.byteLength(body) > 786432) fail();
+    if (remaining <= 0) fail();
+    remaining--;
     return new Promise((resolve, reject) => {
       const request = http.request({ hostname: endpoint.hostname.replace(/^\[|\]$/g, ""),
         port: endpoint.port, method, path: endpoint.pathname + route, agent: false,
@@ -50,6 +54,37 @@ function client(config) {
       request.end(body);
     });
   };
+}
+
+async function observeQuota(config, status, request = client(config)) {
+  const quota = status.quota?.manifestDataQuotaBytes;
+  const recordBytes = Math.min(status.limits?.maxRecordBytes || 0, 65536);
+  const created = [];
+  let denied = false;
+  if (!Number.isSafeInteger(quota) || quota <= 0 || quota > 4 * 1024 * 1024
+      || recordBytes < 1024 || status.quota?.manifestDataQuotaEnforced !== true) fail();
+  try {
+    for (let index = 0; index < 64; index++) {
+      const key = `case-${String(index).padStart(2, "0")}`;
+      try {
+        await request("GET", "/app-data/records/soak-quota/" + key, null, "record");
+        fail();
+      } catch (error) {
+        if (error.code !== "app_data_record_not_found") throw error;
+      }
+      try {
+        await request("POST", "/app-data/records", { namespace: "soak-quota", key,
+          schemaVersion: 1, contentType: "text/plain", valueText: "q".repeat(recordBytes) }, "record");
+        created.push(key);
+      } catch (error) {
+        if (error.code !== "app_data_quota_exceeded") throw error;
+        denied = true; break;
+      }
+    }
+    if (!denied) fail();
+  } finally {
+    for (const key of created) await request("DELETE", "/app-data/records/soak-quota/" + key, null, "record");
+  }
 }
 
 async function run(config) {
@@ -127,29 +162,7 @@ async function run(config) {
     await model.commit();
     verifyFidelity(await model.load());
     checks.privateRestore = "pass";
-    const status = await api.data.status();
-    const quota = status.quota?.manifestDataQuotaBytes;
-    const recordBytes = Math.min(status.limits?.maxRecordBytes || 0, 65536);
-    const created = [];
-    let denied = false;
-    if (!Number.isSafeInteger(quota) || quota <= 0 || quota > 4 * 1024 * 1024
-        || recordBytes < 1024 || status.quota?.manifestDataQuotaEnforced !== true) fail();
-    try {
-      for (let index = 0; index < 64; index++) {
-        const key = `case-${String(index).padStart(2, "0")}`;
-        try {
-          await request("POST", "/app-data/records", { namespace: "soak-quota", key,
-            schemaVersion: 1, contentType: "text/plain", valueText: "q".repeat(recordBytes), ifMatchSha256: "absent" }, "record");
-          created.push(key);
-        } catch (error) {
-          if (error.code !== "app_data_quota_exceeded") throw error;
-          denied = true; break;
-        }
-      }
-      if (!denied) fail();
-    } finally {
-      for (const key of created) await request("DELETE", "/app-data/records/soak-quota/" + key, null, "record");
-    }
+    await observeQuota(config, await api.data.status(), request);
     verifyFidelity(await model.load());
     checks.quotaFailure = "pass";
   }
@@ -166,4 +179,4 @@ if (require.main === module) {
     catch (_) { process.stderr.write("sharesite_runtime_failed\n"); process.exitCode = 1; }
   });
 }
-module.exports = { run, target };
+module.exports = { run, target, observeQuota };

@@ -74,6 +74,9 @@ class OwnedRecoveryCohort(runtime.Supervisor):
         self.nodes, self.apps, self.prepared, self.trust_paths = {}, {}, {}, {}
         self.app_staging, self.app_staging_identities = {}, {}
         self.package_identities, self.daemon_identities = {}, {}
+        # The isolated upgrade cohort inherits the launcher, not main catalog injections.
+        self.catalog_prepared = None
+        self.catalog_environment = {}
         self.private = {"nodes": {}}
         self.orphaned_spawn = False
         self.current_role = None

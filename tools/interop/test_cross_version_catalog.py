@@ -57,38 +57,49 @@ class CatalogCasesTest(unittest.TestCase):
             self.assertNotEqual("pass", result["outcomes"]["signedCatalogAdmission"])
             self.assertFalse(supervisor.catalogs)
 
-    def test_source_switch_requires_gate_denial_and_unchanged_installed_bytes(self):
+    def test_source_switch_without_catalog_origin_never_attempts_mutating_update(self):
         class SourceSupervisor(Supervisor):
             def __init__(self):
                 super().__init__()
-                self.changed = False
-                self.simulate_mutation = False
                 self.running = True
+                self.lifecycle_calls = []
             def app_subject(self, role, app_id):
-                return {"bundleDigest": "sha256:" + ("f" if self.changed else "a") * 64}
-            def stop_app(self, role, app_id): self.running = False
-            def start_app(self, role, app_id): self.running = True
+                return {"bundleDigest": self.digest}
+            def stop_app(self, role, app_id):
+                self.lifecycle_calls.append("stop")
+                self.running = False
+            def start_app(self, role, app_id):
+                self.lifecycle_calls.append("start")
+                self.running = True
             def catalog_request(self, role, method, path, form=None):
                 if path.endswith("/update"):
-                    self.changed = self.simulate_mutation
-                    return 409, {"error": {"code": "catalog_source_switch_consent_required"}}
+                    # A staged install has no catalog origin: the real consent gate skips it.
+                    # Model a compatible alternate being accepted, rather than inventing a 409.
+                    self.calls.append((method, path, form))
+                    self.digest = "sha256:" + "f" * 64
+                    return 200, {"app": {"appId": "site-publisher"}}
                 return super().catalog_request(role, method, path, form)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base = self.fixture(root)
             other = replace(base, catalog_id="other-catalog", catalog=root / "other.properties")
-            for mutate in (False, True):
-                supervisor = SourceSupervisor()
-                supervisor.simulate_mutation = mutate
-                with patch.object(catalog, "verify_fixture", side_effect=[{"appId": "site-publisher", "appVersion": "1"},
-                                                                           {"appId": "site-publisher", "appVersion": "2"}]):
-                    result = catalog.run_catalog_cases(supervisor, "candidate-sender", self.tool(root), base, other_catalog=other)
-                self.assertEqual("failed" if mutate else "partial", result["status"])
-                self.assertEqual("not-observed" if mutate else "pass", result["outcomes"]["sourceSwitchConsent"])
-                self.assertEqual(not mutate, supervisor.running)
-                self.assertEqual("incomplete" if mutate else "complete", result["cleanup"])
-                if not mutate:
-                    self.assertFalse(supervisor.catalogs)
+            supervisor = SourceSupervisor()
+            with patch.object(catalog, "verify_fixture", side_effect=[{"appId": "site-publisher", "appVersion": "1"},
+                                                                       {"appId": "site-publisher", "appVersion": "2"}]) as verifier:
+                result = catalog.run_catalog_cases(supervisor, "candidate-sender", self.tool(root), base, other_catalog=other)
+            self.assertEqual(2, verifier.call_count)
+            self.assertEqual("partial", result["status"])
+            self.assertEqual("pass", result["outcomes"]["signedCatalogAdmission"])
+            self.assertEqual("not-observed", result["outcomes"]["sourceSwitchConsent"])
+            self.assertEqual("blocked", result["releaseEligibility"])
+            self.assertEqual("complete", result["cleanup"])
+            self.assertEqual(base.bundle_digest, supervisor.digest)
+            self.assertTrue(supervisor.running)
+            self.assertEqual([], supervisor.lifecycle_calls)
+            self.assertFalse(any(path.endswith("/update") for _, path, _ in supervisor.calls))
+            self.assertFalse(any(form and form.get("expectedCatalogId") == other.catalog_id
+                                 for _, _, form in supervisor.calls))
+            self.assertFalse(supervisor.catalogs)
 
     def test_preexisting_catalog_never_deleted(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(catalog, "verify_fixture", return_value={}):
