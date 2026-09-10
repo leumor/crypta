@@ -208,7 +208,8 @@ class SupervisorAuthorityTest(unittest.TestCase):
                         authority.control('start')
                 run.assert_not_called()
 
-    def test_fixed_start_records_authority_before_start_and_rejects_reuse(self):
+    @patch.object(authority, 'boot_id', return_value='selected-boot')
+    def test_fixed_start_records_authority_before_start_and_rejects_reuse(self, boot):
         plan, private, auth = self.selection()
         bindings = {'serviceDigest': 'sha256:' + 'b' * 64}
         job = {'sourceCommit': plan['producer']['sourceCommit'], 'runId': 2, 'runAttempt': 1}
@@ -223,17 +224,21 @@ class SupervisorAuthorityTest(unittest.TestCase):
                 self.assertEqual([], authority.scan_value(report))
                 activation = json.loads((protected / 'activation.json').read_text())
                 self.assertEqual(digest(private), activation['privateConfigDigest'])
+                self.assertEqual(boot.return_value, activation['bootId'])
                 self.assertEqual(['/usr/bin/systemctl', 'start', authority.UNIT], run.call_args.args[0])
                 self.assertNotIn('GH_TOKEN', run.call_args.kwargs['env'])
                 with self.assertRaisesRegex(authority.AuthorityError, 'reuse'):
                     authority.control('start')
                 self.assertEqual(1, run.call_count)
 
-    def test_checkpoint_reads_atomic_prefix_and_rejects_prior_tail_substitution(self):
+    @patch('cryptad_certification.cross_version_evidence.boot_identity',
+           return_value='00000000-0000-0000-0000-000000000001')
+    def test_checkpoint_reads_atomic_prefix_and_rejects_prior_tail_substitution(self, boot):
         plan = fixture_plan()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve() / 'journal'
             with Journal(root, plan) as journal:
+                boot.assert_called_once_with()
                 journal.append('start')
                 journal.append('probe', counters={'operations': 0})
                 checkpoint = journal.checkpoint('partial')
@@ -245,11 +250,14 @@ class SupervisorAuthorityTest(unittest.TestCase):
                 with self.assertRaisesRegex(authority.AuthorityError, 'tail-substitution'):
                     authority.snapshot(plan, root, substituted, expected_uid=os.getuid())
 
-    def test_checkpoint_rejects_unbounded_sequence_and_completed_trailing_bytes(self):
+    @patch('cryptad_certification.cross_version_evidence.boot_identity',
+           return_value='00000000-0000-0000-0000-000000000001')
+    def test_checkpoint_rejects_unbounded_sequence_and_completed_trailing_bytes(self, boot):
         plan = fixture_plan()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve() / 'journal'
             with Journal(root, plan) as journal:
+                boot.assert_called_once_with()
                 journal.append('start')
                 journal.append('finish')
                 checkpoint = journal.checkpoint('complete')
