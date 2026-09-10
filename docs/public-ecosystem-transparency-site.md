@@ -213,7 +213,6 @@ or unavailable with fixed counts. A homepage HTTP 200 is insufficient.
 python3 tools/release-certification/certify.py public-ecosystem-transparency \
   --mode observe --bundle build/transparency/empty-production \
   --url https://APPROVED_PUBLIC_HOST/APPROVED_SITE_PATH/ \
-  --observed-at 2026-09-10T13:00:00Z \
   --expected-manifest-digest sha256:REPLACE_WITH_APPROVED_SITE_MANIFEST_DIGEST
 ```
 
@@ -244,6 +243,12 @@ GitHub requires deployment permissions, a build dependency and an environment fo
 workflows; see the [official Pages boundary](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 A checked-in workflow does not establish that these protections were configured or that any
 remote job ran. Deployment and public observation have not been performed for this implementation.
+
+The observer samples its own UTC clock after local bundle verification, immediately before the
+bounded fetch pass. Report `observedAt` identifies the start of that pass, not a caller-selected
+time. The optional legacy `--observed-at` is only a sanity assertion: a value more than 60 seconds
+from the actual start is rejected before any fetch; an accepted value never replaces the recorded
+time. The runner clock remains the time source, not an independent trusted timestamp service.
 
 The observation step preserves its failing exit status for partial, unavailable or conflicting
 results. Its artifact-retention step runs even after that failure when the fixed, nonempty

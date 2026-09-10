@@ -360,17 +360,25 @@ def verify(root, *, expected_manifest=None, production=False):
             'fileCount': len(files)}
 
 
-def observe(root, base_url, observed_at, *, expected_manifest=None, fetcher=None):
+def observe(root, base_url, observed_at=None, *, expected_manifest=None, fetcher=None, clock=None):
     """One bounded pass compares the manifest and every exported byte; never publish."""
     from .transparency_sources import SiteContentMismatch, fetch_site
-    timestamp(observed_at)
     verified = verify(root, production=True, expected_manifest=expected_manifest)
-    if timestamp(observed_at) < timestamp(verified['index']['asOf']):
-        fail('observation-time-before-snapshot')
     files = inventory(root)
     if not base_url.endswith('/'):
         fail('observation-base-invalid')
     fetcher = fetcher or (lambda url, limit: fetch_site(url, limit, base_url))
+    # Sample after local verification, immediately before the bounded fetch pass. A caller's
+    # optional timestamp is only a sanity assertion; it never supplies temporal evidence.
+    started = clock() if clock is not None else datetime.now(timezone.utc)
+    if started.tzinfo is None or started.utcoffset() is None:
+        fail('observation-clock-invalid')
+    started = started.astimezone(timezone.utc)
+    if observed_at is not None and abs((timestamp(observed_at).replace(tzinfo=timezone.utc) - started).total_seconds()) > 60:
+        fail('observation-time-outside-execution-window')
+    if started < timestamp(verified['index']['asOf']).replace(tzinfo=timezone.utc):
+        fail('observation-time-before-snapshot')
+    observed_at = started.strftime('%Y-%m-%dT%H:%M:%SZ')
     exact = missing = changed = 0
     deadline = time.monotonic() + 60
     for name, expected in sorted(files.items(), key=lambda item: (item[0] != MANIFEST, item[0])):

@@ -108,7 +108,7 @@ def run(args):
                 bundle.check_history(result['index'], prior)
             result.pop('index')
         elif args.mode == 'observe':
-            if not args.bundle or not args.url or not args.observed_at or not args.expected_manifest_digest:
+            if not args.bundle or not args.url or not args.expected_manifest_digest:
                 bundle.fail('observation-input-required')
             result = bundle.observe(args.bundle, args.url, args.observed_at,
                                     expected_manifest=args.expected_manifest_digest)

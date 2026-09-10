@@ -186,9 +186,8 @@ jobs:
           SITE_URL: ${{ needs.build.outputs.site_url }}
         run: |
           python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "sha256:$EXPECTED_DIGEST"
-          observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           observation_status=0
-          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode observe --bundle "$RUNNER_TEMP/public-site" --url "$SITE_URL" --observed-at "$observed_at" --expected-manifest-digest "sha256:$EXPECTED_DIGEST" > "$RUNNER_TEMP/public-observation.json" || observation_status=$?
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode observe --bundle "$RUNNER_TEMP/public-site" --url "$SITE_URL" --expected-manifest-digest "sha256:$EXPECTED_DIGEST" > "$RUNNER_TEMP/public-observation.json" || observation_status=$?
           if [ -s "$RUNNER_TEMP/public-observation.json" ]; then
             echo "report_ready=true" >> "$GITHUB_OUTPUT"
           fi

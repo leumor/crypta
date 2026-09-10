@@ -183,7 +183,7 @@ class TransparencySourcesTests(unittest.TestCase):
             try:
                 for mode,expected in [('exact','exact-match'),('partial','partial'),('mixed','conflict'),('stale','conflict'),('redirect','unavailable'),('timeout','unavailable')]:
                     mutable['mode']=mode
-                    result=bundle.observe(site,base,'2026-09-10T01:00:00Z',fetcher=synthetic_fetch)
+                    result=bundle.observe(site,base,'2026-09-10T01:00:00Z',clock=lambda: bundle.timestamp('2026-09-10T01:00:00Z').replace(tzinfo=bundle.timezone.utc),fetcher=synthetic_fetch)
                     self.assertEqual(expected,result['status'])
                     self.assertEqual('unchanged',result['sourcePublication'])
             finally:

@@ -144,7 +144,7 @@ class BundleTests(unittest.TestCase):
             calls.append(name)
             self.assertEqual(limit, len(files[name]))
             return files[name]
-        result = b.observe(root, base, '2026-09-11T00:00:00Z', fetcher=fetch)
+        result = b.observe(root, base, '2026-09-11T00:00:00Z', clock=lambda: b.timestamp('2026-09-11T00:00:00Z').replace(tzinfo=b.timezone.utc), fetcher=fetch)
         self.assertEqual(result['status'], 'exact-match')
         self.assertEqual(set(calls), set(files))
         self.assertEqual(calls[0], b.MANIFEST)
@@ -155,7 +155,7 @@ class BundleTests(unittest.TestCase):
                 if kind == 'timeout' or (kind == 'missing' and url.endswith('site.css')):
                     raise TimeoutError('SYNTHETIC_PRIVATE_CANARY')
                 return b'changed' if kind == 'mixed' and url.endswith('site.css') else files[url.removeprefix(base)]
-            result = b.observe(root, base, '2026-09-11T00:00:00Z', fetcher=broken)
+            result = b.observe(root, base, '2026-09-11T00:00:00Z', clock=lambda: b.timestamp('2026-09-11T00:00:00Z').replace(tzinfo=b.timezone.utc), fetcher=broken)
             self.assertEqual(result['status'], expected)
             self.assertNotIn('SYNTHETIC_PRIVATE_CANARY', json.dumps(result))
 
@@ -221,7 +221,7 @@ class BundleTests(unittest.TestCase):
     def test_observation_cannot_predate_snapshot(self):
         root = self.build()
         with self.assertRaises(ValueError):
-            b.observe(root, 'https://example.org/site/', '2026-09-09T00:00:00Z',
+            b.observe(root, 'https://example.org/site/', '2026-09-09T00:00:00Z', clock=lambda: b.timestamp('2026-09-09T00:00:00Z').replace(tzinfo=b.timezone.utc),
                       fetcher=lambda *_: self.fail('fetch must not happen'))
 
     def project_artifact(self, role, value, seal):
@@ -354,7 +354,7 @@ class BundleTests(unittest.TestCase):
                     with mock.patch.object(s, 'policy', return_value=(rules, policy_digest)), \
                          mock.patch.object(transport, '_global_addresses', return_value=('8.8.8.8',)), \
                          mock.patch.object(transport, '_PinnedHTTPSConnection', side_effect=factory):
-                        result = b.observe(site, base, '2026-09-11T00:00:00Z')
+                        result = b.observe(site, base, '2026-09-11T00:00:00Z', clock=lambda: b.timestamp('2026-09-11T00:00:00Z').replace(tzinfo=b.timezone.utc))
                     self.assertEqual(result['status'], 'partial' if mode == 'missing' else 'conflict')
                     self.assertEqual(result['conflictingFiles'], 0 if mode == 'missing' else 1)
                     self.assertEqual(result['unavailableFiles'], 1 if mode == 'missing' else 0)
@@ -514,6 +514,46 @@ class BundleTests(unittest.TestCase):
         self.package['selection']['asOf'] = '2099-01-01T00:00:00Z'
         self.assertEqual(b.verify(self.build('offline-future'))['index']['asOf'], '2099-01-01T00:00:00Z')
 
+    def test_observation_records_fetch_time_not_caller_hint(self):
+        from datetime import datetime, timezone
+        root = self.build('observed-site')
+        files = b.inventory(root)
+        base = 'https://example.org/site/'
+        now = datetime(2026, 9, 11, 0, 0, tzinfo=timezone.utc)
+        def fetch(url, limit):
+            return files[url.removeprefix(base)]
+        for supplied in (None, '2026-09-10T23:59:00Z', '2026-09-11T00:01:00Z'):
+            with self.subTest(supplied=supplied):
+                report = b.observe(root, base, supplied, fetcher=fetch, clock=lambda: now)
+                self.assertEqual(report['status'], 'exact-match')
+                self.assertEqual(report['observedAt'], '2026-09-11T00:00:00Z')
+        for supplied in ('2026-09-10T23:58:59Z', '2026-09-11T00:01:01Z', '2099-01-01T00:00:00Z'):
+            with self.subTest(supplied=supplied):
+                with self.assertRaisesRegex(ValueError, 'observation-time-outside-execution-window'):
+                    b.observe(root, base, supplied, clock=lambda: now,
+                              fetcher=lambda *_: self.fail('invalid time must fail before fetching'))
+
+    def test_cli_observation_without_timestamp_uses_execution_clock(self):
+        from unittest.mock import patch
+        from datetime import datetime, timezone
+        from cryptad_certification.cli import main
+        root = self.build('cli-observe')
+        files = b.inventory(root)
+        base = 'https://example.org/site/'
+        with patch.object(b, 'datetime', wraps=datetime) as clock, \
+             patch.object(s, 'fetch_site', side_effect=lambda url, limit, selected: files[url.removeprefix(base)]):
+            clock.now.return_value = datetime(2026, 9, 11, tzinfo=timezone.utc)
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                status = main(['public-ecosystem-transparency', '--mode', 'observe',
+                               '--bundle', str(root), '--url', base,
+                               '--expected-manifest-digest', b.digest(files[b.MANIFEST])])
+            self.assertEqual(status, 0)
+            report = json.loads(captured.getvalue())
+            self.assertEqual(report['observedAt'], '2026-09-11T00:00:00Z')
+            self.assertEqual(report['status'], 'exact-match')
+            clock.now.assert_called_once_with(timezone.utc)
+
     def test_cli_failure_has_only_fixed_diagnostic_and_no_public_output(self):
         from cryptad_certification.cli import main
         output = self.root/'site'
@@ -581,6 +621,6 @@ class LocalObservationTests(unittest.TestCase):
             for mode, expected in [('exact', 'exact-match'), ('missing', 'partial'),
                                    ('redirect', 'unavailable'), ('mixed', 'conflict')]:
                 state['mode'] = mode
-                result = b.observe(site, base, '2026-09-11T00:00:00Z', fetcher=fetch)
+                result = b.observe(site, base, '2026-09-11T00:00:00Z', clock=lambda: b.timestamp('2026-09-11T00:00:00Z').replace(tzinfo=b.timezone.utc), fetcher=fetch)
                 self.assertEqual(result['status'], expected)
                 self.assertNotIn('127.0.0.1', json.dumps(result))
