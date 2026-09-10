@@ -22,7 +22,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class AppSubjectProjectionCommandTest {
   @TempDir Path temporary;
@@ -102,6 +105,100 @@ class AppSubjectProjectionCommandTest {
     assertTrue(Files.readString(output).contains("\"submissionDigest\":\"sha256:"));
   }
 
+  @Test
+  void projection_whenPublisherKeySubstituted_expectSanitizedFailureAndScratchCleanup()
+      throws Exception {
+    var fixture = prepare();
+    var unrelatedKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    registry("publisher", unrelatedKey.getPublic().getEncoded());
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertRejectedProjection(fixture, output, result);
+  }
+
+  @Test
+  void projection_whenCatalogKeySubstituted_expectSanitizedFailureAndScratchCleanup()
+      throws Exception {
+    var fixture = prepare();
+    var unrelatedKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    registry("catalog", unrelatedKey.getPublic().getEncoded());
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertRejectedProjection(fixture, output, result);
+  }
+
+  @Test
+  void projection_whenPrivateRootIsGroupReadable_expectNoOutput() throws Exception {
+    var fixture = prepare();
+    Files.setPosixFilePermissions(
+        fixture.privateRoot(), PosixFilePermissions.fromString("rwxr-x---"));
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertRejectedProjection(fixture, output, result);
+  }
+
+  @Test
+  void projection_whenPrivateRootIsSymlink_expectNoOutputOrTargetMutation() throws Exception {
+    var fixture = prepare();
+    Path actual = temporary.resolve("actual-private");
+    Files.move(fixture.privateRoot(), actual);
+    Files.createSymbolicLink(fixture.privateRoot(), actual);
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertRejectedProjection(fixture, output, result);
+    assertTrue(Files.isSymbolicLink(fixture.privateRoot()));
+  }
+
+  @Test
+  void projection_whenBundleIsSymlink_expectNoOutputAndPreservedTarget() throws Exception {
+    var fixture = prepare();
+    Path actual = temporary.resolve("actual-bundle.zip");
+    Files.move(fixture.bundle(), actual);
+    Files.createSymbolicLink(fixture.bundle(), actual);
+    long originalSize = Files.size(actual);
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertRejectedProjection(fixture, output, result);
+    assertTrue(Files.isSymbolicLink(fixture.bundle()));
+    assertEquals(originalSize, Files.size(actual));
+  }
+
+  @Test
+  void projection_whenOutputAlreadyExists_expectOriginalBytesAndNoScratchFiles() throws Exception {
+    var fixture = prepare();
+    Path output = temporary.resolve("projection.json");
+    Files.writeString(output, "existing-public-projection");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertEquals(1, result.exitCode());
+    assertEquals("app_subject_projection_failed", result.diagnostics().strip());
+    assertEquals("existing-public-projection", Files.readString(output));
+    try (var files = Files.list(fixture.privateRoot())) {
+      assertEquals(0L, files.count());
+    }
+  }
+
+  private void assertRejectedProjection(Fixture fixture, Path output, Invocation result)
+      throws Exception {
+    assertEquals(1, result.exitCode());
+    assertEquals("app_subject_projection_failed", result.diagnostics().strip());
+    assertFalse(Files.exists(output));
+    try (var files = Files.list(fixture.privateRoot())) {
+      assertEquals(0L, files.count());
+    }
+  }
+
   private Fixture prepare() throws Exception {
     Path app = temporary.resolve("app");
     assertEquals(
@@ -168,6 +265,10 @@ class AppSubjectProjectionCommandTest {
   }
 
   private int project(Fixture fixture, Path output, String... extra) {
+    return projectInvocation(fixture, output, extra).exitCode();
+  }
+
+  private Invocation projectInvocation(Fixture fixture, Path output, String... extra) {
     var arguments =
         new ArrayList<>(
             List.of(
@@ -191,7 +292,13 @@ class AppSubjectProjectionCommandTest {
                 "--output",
                 output.toString()));
     arguments.addAll(List.of(extra));
-    return cli(arguments.toArray(String[]::new));
+    var diagnostics = new StringWriter();
+    int result =
+        CryptaAppCli.execute(
+            new PrintWriter(diagnostics),
+            new PrintWriter(diagnostics),
+            arguments.toArray(String[]::new));
+    return new Invocation(result, diagnostics.toString());
   }
 
   private int cli(String... arguments) {
@@ -203,6 +310,8 @@ class AppSubjectProjectionCommandTest {
     if (result != 0 && !arguments[0].equals("subject-projection")) fail(output.toString());
     return result;
   }
+
+  private record Invocation(int exitCode, String diagnostics) {}
 
   private record Fixture(
       Path catalog, Path catalogKeys, Path publisherKeys, Path bundle, Path privateRoot) {}
