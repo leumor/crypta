@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "mode": "production",
+  "asOf": "2026-09-10T12:09:39Z",
+  "sources": [
+    {
+      "role": "repository-status",
+      "file": "repository-status.json",
+      "digest": "sha256:4a13312ae075654e670e08803b6890c3dc097b4de427e3b067e04796c9a62a48",
+      "size": 2808,
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+name: Public ecosystem transparency
+on:
+  pull_request:
+    paths:
+      - 'tools/ecosystem-transparency/**'
+      - 'tools/release-certification/cryptad_certification/transparency*'
+      - 'tools/release-certification/cryptad_certification/tests/test_transparency*'
+      - '.github/workflows/public-ecosystem-transparency.yml'
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: 'Reviewed snapshot UTC time (YYYY-MM-DDTHH:MM:SSZ); does not refresh sources'
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: public-ecosystem-transparency-${{ github.event_name == 'workflow_dispatch' && 'production' || github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Offline conformance
+        run: python3 tools/release-certification/certify.py public-ecosystem-transparency --self-test
+      - name: Empty production preview
+        run: >-
+          python3 tools/release-certification/certify.py public-ecosystem-transparency
+          --mode build --selection tools/ecosystem-transparency/production-selection.json
+          --source-root tools/ecosystem-transparency --output "$RUNNER_TEMP/public-site"
+          --as-of 2026-09-10T00:00:00Z
+      - name: Admitted synthetic demo preview
+        run: >-
+          python3 tools/release-certification/certify.py public-ecosystem-transparency
+          --mode build --demo --as-of 2026-09-10T00:00:00Z
+          --output "$RUNNER_TEMP/demo-site"
+      - name: Browser runner
+        run: npm install --prefix "$RUNNER_TEMP/browser-runner" --ignore-scripts playwright@1.63.0
+      - name: Install browser
+        run: node "$RUNNER_TEMP/browser-runner/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Browser conformance
+        env:
+          NODE_PATH: ${{ runner.temp }}/browser-runner/node_modules
+        run: |
+          node tools/ecosystem-transparency/tests/browser.cjs "$RUNNER_TEMP/public-site"
+          node tools/ecosystem-transparency/tests/browser.cjs "$RUNNER_TEMP/demo-site"
+          node tools/ecosystem-transparency/tests/browser.cjs --renderer-fixture
+  build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    needs: offline
+    runs-on: ubuntu-latest
+    environment: public-ecosystem-transparency-build
+    permissions:
+      contents: read
+    outputs:
+      manifest_digest: ${{ steps.identity.outputs.manifest_digest }}
+      prior_manifest: ${{ steps.checkpoint.outputs.prior_manifest }}
+      bootstrap_manifest: ${{ steps.checkpoint.outputs.bootstrap_manifest }}
+      site_url: ${{ steps.checkpoint.outputs.site_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify approved current public checkpoint or first-publication absence
+        id: checkpoint
+        env:
+          PRIOR_MANIFEST: ${{ vars.PUBLIC_ECOSYSTEM_CURRENT_MANIFEST_DIGEST }}
+          BOOTSTRAP_MANIFEST: ${{ vars.PUBLIC_ECOSYSTEM_BOOTSTRAP_MANIFEST_DIGEST }}
+          SITE_URL: ${{ vars.PUBLIC_ECOSYSTEM_SITE_URL }}
+        run: |
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode checkpoint --url "$SITE_URL" --output "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST" --bootstrap-manifest-digest "$BOOTSTRAP_MANIFEST"
+          echo "prior_manifest=$PRIOR_MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "bootstrap_manifest=$BOOTSTRAP_MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "site_url=$SITE_URL" >> "$GITHUB_OUTPUT"
+      - name: Render reviewed production successor offline
+        env:
+          SNAPSHOT_TIME: ${{ inputs.as_of }}
+          PRIOR_MANIFEST: ${{ steps.checkpoint.outputs.prior_manifest }}
+          BOOTSTRAP_MANIFEST: ${{ steps.checkpoint.outputs.bootstrap_manifest }}
+        run: |
+          PYTHONPATH=tools/release-certification python3 -c 'import os; from cryptad_certification.transparency_bundle import check_publication_time; check_publication_time(os.environ["SNAPSHOT_TIME"])'
+          history=()
+          if [ -n "$PRIOR_MANIFEST" ]; then
+            history=(--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST")
+          fi
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode build --selection tools/ecosystem-transparency/production-selection.json --source-root tools/ecosystem-transparency --output "$RUNNER_TEMP/public-site" --as-of "$SNAPSHOT_TIME" "${history[@]}"
+          if [ -n "$BOOTSTRAP_MANIFEST" ]; then
+            python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "$BOOTSTRAP_MANIFEST"
+          fi
+      - name: Verify complete public export
+        run: python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site"
+      - id: identity
+        name: Bind exact manifest for transfer
+        run: |
+          digest=$(sha256sum "$RUNNER_TEMP/public-site/site-bundle-manifest.json" | cut -d ' ' -f 1)
+          echo "manifest_digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Transfer verified public files only
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-public-site
+          path: ${{ runner.temp }}/public-site/
+          if-no-files-found: error
+          retention-days: 7
+  transfer-verify:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-public-site
+          path: ${{ runner.temp }}/public-site
+      - name: Reject transfer substitution and reverify without rebuilding
+        env:
+          EXPECTED_DIGEST: ${{ needs.build.outputs.manifest_digest }}
+        run: |
+          test "$(sha256sum "$RUNNER_TEMP/public-site/site-bundle-manifest.json" | cut -d ' ' -f 1)" = "$EXPECTED_DIGEST"
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site"
+          python3 -c 'import json,os; from pathlib import Path; assert json.loads((Path(os.environ["RUNNER_TEMP"])/"public-site/data/public-index.json").read_text())["mode"] == "production"'
+      - name: Recheck current public checkpoint and successor before Pages packaging
+        env:
+          PRIOR_MANIFEST: ${{ needs.build.outputs.prior_manifest }}
+          BOOTSTRAP_MANIFEST: ${{ needs.build.outputs.bootstrap_manifest }}
+          SITE_URL: ${{ needs.build.outputs.site_url }}
+          EXPECTED_DIGEST: ${{ needs.build.outputs.manifest_digest }}
+        run: |
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode checkpoint --url "$SITE_URL" --output "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST" --bootstrap-manifest-digest "$BOOTSTRAP_MANIFEST"
+          history=()
+          if [ -n "$PRIOR_MANIFEST" ]; then
+            history=(--previous-bundle "$RUNNER_TEMP/previous-site" --previous-manifest-digest "$PRIOR_MANIFEST")
+          else
+            test "sha256:$EXPECTED_DIGEST" = "$BOOTSTRAP_MANIFEST"
+          fi
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "sha256:$EXPECTED_DIGEST" "${history[@]}"
+          PYTHONPATH=tools/release-certification python3 -c 'import os; from pathlib import Path; from cryptad_certification.transparency_bundle import check_publication_time, parse; check_publication_time(parse((Path(os.environ["RUNNER_TEMP"])/"public-site/data/public-index.json").read_bytes())["asOf"])'
+      - name: Package verified site for Pages
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: ${{ runner.temp }}/public-site
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    needs: transfer-verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy the verified public site artifact
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+  observe:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && needs.build.outputs.site_url != ''
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    environment: public-ecosystem-transparency-observation
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-public-site
+          path: ${{ runner.temp }}/public-site
+      - name: Verify transferred approved bytes then observe configured public host once
+        id: observation
+        env:
+          EXPECTED_DIGEST: ${{ needs.build.outputs.manifest_digest }}
+          SITE_URL: ${{ needs.build.outputs.site_url }}
+        run: |
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode verify --production --bundle "$RUNNER_TEMP/public-site" --expected-manifest-digest "sha256:$EXPECTED_DIGEST"
+          observation_status=0
+          python3 tools/release-certification/certify.py public-ecosystem-transparency --mode observe --bundle "$RUNNER_TEMP/public-site" --url "$SITE_URL" --expected-manifest-digest "sha256:$EXPECTED_DIGEST" > "$RUNNER_TEMP/public-observation.json" || observation_status=$?
+          if [ -s "$RUNNER_TEMP/public-observation.json" ]; then
+            echo "report_ready=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$observation_status"
+      - name: Retain bounded public observation only
+        if: ${{ !cancelled() && steps.observation.outputs.report_ready == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: public-site-observation
+          path: ${{ runner.temp }}/public-observation.json
+          if-no-files-found: error

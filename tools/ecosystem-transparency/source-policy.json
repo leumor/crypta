@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "kind": "public-ecosystem-source-policy",
+  "version": 1,
+  "approvedSources": [
+    {
+      "role": "repository-status",
+      "digest": "sha256:4a13312ae075654e670e08803b6890c3dc097b4de427e3b067e04796c9a62a48",
+      "size": 2808,
+      "disclosureRule": "reviewed-repository-status-v1",
+      "evidenceClass": "repository-reported"
+    }
+  ],
+  "networkSources": [],
+  "maximumSources": 32,
+  "maximumSourceBytes": 262144,
+  "maximumPackageBytes": 4194304,
+  "roles": [
+    "release",
+    "maintenance",
+    "catalogs",
+    "reviews",
+    "keys",
+    "advisories",
+    "supply-chain",
+    "sbom",
+    "reproducibility",
+    "lifecycle",
+    "drill",
+    "repository-status"
+  ],
+  "disclosure": "typed-approved-public-originals-only",
+  "productionAdmission": "reviewed-exact-public-source-pins-and-original-authority-required",
+  "siteTargets": []
+}

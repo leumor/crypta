@@ -7,6 +7,13 @@ import unittest
 from pathlib import Path
 
 SUITE_MODULES = {
+    "public-ecosystem-transparency": [
+        "cryptad_certification.tests.test_transparency_public_projection",
+        "cryptad_certification.tests.test_transparency_sources",
+        "cryptad_certification.tests.test_transparency_adapters",
+        "cryptad_certification.tests.test_transparency_bundle",
+        "cryptad_certification.tests.test_transparency_workflow",
+    ],
     "core": [
         "cryptad_certification.tests.test_core",
         "cryptad_certification.tests.test_integrations",

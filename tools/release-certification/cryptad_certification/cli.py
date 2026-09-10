@@ -88,6 +88,16 @@ def build_parser() -> argparse.ArgumentParser:
     cross_version.add_argument("--execute", action="store_true")
     cross_version.add_argument("--self-test", action="store_true")
 
+    transparency = subparsers.add_parser("public-ecosystem-transparency")
+    transparency.add_argument("--mode", choices=("plan", "project", "collect", "build", "verify", "observe", "checkpoint"))
+    for option in ("selection", "source-root", "source-package", "authority-manifest", "private-root", "output", "bundle", "previous-bundle"):
+        transparency.add_argument("--" + option, type=Path)
+    for option in ("as-of", "url", "observed-at", "expected-manifest-digest", "previous-manifest-digest", "bootstrap-manifest-digest"):
+        transparency.add_argument("--" + option)
+    transparency.add_argument("--role", choices=("release", "maintenance", "advisories"))
+    for option in ("demo", "production", "online", "self-test"):
+        transparency.add_argument("--" + option, action="store_true")
+
     maintenance_drill = subparsers.add_parser("stable-maintenance-drill")
     maintenance_drill.add_argument("--mode", choices=("plan", "run", "verify", "closeout"))
     maintenance_drill.add_argument("--record", type=Path)
@@ -1358,6 +1368,10 @@ def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
         return selftest.run(command)
+    if command == "public-ecosystem-transparency":
+        from .transparency_command import run
+
+        return run(args)
     if command == "stable-maintenance-drill":
         from .maintenance_drill_command import main
 

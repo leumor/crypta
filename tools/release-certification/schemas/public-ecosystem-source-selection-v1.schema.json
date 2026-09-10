@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Public ecosystem source selection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "mode",
+    "asOf",
+    "sources"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "production",
+        "demo"
+      ]
+    },
+    "asOf": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sources": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "file",
+          "digest",
+          "size",
+          "required"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "release",
+              "maintenance",
+              "catalogs",
+              "reviews",
+              "keys",
+              "advisories",
+              "supply-chain",
+              "sbom",
+              "reproducibility",
+              "lifecycle",
+              "drill",
+              "repository-status"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}\\.json$"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 262144
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

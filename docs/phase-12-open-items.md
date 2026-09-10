@@ -32,3 +32,19 @@ historical binary, Mail recovery/rotation and privacy canary directions above re
 Experimental Mail contact renewal uses explicit current-worker preparation/confirmation and current
 vault/CAS authority; it does not establish a host minimum-reader lifecycle barrier or safe recovery
 resume. Independent security review and actual two-node delivery remain unobserved.
+
+## PR-302 public transparency boundary
+
+The [public ecosystem transparency site](public-ecosystem-transparency-site.md) presents selected
+public evidence through separate provenance, signature/semantic, disclosure, rehearsal, publication,
+activation and freshness dimensions. Empty production snapshots do not invent releases. The
+reviewed repository-status projection is a repository statement; a local drill remains partial
+and blocked on original protected authority even if every implemented synthetic case passes.
+
+Static rendering, local verification, browser conformance and a prepared Pages workflow do not
+establish production publication, external security review, independent binary reproduction or
+public byte observation. Source-owned safe exports rerun the existing release, maintenance and advisory verifiers without
+copying their internal receipts; eligible original public input and offline original-proof coverage
+remain separate prerequisites. Host configuration,
+approval and actual deployment/observation remain unperformed. PR-303 owns Phase 12 closeout and
+must retain every unresolved item above; site readiness does not waive those requirements.
