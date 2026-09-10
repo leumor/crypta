@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import network.crypta.platform.appcatalog.AppCatalogSigner;
 import network.crypta.platform.appcatalog.AppSubmissionMaintainer;
 import network.crypta.platform.appcatalog.AppSubmissionPackageWriter;
@@ -189,6 +190,55 @@ class AppSubjectProjectionCommandTest {
     }
   }
 
+  @Test
+  void projection_whenCatalogStabilityDiffersWithoutBaseline_expectNoOutput() throws Exception {
+    var fixture =
+        prepare(
+            catalog ->
+                catalog
+                    .replace("app.sample-app.api.targetBaseline=1.0\n", "")
+                    .replace(
+                        "app.sample-app.api.targetStability=stable",
+                        "app.sample-app.api.targetStability=experimental"));
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertRejectedProjection(fixture, output, result);
+  }
+
+  @Test
+  void projection_whenLegacyCatalogStabilityMatchesWithoutBaseline_expectProjection()
+      throws Exception {
+    var fixture =
+        prepare(catalog -> catalog.replace("app.sample-app.api.targetBaseline=1.0\n", ""));
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertEquals(0, result.exitCode());
+    assertTrue(Files.readString(output).contains("\"targetStability\":\"stable\""));
+    assertTrue(Files.readString(output).contains("\"targetBaseline\":\"1.0\""));
+  }
+
+  @Test
+  void projection_whenCatalogOmitsStabilityAndBaseline_expectSignedManifestDeclarations()
+      throws Exception {
+    var fixture =
+        prepare(
+            catalog ->
+                catalog
+                    .replace("app.sample-app.api.targetBaseline=1.0\n", "")
+                    .replace("app.sample-app.api.targetStability=stable\n", ""));
+    Path output = temporary.resolve("projection.json");
+
+    Invocation result = projectInvocation(fixture, output);
+
+    assertEquals(0, result.exitCode());
+    assertTrue(Files.readString(output).contains("\"targetStability\":\"stable\""));
+    assertTrue(Files.readString(output).contains("\"targetBaseline\":\"1.0\""));
+  }
+
   private void assertRejectedProjection(Fixture fixture, Path output, Invocation result)
       throws Exception {
     assertEquals(1, result.exitCode());
@@ -200,6 +250,10 @@ class AppSubjectProjectionCommandTest {
   }
 
   private Fixture prepare() throws Exception {
+    return prepare(UnaryOperator.identity());
+  }
+
+  private Fixture prepare(UnaryOperator<String> catalogTransform) throws Exception {
     Path app = temporary.resolve("app");
     assertEquals(
         0,
@@ -242,6 +296,10 @@ class AppSubjectProjectionCommandTest {
             "Synthetic",
             "--entry",
             entry.toString()));
+    String catalogContents = Files.readString(catalog);
+    assertTrue(catalogContents.contains("app.sample-app.api.targetBaseline=1.0\n"));
+    assertTrue(catalogContents.contains("app.sample-app.api.targetStability=stable\n"));
+    Files.writeString(catalog, catalogTransform.apply(catalogContents));
     AppCatalogSigner.sign(catalog, "catalog", catalogKey.getPrivate());
     Path catalogKeys = registry("catalog", catalogKey.getPublic().getEncoded());
     Path publisherKeys = registry("publisher", publisher.getPublic().getEncoded());

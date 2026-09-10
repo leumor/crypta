@@ -13,6 +13,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalogBundleExtractor;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
@@ -193,12 +194,8 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     var manifest = AppBundleManifestParser.parse(manifestPath);
     var compatibility = manifest.apiCompatibility();
     var catalogCompatibility = entry.compatibility().apiCompatibility();
-    if (catalogCompatibility.targetBaselineDeclared()
-        && (!java.util.Objects.equals(
-                catalogCompatibility.targetBaseline(), compatibility.targetBaseline())
-            || catalogCompatibility.targetStability() != compatibility.targetStability())) {
-      throw new IOException("catalog compatibility mismatch");
-    }
+    PlatformApiAppAdmission.requireCatalogDeclarationMatchesManifest(
+        catalogCompatibility, compatibility);
     var result = new LinkedHashMap<String, Object>();
     result.put("schemaVersion", 1);
     result.put("kind", "signed-app-subject-projection");
