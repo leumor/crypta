@@ -24,8 +24,8 @@ const element = id => {
   if (!elements.has(id)) elements.set(id, new Element());
   return elements.get(id);
 };
-for (const command of ['initialize', 'export-contact', 'import-contact', 'approve-contact', 'revoke-contact', 'save-draft', 'preview-send', 'confirm-send', 'import-reference', 'retry', 'read', 'status', 'backup', 'restore']) {
-  const button = command === 'confirm-send' ? element('confirm-send') : new Element();
+for (const command of ['initialize', 'export-contact', 'preview-renew-contact', 'confirm-renew-contact', 'import-contact', 'approve-contact', 'revoke-contact', 'save-draft', 'preview-send', 'confirm-send', 'import-reference', 'retry', 'read', 'status', 'backup', 'restore']) {
+  const button = ['confirm-send', 'confirm-renew-contact'].includes(command) ? element(command) : new Element();
   button.dataset.command = command;
   buttons.set(command, button);
 }
@@ -54,6 +54,7 @@ const context = {
       calls.push({command, payload: JSON.parse(JSON.stringify(payload))});
       if (deferred) await deferred;
       if (command === 'read') return {status: 'verified-local-copy', body: canary, subject: canary};
+      if (command === 'preview-renew-contact') return {renewalToken: 'synthetic-renewal', expires: '200'};
       if (command === 'preview-send') return {approval: 'synthetic-approval', body: canary};
       if (command === 'import-contact') return {fingerprint: 'synthetic-full-fingerprint', status: 'compare-fingerprint-out-of-band'};
       return {status: 'synthetic-result'};
@@ -100,6 +101,19 @@ const click = async command => { buttons.get(command).listeners.click(); await s
   await click('preview-send');
   await click('confirm-send');
   assert.equal(calls.at(-1).payload.approval, 'synthetic-approval');
+  await click('preview-renew-contact');
+  assert.equal(element('confirm-renew-contact').disabled, false);
+  assert.equal(element('confirm-send').disabled, true);
+  element('card').listeners.input();
+  const renewalBefore = calls.length;
+  await click('confirm-renew-contact');
+  assert.equal(calls.length, renewalBefore);
+  await click('preview-renew-contact');
+  await click('confirm-renew-contact');
+  assert.equal(calls.at(-1).payload.renewalToken, 'synthetic-renewal');
+  const afterRenewal = calls.length;
+  await click('confirm-renew-contact');
+  assert.equal(calls.length, afterRenewal);
   element('body').value = '\u2603'.repeat(6000);
   const quotaBefore = calls.length;
   await click('save-draft');

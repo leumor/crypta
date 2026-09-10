@@ -35,6 +35,68 @@ class MailMailboxPolicyTest {
   private final Map<String, byte[]> network = new LinkedHashMap<>();
 
   @Test
+  void originalSealedMailSurvivesExplicitOwnAndRemoteContactRenewal() throws Exception {
+    Party sender = party("history-sender", START);
+    Party recipient = party("history-recipient", START);
+    String recipientFingerprint = pin(sender.mail(), recipient.mail());
+    String senderFingerprint = pin(recipient.mail(), sender.mail());
+    var sent = send(sender.mail(), recipientFingerprint);
+    byte[] ciphertext = network.get(sent.get("reference")).clone();
+    MailMailbox laterSender = at(sender.backend(), START.plusSeconds(10));
+    MailMailbox laterRecipient = at(recipient.backend(), START.plusSeconds(10));
+
+    for (MailMailbox mailbox : List.of(laterSender, laterRecipient)) {
+      var preview = mailbox.execute("preview-renew-contact", Map.of());
+      assertStatus("preview", preview);
+      assertStatus(
+          "renewed",
+          mailbox.execute(
+              "confirm-renew-contact", Map.of("renewalToken", preview.get("renewalToken"))));
+    }
+    String renewedSender = laterSender.execute("export-contact", Map.of()).get("card");
+    laterRecipient.execute("import-contact", Map.of("card", renewedSender));
+    assertStatus(
+        "contact-approved",
+        laterRecipient.execute("approve-contact", Map.of("fingerprint", senderFingerprint)));
+
+    assertStatus("accepted", receive(laterRecipient, sent.get("reference")));
+    assertArrayEquals(ciphertext, network.get(sent.get("reference")));
+    assertEquals(3, sender.backend().vault.listIdentities().size());
+    assertEquals(3, recipient.backend().vault.listIdentities().size());
+
+    // An authenticated dataset still cannot substitute another account's valid historical card.
+    var malformed = recipient.backend().privateState();
+    malformed.put(
+        "own-card-history.0", sender.mail().execute("export-contact", Map.of()).get("card"));
+    byte[] envelope =
+        recipient
+            .backend()
+            .vault
+            .sealStorage(
+                MailTestBackend.APP, malformed.get("storageId"), MailWire.encode(malformed));
+    var wrapper = new LinkedHashMap<String, String>();
+    wrapper.put("storageId", malformed.get("storageId"));
+    wrapper.put("envelope", MailWire.base64(envelope));
+    recipient
+        .backend()
+        .request(
+            "POST",
+            "/app-data/records",
+            Map.of(
+                "namespace",
+                "mail-state",
+                "key",
+                "dataset",
+                "schemaVersion",
+                "1",
+                "contentType",
+                "application/octet-stream",
+                "valueBase64",
+                MailWire.base64(MailWire.encode(wrapper))));
+    assertStatus("invalid-contact-history", receive(laterRecipient, sent.get("reference")));
+  }
+
+  @Test
   void expiredContactCannotBeImportedOrUsedForNewDraft() throws Exception {
     Party sender = party("sender", START);
     Party recipient = party("recipient", START);

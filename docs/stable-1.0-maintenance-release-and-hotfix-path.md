@@ -1004,3 +1004,11 @@ merge reconciliation, the full-window hotfix follow-up or an authorized successo
 advisory observation, updater/replacement guidance, reporter coordination when contact exists, and
 surface-specific post-release checks. See [Stable 1.0 vulnerability intake and coordinated
 disclosure operations](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md).
+
+## Isolated operations rehearsal
+
+The [maintenance operations drill](stable-maintenance-operations-drill.md) executes bounded local
+failure/retry checks against existing maintenance logic. Its synthetic authorities and local
+integrity summary cannot satisfy this runbook's production prerequisites, authorization,
+publication, reconciliation or follow-up requirements. The drill keeps missing adapters distinct
+from missing original artifacts and approved infrastructure.

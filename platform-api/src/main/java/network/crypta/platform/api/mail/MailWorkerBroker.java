@@ -43,6 +43,8 @@ public final class MailWorkerBroker {
       Set.of(
           "initialize",
           "export-contact",
+          "preview-renew-contact",
+          "confirm-renew-contact",
           "import-contact",
           "approve-contact",
           "revoke-contact",

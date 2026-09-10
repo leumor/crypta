@@ -34,3 +34,12 @@ host selects the local Platform API endpoint. Callers cannot choose a forwarding
 command or class. Process stdout/stderr remain ordinary logs and carry no private frames. The
 browser receives neither process tokens nor launch credentials. Plaintext IPC can exist transiently
 inside trusted daemon/worker memory; compromised endpoints remain outside confidentiality claims.
+
+## Contact renewal
+
+The experimental contract-26 worker adds `preview-renew-contact` and `confirm-renew-contact`.
+A short-lived single-use plan binds the exact current dataset, public identity metadata and grants.
+Renewal signs a new same-key statement and requires counterpart approval; it never regrants or
+rotates key material. Original signed contact intervals have finite retention with explicit capacity
+denial. Restore remains paused. See [Mail lifecycle and recovery](mail-lifecycle-recovery.md) for
+state, compatibility limits and the remaining rotation/resume implementation work.

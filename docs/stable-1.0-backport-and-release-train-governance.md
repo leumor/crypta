@@ -756,3 +756,11 @@ ledger-wide summary; plaintext exists only in the confined temporary consumer ro
 Configure the same canonical base64 32-byte
 `CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64` secret on the vulnerability producer
 environments and `stable-1.0-backport-evidence`; absence or mismatch is a hard stop.
+
+## Isolated operations rehearsal
+
+The [maintenance operations drill](stable-maintenance-operations-drill.md) executes bounded local
+failure/retry checks against existing maintenance logic. Its synthetic authorities and local
+integrity summary cannot satisfy this runbook's production prerequisites, authorization,
+publication, reconciliation or follow-up requirements. The drill keeps missing adapters distinct
+from missing original artifacts and approved infrastructure.

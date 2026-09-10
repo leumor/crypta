@@ -69,3 +69,8 @@ provider, followed by the broader suites appropriate to the touched integration:
 ```bash
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 ```
+
+For isolated maintenance adapter work, run `certify.py stable-maintenance-drill --self-test` and
+follow `docs/stable-maintenance-operations-drill.md`. Its fixed disposable drivers exercise local
+mutation/retry rules only. Keep `verified-local-integrity` distinct from original producer
+authentication; never feed its synthetic summary into production maintenance evidence.

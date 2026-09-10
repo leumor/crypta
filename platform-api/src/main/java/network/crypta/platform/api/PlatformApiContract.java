@@ -62,7 +62,7 @@ public record PlatformApiContract(
    * a way that tooling should be able to compare. Operator-only descriptors do not advance it. It
    * is not the Cryptad build number, and it is not the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 25;
+  public static final int CURRENT_CONTRACT_VERSION = 26;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -2231,7 +2231,10 @@ public record PlatformApiContract(
               process,
               browser,
               PlatformApiStabilityLevel.EXPERIMENTAL,
-              "Fixed experimental own-app Mail operation."));
+              "command".equals(action)
+                  ? "Fixed experimental own-app Mail commands, including explicit same-key contact"
+                      + " renewal at contract 26."
+                  : "Fixed experimental own-app Mail operation."));
     }
 
     private List<PlatformApiEndpointDescriptor> build() {

@@ -45,6 +45,11 @@ final class MailTestBackend implements MailBackend {
   public synchronized Map<String, Object> request(
       String method, String path, Map<String, String> p) {
     try {
+      if (path.equals("/app-vault/grants")) {
+        return Map.of(
+            "grants",
+            new network.crypta.platform.api.appvault.AppVaultApiHandler(vault).listGrants(APP));
+      }
       if (path.equals("/app-vault/identities")) {
         vault.requireMailIdentityAuthority(APP);
         return Map.of(

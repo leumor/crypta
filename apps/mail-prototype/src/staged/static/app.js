@@ -1,13 +1,16 @@
 (() => {
   "use strict";
   let approval = "";
+  let renewalToken = "";
   let draftRevision = 0;
   let busy = false;
   const field = (id) => document.getElementById(id).value;
   const invalidate = () => {
     draftRevision++;
     approval = "";
+    renewalToken = "";
     document.getElementById("confirm-send").disabled = true;
+    document.getElementById("confirm-renew-contact").disabled = true;
   };
 
   async function invoke(command) {
@@ -30,6 +33,10 @@
         if (!approval) return;
         payload.approval = approval;
         break;
+      case "confirm-renew-contact":
+        if (!renewalToken) return;
+        payload.renewalToken = renewalToken;
+        break;
       case "import-reference": payload.reference = field("reference"); payload.confirmed = "yes"; break;
       case "retry": payload.operation = field("operation"); break;
       case "read": payload.messageId = field("messageId"); break;
@@ -51,6 +58,10 @@
       if (command === "preview-send" && previewRevision === draftRevision && typeof result.approval === "string") {
         approval = result.approval;
         document.getElementById("confirm-send").disabled = false;
+      }
+      if (command === "preview-renew-contact" && previewRevision === draftRevision && typeof result.renewalToken === "string") {
+        renewalToken = result.renewalToken;
+        document.getElementById("confirm-renew-contact").disabled = false;
       }
       if (command === "import-contact" && typeof result.fingerprint === "string") {
         document.getElementById("fingerprint").value = result.fingerprint;

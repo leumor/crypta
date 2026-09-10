@@ -39,6 +39,9 @@
   <section class="cr-card"><h2>Account</h2>
     <button class="cr-button" data-command="initialize" type="button">Initialize or unlock retained account</button>
     <button class="cr-button" data-command="export-contact" type="button">Export own public contact card</button>
+    <button class="cr-button" data-command="preview-renew-contact" type="button">Preview contact validity renewal</button>
+    <button class="cr-button" id="confirm-renew-contact" data-command="confirm-renew-contact" type="button" disabled>Confirm same-key contact renewal</button>
+    <p>Renewal signs a new contact card using the current keys. Review its validity before confirming, then share it separately. Your contacts must explicitly approve the renewed card. Existing signed messages keep their original validity.</p>
     <button class="cr-button" data-command="status" type="button">Refresh private mailbox status</button>
   </section>
   <section class="cr-card"><h2>Pin a contact</h2>

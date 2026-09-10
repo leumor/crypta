@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=25
+contractVersion=26
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 25,
+    "contractVersion": 26,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "stableBaseline": {
@@ -52,7 +52,7 @@ The response shape is:
       "schemaVersion": 1,
       "baselineName": "1.0",
       "baselineContractVersion": 19,
-      "currentContractVersion": 25,
+      "currentContractVersion": 26,
       "supportPhase": "beta",
       "minimumDeprecationWindowContractVersions": 2,
       "minimumScheduledRemovalWindowContractVersions": 2,
@@ -771,3 +771,13 @@ The fixed broker is not a generic app-service RPC or endpoint proxy.
 `GET /api/v1/queue/app-document-status` provides a typed process-only result for a stable app-prefixed
 insert identifier; `inserted` is not delivery or reading. See the
 [Mail design](mail-app-service-prototype.md) and [wire specification](mail-wire-specification.md).
+
+## Experimental Mail renewal (contract 26)
+
+Contract 26 extends the fixed Mail worker command vocabulary with `preview-renew-contact`
+and `confirm-renew-contact`. A single-use, short-lived worker preview binds the current encrypted
+dataset and vault grants. Confirmation signs a new contact validity statement with the same keys.
+The browser cannot extend a previously signed statement or grant key authority. Updated Mail bundles
+require contract 26 and retain explicit experimental admission and permission rationale. Existing
+Mail routes and capabilities retain their original introduction at contract 25. Stable baseline
+1.0 at contract 19, network v1 formats and the five-profile registry remain unchanged.

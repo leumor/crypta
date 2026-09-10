@@ -479,6 +479,31 @@ regression that still rejects embedded payloads. The corrected CI-safe pipeline 
 with zero redaction findings, `promotionReady=false`, and `decision=no-go`; its 20 self-tests passed.
 Redaction and upload blocking were not disabled. This finding is not evidence of a leaked secret.
 
-The separate inspected supply-chain run still reports failure without jobs; its cause remains
-unestablished. Exact-head GitHub checks must be re-queried after authorized publication. Local
+The separate inspected supply-chain run failed before creating jobs. Its run-page annotation
+identifies an oversized expression; PR-301 extracts that script into a checked-in helper. A successful hosted run of the changed workflow remains unobserved. Exact-head GitHub checks
+must be re-queried after authorized publication. Local
 checks cannot be attributed to a different commit, PR merge commit or protected run.
+
+## Prospective maintenance bindings
+
+PR-301 adds original-artifact admission for the existing maintenance portable freeze. The selected
+`role=product` bytes, complete asset/checksum inventory, freeze source/run/attempt and exact member
+attestations are verified before runtime intake. An app-free maintenance role can participate in a
+mixed roster with original RC/supply-chain roles. App-bearing maintenance roles remain blocked:
+the current maintenance freeze lacks the authenticated API contract snapshot required by their
+app projection. Daemon byte admission does not authenticate a caller's runtime contract number.
+Old RC records retain `frozenPortableBinding: not-established`.
+
+New protected checkpoint/finish reports use version 2 and retain all version-1 report fields. Their
+additional `maintenanceMeasurements` are recomputed from the owned journal prefix and root activation
+product bindings. They include fixed directional case counts, actual successful network operation
+and participating-node counts, epochs, checkpoint/helper identity, exact maintenance policy bytes
+and applicable post-freeze/freshness checks. Denials and cleanup do not count as network operations.
+The protected consumer reauthenticates the original finish artifact; offline verification performs
+no network authentication and cannot deserialize an authority Boolean.
+
+Every projected maintenance row remains blocked by its missing adapter set. This is authenticated
+measurement plumbing, not complete maintenance evidence. The catalog, budget, profile, migration,
+Mail recovery and full canary gaps in [Phase 12](phase-12-open-items.md) remain open. See the
+[maintenance drill](stable-maintenance-operations-drill.md) for isolated execution and acceptance
+dimensions. No protected producer was dispatched for this implementation.

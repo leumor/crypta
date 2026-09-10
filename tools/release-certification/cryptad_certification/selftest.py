@@ -16,6 +16,8 @@ SUITE_MODULES = {
     "network-scale-soak": ["cryptad_certification.tests.test_collectors"],
     "live-network-beta": ["cryptad_certification.tests.test_collectors"],
     "multi-node-beta": ["cryptad_certification.tests.test_multi_node"],
+    "stable-maintenance-drill": ["cryptad_certification.tests.test_maintenance_drill",
+                                 "cryptad_certification.tests.test_maintenance_drill_train"],
     "cross-version-soak": [
         "cryptad_certification.tests.test_cross_version_evidence",
         "cryptad_certification.tests.test_cross_version_command",
