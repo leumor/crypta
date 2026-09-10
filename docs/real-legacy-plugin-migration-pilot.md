@@ -20,7 +20,7 @@ The changes since the inspected commit include PR-296's original-dispatcher and 
 | Preview alone cannot protect concurrent writes | Daemon-held one-time consent binds the exact signed installed target, namespace schema, quota, data generation and proposed bytes. Existing data-migration barriers and the host lifecycle monitor coordinate commit. |
 | Old writer identity cannot transfer safely | No private insert identity is imported. Explicit generated text publication uses a new CHK address. |
 | Synthetic fixtures cannot prove user migration | Pinned-writer fixtures and an executable synthetic data-path test remain labeled synthetic. No operator snapshot or network observation is supplied by this change. |
-| No authenticated migration producer; PR-296 projection authority missing | Runtime/release certification stays blocked with separate typed prerequisites. Local conversion and import do not depend on release closeout. |
+| Original protected observations are missing | PR-300 implements separate migration/projection producers and v2 consumers. No protected or real-user observation has been executed; local conversion/import remains independent of release closeout. |
 
 ## Prepare a consistent snapshot
 
@@ -135,6 +135,17 @@ A runtime drill may publish only operator-approved non-sensitive test text. If n
 
 ## Evidence levels and certification
 
+The [cross-version experiment](cross-version-live-network-soak.md) adds a callable synthetic
+observation adapter that uses the fixed converter and installed Site Publisher controller with
+an admitted own-app session. The separate `observe_operator_private` capability accepts only a
+root-sealed exact stopped-snapshot selection on the dedicated protected topology. It reads no
+operator source before that authority is verified. The known upstream fixture cannot be relabeled
+private, and `operator-owned-private-observation` does not establish independently verified
+real-user migration. Neither path accepts operator data through ordinary CI or publishes CHKs.
+No live migration or operator-owned source was executed for this change. Browser literal preview,
+bundle rollback and full cleanup remain missing runtime adapter cases; their existing local tests
+do not fill those observations. Private restore/quota stages require the declared recovery cohort.
+
 Keep four evidence levels distinct: parser/converter unit tests, upstream-format conformance vectors, an isolated executable demonstration, and an authentic operator-approved user migration. Synthetic bytes produced by the pinned upstream writer prove format compatibility, not migration of a real user's data.
 
 [`SharesiteSyntheticDataPathTest`](../platform-devtools/src/test/java/network/crypta/platform/api/appdata/SharesiteSyntheticDataPathTest.java) runs the real offline CLI on the pinned-writer synthetic fixture, signs a private copy of the staged Site Publisher bundle with an ephemeral test key, and imports through the guarded service into `FileAppDataStore`. It checks exact readback after reconstructing the host/store, source preservation, edit, undo, private restore, and independent signed-bundle rollback. The separate Site Publisher behavior harness exercises its actual controller and DOM handlers, including inert markup and explicit publishing requests. These tests do not perform a production catalog install, launch an app process, insert/fetch network content, or migrate a real user's database.
@@ -151,14 +162,20 @@ python3 tools/release-certification/certify.py stable-legacy-plugin-migration \
 
 The example contains synthetic identity placeholders and only `not-observed` outcomes. It is a schema illustration, not a fixture proving an executable migration. The output directory must be new. The command reads a bounded, sanitized observation, never a private package or database; it emits only `summary.json`, `report.md`, and `redaction-report.json`.
 
-Modes are `preflight`, `verify-migration`, `verify-runtime`, and `closeout`. The first two validate the closed local observation and retain claims as `reportedLocalOutcomes`; they do not independently verify format or runtime execution. `verify-runtime` and `closeout` exit nonzero with `protected-migration-producer-not-configured`. No caller label, opaque digest, resealed receipt or self-reported `pass` can grant operational success. Publication remains `not-observed` without an authenticated producer.
+Modes are `preflight`, `verify-migration`, `verify-runtime`, and `closeout`. The first two validate the closed local observation and retain claims as `reportedLocalOutcomes`; they do not independently verify format or runtime execution. `verify-runtime` and `closeout` retain the v1 fail-closed `protected-migration-producer-not-configured` prerequisite. The separate v2 protected wrapper authenticates an original produced observation before invoking its narrowly admitted consumer path. No caller label, opaque digest, resealed receipt or self-reported `pass` can grant operational success. Publication remains `not-observed` without an authenticated producer.
 
 Public observations allow only source profile/revision, public adapter/app identities, an opaque operation ID, bounded counts/categories and outcome enums. They reject private labels/text, old URIs, source paths, raw source/content hashes, payloads, arbitrary notes and caller-supplied producer authority. Shared redaction runs after this closed allowlist; opaque public artifact digests remain valid metadata.
 
-PR-296's `pr296-protected-subject-projection-pending` prerequisite remains explicit. Its existing non-fixture app-matrix rejection must not be weakened: broad PR-294/PR-295 summary digests do not authenticate complete app compatibility declarations. Missing projection evidence blocks release closeout independently of successful local conversion/import.
+PR-296's `pr296-protected-subject-projection-pending` prerequisite remains explicit for v1 local inputs and missing authentic v2 evidence. Its existing non-fixture app-matrix rejection must not be weakened: broad PR-294/PR-295 summary digests do not authenticate complete app compatibility declarations. Missing projection evidence blocks release closeout independently of successful local conversion/import.
 
 The dependency graph is: authenticated source daemon release → existing runtime admission; new signed migration-app release → app update consent → local migration; protected observation authority → authenticated migration evidence; complete upstream projection/release evidence → release closeout. A post-migration receipt is not a prerequisite for building the app, and historical daemon release roots are never relabeled with this implementation commit.
 
-A future protected migration producer must use a fixed reviewed adapter, authenticate original dispatcher and triggering/rerun actor, bind repository/workflow/commit/run/attempt/job/environment/artifact identities, and emit only the sanitized allowlist. No such producer is configured by this local command. Ordinary CI runs synthetic tests and never downloads user snapshots or accesses an operator node, release credentials, or signing keys.
+PR-300's dedicated `stable-1.0-sharesite-runtime-observation.yml` producer uses the fixed adapter,
+separately selected private topology and single-member public allowlist. Its consumer reauthenticates
+the original producing run/attempt/job/environment/artifact and exact member attestation, retaining
+synthetic versus operator-private classification. This local v1 command does not dispatch it.
+The [private migration prerequisites](cross-version-live-network-soak.md#protected-sharesite-observations)
+define source selection and retention. Ordinary CI runs synthetic tests and never downloads user
+snapshots or accesses an operator node, release credentials, or signing keys.
 
 PR-298 may review Trust/Social content-profile maturity. It does not broaden this Sharesite profile, add old-key continuity, activate API 1.1, or establish a new release-authority framework. PR-300 retains long-duration cross-version soak ownership.

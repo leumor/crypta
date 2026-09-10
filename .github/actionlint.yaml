@@ -4,3 +4,6 @@ self-hosted-runner:
     - cryptad-stable-catalog-observation
     - cryptad-federated-catalog-runtime
     - cryptad-third-party-pilot-node
+    - cryptad-app-subject-projection
+    - cryptad-sharesite-runtime
+    - cryptad-cross-version-supervisor

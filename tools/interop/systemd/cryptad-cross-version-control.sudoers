@@ -1,0 +1,5 @@
+# Install with visudo after selecting the dedicated trusted Actions runner account.
+# The operator group may execute only these installed, isolated Python control operations.
+Cmnd_Alias CRYPTAD_SOAK_CONTROL = /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/cross_version_supervisor_authority.py authorize, /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/cross_version_supervisor_authority.py start, /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/cross_version_supervisor_authority.py checkpoint, /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/cross_version_supervisor_authority.py finish
+Defaults!CRYPTAD_SOAK_CONTROL env_keep += "GH_TOKEN GITHUB_ACTIONS GITHUB_SHA GITHUB_RUN_ID GITHUB_RUN_ATTEMPT"
+%cryptad-soak-operators ALL=(root) NOPASSWD: NOSETENV: CRYPTAD_SOAK_CONTROL

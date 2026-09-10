@@ -4,7 +4,7 @@ import importlib.util
 import io
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location("mail_demo", Path(__file__).with_name("two_node_demo.py"))
 demo = importlib.util.module_from_spec(spec)
@@ -36,6 +36,27 @@ class DemoTest(unittest.TestCase):
             self.assertEqual({"status": "fixture-only"}, client.command("status"))
             self.assertEqual("/mail/command", post.call_args_list[0].args[0])
             self.assertEqual("/mail/result", post.call_args_list[1].args[0])
+
+    def test_callable_private_bodies_and_scan_hook_preserve_original_protocol_flow(self):
+        alice, bob = Mock(), Mock()
+        alice.command.side_effect = [
+            {"status": "initialize-required"}, {}, {"card": "alice-card"},
+            {"status": "wrong-recipient"}, {"status": "accepted", "messageId": "reply-id"},
+            {"body": "private-reply"}]
+        bob.command.side_effect = [
+            {"status": "initialize-required"}, {}, {"card": "bob-card"},
+            {"status": "accepted", "messageId": "body-id"},
+            {"status": "verified-local-copy", "body": "private-body"}, {"status": "duplicate"}]
+        observed = []
+        bob.restart.side_effect = lambda: observed.append("restart")
+        with patch.object(demo, "pin", side_effect=["bob-pin", "alice-pin"]), patch.object(demo, "send", side_effect=["first-ref", "reply-ref"]) as send:
+            result = demo.run_flow(alice, bob, 30, True, body="private-body", reply_body="private-reply",
+                                   before_restart=lambda: observed.append("scan"))
+        self.assertEqual(["scan", "restart"], observed)
+        self.assertEqual("private-body", send.call_args_list[0].args[2])
+        self.assertEqual("private-reply", send.call_args_list[1].args[2])
+        self.assertEqual("observed-demo", result["overall"])
+        self.assertNotIn("private-body", str(result))
 
     def test_existing_mailbox_aborts_before_initialization(self):
         class Fixture:

@@ -1,0 +1,119 @@
+name: Stable Sharesite runtime observation
+on:
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: stable-sharesite-runtime-observation
+  cancel-in-progress: false
+jobs:
+  observe-sharesite-runtime:
+    name: observe-sharesite-runtime
+    if: github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor'
+    runs-on: [self-hosted, linux, cryptad-sharesite-runtime]
+    timeout-minutes: 45
+    environment: stable-1-0-sharesite-runtime-observation
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out exact approved runtime adapter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Execute the environment-selected disposable synthetic topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import stat
+          import tempfile
+          root = Path('/etc/cryptad-certification/sharesite-topology')
+          if root.is_symlink() or root.stat().st_uid != 0 or root.stat().st_mode & 0o022:
+              raise SystemExit('sharesite_protected_selection_root_invalid')
+          seal = root / 'selection.json'
+          info = seal.lstat()
+          if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 16384:
+              raise SystemExit('sharesite_protected_selection_seal_invalid')
+          selected = json.loads(seal.read_bytes())
+          if set(selected) != {'plan.json', 'private.json', 'authorization.json'}:
+              raise SystemExit('sharesite_protected_selection_seal_invalid')
+          destination = Path(tempfile.mkdtemp(prefix='sharesite-selection.', dir=os.environ['RUNNER_TEMP']))
+          for name in ('plan.json', 'private.json', 'authorization.json'):
+              path = root / name
+              info = path.lstat()
+              if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                      or info.st_mode & 0o077 or info.st_size > 1048576):
+                  raise SystemExit('sharesite_protected_selection_invalid')
+              raw = path.read_bytes()
+              if 'sha256:' + hashlib.sha256(raw).hexdigest() != selected[name]:
+                  raise SystemExit('sharesite_protected_selection_digest_mismatch')
+              output = destination / name
+              output.write_bytes(raw)
+              output.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('SHARESITE_SELECTED_ROOT=' + str(destination) + '\n')
+          print('sharesite_protected_selection_verified')
+          PY
+      - name: Run the exact copied approved selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          journal_root="$(jq -er .root "$SHARESITE_SELECTED_ROOT/private.json")"
+          public_root="$(mktemp -d "$RUNNER_TEMP/sharesite-public-parent.XXXXXX")/observations"
+          echo "SHARESITE_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
+          status=0
+          python3 tools/release-certification/certify.py cross-version-soak run --execute \
+            --plan "$SHARESITE_SELECTED_ROOT/plan.json" \
+            --private-config "$SHARESITE_SELECTED_ROOT/private.json" \
+            --authorization "$SHARESITE_SELECTED_ROOT/authorization.json" \
+            --journal-root "$journal_root" --out-dir "$public_root" || status=$?
+          [[ "$status" == 0 || "$status" == 2 ]]
+          test -f "$public_root/sharesite-runtime-observation.json"
+          producer_root="$(mktemp -d "$RUNNER_TEMP/sharesite-producer.XXXXXX")"
+          echo "SHARESITE_PRODUCER_ROOT=$producer_root" >> "$GITHUB_ENV"
+          python3 tools/release-certification/protected/sharesite_observation.py bind-producer \
+            --input "$public_root/sharesite-runtime-observation.json" \
+            --output "$producer_root/sharesite-runtime-observation.json"
+          PYTHONPATH=tools/release-certification python3 - "$producer_root/sharesite-runtime-observation.json" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+          from cryptad_certification.engines.stable_legacy_plugin_migration import summarize
+          from cryptad_certification.redaction import scan_value
+          path = Path(sys.argv[1])
+          if path.is_symlink() or path.stat().st_size > 32768:
+              raise SystemExit('sharesite_public_observation_invalid')
+          value = json.loads(path.read_bytes())
+          if value['producer'] != {
+              'sourceCommit': os.environ['GITHUB_SHA'],
+              'workflowPath': '.github/workflows/stable-1.0-sharesite-runtime-observation.yml',
+              'environment': 'stable-1-0-sharesite-runtime-observation',
+              'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT'])}:
+              raise SystemExit('sharesite_producer_identity_mismatch')
+          summarize(value, 'verify-runtime')
+          if scan_value(value):
+              raise SystemExit('sharesite_public_observation_rejected')
+          PY
+      - name: Attest the exact sanitized runtime result
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.SHARESITE_PRODUCER_ROOT }}/sharesite-runtime-observation.json
+      - name: Upload only the attested synthetic runtime observation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sharesite-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SHARESITE_PRODUCER_ROOT }}/sharesite-runtime-observation.json
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+          retention-days: 7

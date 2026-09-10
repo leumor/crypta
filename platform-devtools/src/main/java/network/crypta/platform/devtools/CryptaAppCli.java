@@ -132,6 +132,7 @@ import picocli.CommandLine;
     mixinStandardHelpOptions = true,
     description = "Create, validate, lint, package, sign, and catalog Crypta app bundles.",
     subcommands = {
+      AppSubjectProjectionCommand.class,
       network.crypta.platform.devtools.migration.sharesite.SharesiteMigrationCommand.class,
       CryptaAppCli.InitCommand.class,
       CryptaAppCli.DevCommand.class,
@@ -265,7 +266,7 @@ public final class CryptaAppCli implements Runnable {
     CommandLine commandLine = new CommandLine(new CryptaAppCli());
     if (arguments.length > 0 && arguments[0].equals("migration")) {
       commandLine.setParameterExceptionHandler(
-          (exception, _) -> {
+          (_, _) -> {
             err.println("sharesite_invalid_arguments");
             return CommandLine.ExitCode.USAGE;
           });

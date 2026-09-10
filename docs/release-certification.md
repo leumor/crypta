@@ -6,7 +6,15 @@ decoder, converter, owning-app UI, and guarded data recovery checks. Its
 `--self-test` proves verifier behavior, not migration of a user's database. Source snapshots,
 private plans/packages/backups, and raw content comparison hashes never belong in release
 artifacts. Runtime authentication and real-data migration remain separate from format tests.
-Release closeout retains the pending PR-296 protected subject-projection prerequisite.
+Release closeout requires the actual PR-296 protected subject projection; the implemented
+producer and v2 admission do not substitute for executing and authenticating that producer.
+
+The [cross-version experiment runbook](cross-version-live-network-soak.md) describes the
+`cross-version-soak plan/run/verify/closeout` path, exact packaged supervisor and observed journal.
+Its public summary reports missing mandatory cases and measured coverage separately from requested
+duration. Local source comparisons, authenticated bounded product comparisons and protected
+long-run authority have separate admission requirements. Existing consumer thresholds and frozen
+history remain unchanged; the new closeout cannot promote an incomplete or unauthenticated run.
 
 Use release certification to collect a candidate’s compatibility, performance, app-platform,
 security, soak, recovery, and release-policy evidence into one redacted release workspace.

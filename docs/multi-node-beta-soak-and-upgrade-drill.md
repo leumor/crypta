@@ -3,6 +3,11 @@
 Use the multi-node beta command to plan, run, and verify app ecosystem behavior across a bounded
 multi-node topology and a previous-candidate upgrade.
 
+For owned packaged processes and measured operation journals, use the separate
+[`cross-version-soak` path](cross-version-live-network-soak.md) in this tool family. It preserves
+the existing simulated/hybrid/live summary meanings; reachability or a duration label alone does
+not establish executed cross-version scenarios or continuous live coverage.
+
 ## Commands
 
 Copy the release-candidate template and configure topology, mode, candidate inputs, freshness, and

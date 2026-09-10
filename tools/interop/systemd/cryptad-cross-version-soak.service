@@ -1,0 +1,26 @@
+[Unit]
+Description=Cryptad explicitly selected disposable source comparison supervisor
+After=network.target
+
+[Service]
+Type=simple
+User=cryptad-soak
+Group=cryptad-soak
+WorkingDirectory=/opt/cryptad-cross-version/current
+ExecStart=/usr/bin/python3 /opt/cryptad-cross-version/current/tools/interop/cross_version_service.py
+Environment=LANG=C.UTF-8
+UMask=0077
+StandardOutput=null
+StandardError=journal
+Restart=no
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=200
+SendSIGKILL=yes
+RuntimeMaxSec=432380
+LimitNOFILE=8192
+TasksMax=2048
+MemoryMax=8G
+
+[Install]
+WantedBy=multi-user.target

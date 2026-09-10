@@ -1,0 +1,131 @@
+name: Stable app subject projection
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Build immutable projection tools or produce from the protected selected cohort
+        type: choice
+        required: true
+        default: build-tools
+        options: [build-tools, produce]
+permissions: {}
+concurrency:
+  group: stable-app-subject-projection
+  cancel-in-progress: false
+jobs:
+  build-projection-tools:
+    name: build-projection-tools
+    if: inputs.operation == 'build-tools' && github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: stable-1-0-app-subject-projection-tools
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out exact tool source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Use the current build toolchain
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Build complete executable projection tool archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :platform-devtools:distZip
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import shutil
+          archives = list(Path('platform-devtools/build/distributions').glob('crypta-app-*.zip'))
+          if len(archives) != 1:
+              raise SystemExit('projection_tool_archive_ambiguous')
+          output = Path('build/projection-tool-subject')
+          output.mkdir()
+          shutil.copyfile(archives[0], output / 'projection-tools.zip')
+          PYCODE
+      - name: Attest exact executable tool bytes
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: build/projection-tool-subject/projection-tools.zip
+      - name: Upload only complete immutable tool archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: app-subject-tools-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/projection-tool-subject/projection-tools.zip
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 30
+  project-app-subjects:
+    name: project-app-subjects
+    if: inputs.operation == 'produce' && github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor'
+    runs-on: [self-hosted, linux, cryptad-app-subject-projection]
+    timeout-minutes: 45
+    environment: stable-1-0-app-subject-projection
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out exact approved producer revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Derive subjects from original signed artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f /etc/cryptad-certification/app-subject-cohort.json
+          private_root="$(mktemp -d "$RUNNER_TEMP/app-subject-private.XXXXXX")"
+          public_root="$(mktemp -d "$RUNNER_TEMP/app-subject-public.XXXXXX")"
+          echo "PROJECTION_PRIVATE_ROOT=$private_root" >> "$GITHUB_ENV"
+          echo "PROJECTION_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
+          python3 tools/release-certification/protected/app_subject_projection.py produce \
+            --private-root "$private_root" \
+            --output "$public_root/platform-api-1.x-app-subject-inventory.json"
+      - name: Attest exact derived declaration inventory
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.PROJECTION_PUBLIC_ROOT }}/platform-api-1.x-app-subject-inventory.json
+      - name: Upload only the attested declaration inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: app-subject-projection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PROJECTION_PUBLIC_ROOT }}/platform-api-1.x-app-subject-inventory.json
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: false
+          retention-days: 7
+      - name: Remove only owned temporary artifact snapshots
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import shutil
+          runner = Path(os.environ['RUNNER_TEMP']).resolve()
+          for name, prefix in [('PROJECTION_PRIVATE_ROOT', 'app-subject-private.'),
+                               ('PROJECTION_PUBLIC_ROOT', 'app-subject-public.')]:
+              selected = os.environ.get(name)
+              if not selected:
+                  continue
+              path = Path(selected)
+              if path.is_symlink() or path.parent.resolve() != runner or not path.name.startswith(prefix):
+                  raise SystemExit('projection_cleanup_ownership_mismatch')
+              shutil.rmtree(path)
+          PY

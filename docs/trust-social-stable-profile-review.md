@@ -113,6 +113,12 @@ a supported-prior-reader runtime matrix, an independent external implementation,
 sign-off or a production closeout. Existing historical tests and frozen registry checks remain
 useful without being relabeled as cross-release runtime evidence.
 
+The [cross-version source comparison](cross-version-live-network-soak.md#source-pinned-profile-comparison)
+adds executable selected JavaScript reader and generated Feed directions from immutable source
+commits. Its output identifies the actual selected files, Node runtime, adapter and corpus.
+Historical Java/signed producers and external implementations remain separately unsupported;
+executing prior source is not authentication of an original published binary.
+
 [Phase 12 open items](phase-12-open-items.md) retains PR-296's missing versioned app-subject projection,
 PR-297's missing protected migration producer, CI validation, independent runtime observations and
 possible versioned redesign. Local conformance has no dependency on impossible global closeout;

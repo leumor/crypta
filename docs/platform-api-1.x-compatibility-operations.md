@@ -3,8 +3,9 @@
 Cryptad keeps four release identities separate:
 
 - The URL API version remains `v1`, represented by `/api/v1`.
-- The contract version is a monotonically managed integer. It is currently `24`, independently of
-  any stable-baseline name. Version 24 records the app-visible named-baseline registry summary.
+- The contract version is a monotonically managed integer. It is currently `25`, independently of
+  any stable-baseline name. Version 24 records the app-visible named-baseline registry summary;
+  version 25 adds the experimental own-app Mail capabilities without changing baseline 1.0.
 - A stable baseline is an immutable named compatibility promise such as `1.0` or a reviewed future
   `1.1`.
 - A daemon release/build identifies product bytes. It is not an API baseline or contract version.
@@ -254,8 +255,18 @@ summary files alone do not authenticate complete compatibility declarations; pro
 must supply fresh bounded subject projections derived from their exact authenticated artifacts.
 The version-1 authority therefore fails closed for every non-fixture subject that cites only one of
 those broad legacy digests, before it can report `app-matrix-verified`. No checked-in inventory or
-resealed matrix can stand in for that missing protected projection receipt; operational matrix
-completion remains pending until a versioned protected projection authority is available.
+resealed matrix can stand in for a protected projection receipt. PR-300 implements the version-2
+producer and admission path in
+[`app_subject_projection.py`](../tools/release-certification/protected/app_subject_projection.py).
+The dedicated workflow first builds and attests the complete Java tool archive, then a separately
+selected protected run derives the required first-party/external cohort from exact authenticated
+source artifacts. Its wrapper authenticates the original successful producer attempt, job,
+environment, artifact and member attestation before passing an internal verified object to the
+matrix consumer. Ordinary caller JSON cannot construct that object. The historical seven-app
+cohort remains explicit; current-eight adds Mail with its experimental declaration. Selected
+federation projection remains unsupported, and no protected projection was executed for this
+change. See the [projection prerequisites](cross-version-live-network-soak.md#protected-app-subject-projection)
+for the acyclic tool/source/cohort sequence.
 
 Matrix results are static contract evaluations. `runtimeObserved` is always false in this artifact.
 A separate bounded runtime observation can prove selected apps start, read contract metadata,

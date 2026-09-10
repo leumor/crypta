@@ -195,6 +195,11 @@ jobs:
         shell: bash
         run: ${{ matrix.python_cmd }} tools/interop/interop_smoke.py --self-test
 
+      - name: Run offline cross-version adapter tests
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ${{ matrix.python_cmd }} -m unittest discover -s tools/interop -p 'test_cross_version_*.py'
+
   performance-self-test:
     name: performance smoke self-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -251,6 +256,10 @@ jobs:
       - name: Run release certification self-tests
         shell: bash
         run: ${{ matrix.python_cmd }} tools/release-certification/certify.py self-test all
+
+      - name: Test protected producer boundaries offline
+        shell: bash
+        run: ${{ matrix.python_cmd }} -m unittest discover -s tools/release-certification/protected -p 'test_*.py'
 
   dependency-submission:
     if: github.event_name == 'pull_request' || github.event_name == 'push'

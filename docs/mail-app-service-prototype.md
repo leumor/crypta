@@ -151,6 +151,11 @@ interoperability remain open in [Phase 12](phase-12-open-items.md).
 
 ## PR-300 handoff
 
+See the [cross-version observed experiment](cross-version-live-network-soak.md) for the new
+supervisor/driver boundary and current implementation versus observation status. Its finite Mail
+cases preserve the existing queue restart route, sealed bytes, quotas and paused restore state.
+No local adapter test establishes a live delivery or closes the review/lifecycle items below.
+
 Review the composition and deployment boundaries independently before using real private mail.
 Observe the exact-target two-node command, including restart and reply, only with explicit operator
 authorization. Complete hostile-origin and full support/audit canary integration coverage. Design

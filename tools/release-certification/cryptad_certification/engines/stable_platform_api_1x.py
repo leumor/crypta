@@ -2026,8 +2026,21 @@ def _app_subject_inventory_errors(
     fixture: bool,
     contract: dict[str, Any],
     policy: dict[str, Any],
+    authenticated_projection: Any = None,
 ) -> list[str]:
     errors: list[str] = []
+    projected = False
+    if inventory.get("schemaVersion") == 2:
+        # Only the protected wrapper can inject bytes it just fetched and authenticated.
+        # No JSON property or local self digest substitutes for this producer boundary.
+        try:
+            from app_subject_projection import AuthenticatedProjection, validate_declaration
+            projected = (isinstance(authenticated_projection, AuthenticatedProjection)
+                         and authenticated_projection.matches(inventory))
+        except ImportError:
+            projected = False
+        if not projected:
+            errors.append("version-2 app inventory lacks original protected projection authentication")
     if inventory["inventoryDigest"] != _semantic_digest(inventory, "inventoryDigest"):
         errors.append("app subject inventory self digest is invalid")
     if (
@@ -2087,9 +2100,18 @@ def _app_subject_inventory_errors(
             # required/optional capability split). Until a protected producer supplies an
             # exact subject projection, accepting the broad authority digest here would let
             # the caller rewrite and reseal both the inventory and matrix.
-            errors.append(
-                f"{label} lacks an authenticated complete compatibility projection"
-            )
+            if not projected:
+                errors.append(f"{label} lacks an authenticated complete compatibility projection")
+            else:
+                try:
+                    declaration = validate_declaration(subject["signedProjection"])
+                    compared = set(MATRIX_SUBJECT_FIELDS) - {"sourceAuthority", "fixtureOnly", "requiredForRelease"}
+                    if any(subject[field] != declaration[field] for field in compared):
+                        errors.append(f"{label} differs from the exact signed declaration")
+                    if subject["originalSource"]["sourceFamily"] != source:
+                        errors.append(f"{label} original source family differs")
+                except (ValueError, KeyError, TypeError):
+                    errors.append(f"{label} signed projection is invalid")
         if source == "first-party-release":
             first_party_ids.add(subject["appId"])
 
@@ -2099,6 +2121,8 @@ def _app_subject_inventory_errors(
         errors.append("app subject inventory required app IDs differ from required subjects")
     if not fixture:
         expected_first_party = set(policy["requiredFirstPartyAppIds"])
+        if projected and inventory["cohortPolicy"] == "current-eight-experimental-mail":
+            expected_first_party.add("mail-prototype")
         if first_party_ids != expected_first_party:
             errors.append("app subject inventory differs from the policy-required first-party apps")
         if not expected_first_party.issubset(required_ids):
@@ -2911,6 +2935,8 @@ def run(
     mode: str,
     out_dir: Path | None = None,
     evidence_dir: Path | None = None,
+    *,
+    authenticated_projection: Any = None,
 ) -> int:
     """Verify one Platform API 1.x phase and emit bounded local evidence."""
 
@@ -3131,13 +3157,14 @@ def run(
         app_subject_inventory, app_subject_inventory_errors = _optional_bound_json(
             resolved_evidence,
             contract["evidence"]["appSubjectInventory"],
-            APP_SUBJECT_INVENTORY_SCHEMA,
+            ("platform-api-1.x-app-subject-inventory-v2.schema.json"
+             if authenticated_projection is not None else APP_SUBJECT_INVENTORY_SCHEMA),
             "app subject inventory",
         )
         if app_subject_inventory is not None and not app_subject_inventory_errors:
             app_subject_inventory_errors.extend(
                 _app_subject_inventory_errors(
-                    app_subject_inventory, fixture, contract, policy
+                    app_subject_inventory, fixture, contract, policy, authenticated_projection
                 )
             )
         proposal, stage_errors = _optional_bound_json(resolved_evidence, contract["evidence"]["baselineProposal"], PROPOSAL_SCHEMA, "baseline proposal")

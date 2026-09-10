@@ -16,6 +16,12 @@ SUITE_MODULES = {
     "network-scale-soak": ["cryptad_certification.tests.test_collectors"],
     "live-network-beta": ["cryptad_certification.tests.test_collectors"],
     "multi-node-beta": ["cryptad_certification.tests.test_multi_node"],
+    "cross-version-soak": [
+        "cryptad_certification.tests.test_cross_version_evidence",
+        "cryptad_certification.tests.test_cross_version_command",
+        "cryptad_certification.tests.test_cross_version_product_admission",
+        "cryptad_certification.tests.test_cross_version_supervisor_authority",
+    ],
     "security-response": ["cryptad_certification.tests.test_security_response"],
     "release-certification": [
         "cryptad_certification.tests.test_release_certification",

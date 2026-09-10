@@ -141,7 +141,7 @@ def send(sender, fingerprint, body, timeout):
     raise DemoFailure()
 
 
-def run_flow(alice, bob, timeout, restart):
+def run_flow(alice, bob, timeout, restart, *, body=BODY, reply_body=REPLY, before_restart=None):
     # Check both before either initialization: a pre-existing dataset aborts all mutation.
     expect(alice.command("status"), "initialize-required")
     expect(bob.command("status"), "initialize-required")
@@ -153,19 +153,21 @@ def run_flow(alice, bob, timeout, restart):
         raise DemoFailure()
     b_pin = pin(alice, b_card)
     a_pin = pin(bob, a_card)
-    reference = send(alice, b_pin, BODY, timeout)
+    reference = send(alice, b_pin, body, timeout)
     imported = expect(bob.command("import-reference", {"reference": reference, "confirmed": "yes"}), "accepted")
     read = expect(bob.command("read", {"messageId": imported["messageId"]}), "verified-local-copy")
-    if read.get("body") != BODY:
+    if read.get("body") != body:
         raise DemoFailure()
     wrong = alice.command("import-reference", {"reference": reference, "confirmed": "yes"})
     expect(wrong, "wrong-recipient")
     if restart:
+        if before_restart is not None:
+            before_restart()
         bob.restart()
     expect(bob.command("import-reference", {"reference": reference, "confirmed": "yes"}), "duplicate")
-    reply_ref = send(bob, a_pin, REPLY, timeout)
+    reply_ref = send(bob, a_pin, reply_body, timeout)
     reply = expect(alice.command("import-reference", {"reference": reply_ref, "confirmed": "yes"}), "accepted")
-    if alice.command("read", {"messageId": reply["messageId"]}).get("body") != REPLY:
+    if alice.command("read", {"messageId": reply["messageId"]}).get("body") != reply_body:
         raise DemoFailure()
     return {"insertFetchDecrypt": "observed", "wrongRecipient": "observed", "duplicate": "observed",
             "reply": "observed", "restart": "observed" if restart else "skipped",

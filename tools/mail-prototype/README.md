@@ -4,6 +4,12 @@
 target acknowledgments. It is not a self-test or certification producer. It never installs an app,
 cleans existing data, changes node configuration or prints private response bodies/references.
 
+The [cross-version supervisor](../../docs/cross-version-live-network-soak.md) reuses this callable
+flow after provisioning its own selected signed installations and acquiring normal own-app
+sessions. That adapter's process/store observations are separate from this standalone command's
+operator attestation. Missing protected authentication and unexecuted Mail cases remain explicit;
+neither path supplies independent security review or a restore-resume operation.
+
 Prepare two independent disposable node installations, stores and vaults. Install and start the
 signed experimental Mail bundle on each through normal AppHost verification. Leave both Mail
 accounts uninitialized. The command checks both accounts report `initialize-required` before either
