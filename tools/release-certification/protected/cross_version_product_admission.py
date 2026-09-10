@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from original_artifact_authentication import authenticate_original, _gh, _environment
 from cryptad_certification.cross_version_evidence import validate_plan, digest
 from cryptad_certification.engines import stable_1_0_ga_core as ga
+from cryptad_certification.engines import stable_1_0_maintenance_core as maintenance
 from cryptad_certification.engines.stable_1_0_rc_core import ValidationState, file_digest
 from cryptad_certification.models import RunContext, RunManifest, ReleaseSpec, OutputSpec
 
@@ -206,6 +207,125 @@ def verify_portable_artifact(original, selected_rc, node, destination):
             "path": destination}
 
 
+def verify_maintenance_artifact(original, node, expected_freeze_digest, root):
+    """Check the existing portable freeze and every frozen asset without claiming release eligibility.
+
+    This pure byte consumer does not authenticate ``original``. The protected caller must obtain
+    it from the original-artifact API and verify the selected members' attestations. Native package
+    matrix, lineage, policy and publication admission remain owned by stable-maintenance.
+    """
+    coordinates = original.coordinates
+    with _members(original.content) as source:
+        freeze_bytes = source.read("freeze/" + maintenance.CANDIDATE_FREEZE_FILE)
+        freeze = _json(freeze_bytes)
+        freeze_digest = "sha256:" + hashlib.sha256(freeze_bytes).hexdigest()
+        if (freeze_digest != expected_freeze_digest
+                or maintenance.validate_schema(freeze, maintenance.CANDIDATE_FREEZE_SCHEMA)):
+            raise ProductAdmissionError("maintenance-freeze-schema-or-byte-digest-mismatch")
+        producer, identity = freeze["producer"], freeze["source"]
+        if (coordinates.get("sourceFamily") != "stable-maintenance-freeze"
+                or identity["commit"] != coordinates["sourceCommit"]
+                or producer["workflowCommit"] != coordinates["sourceCommit"]
+                or producer["workflowPath"] != ".github/workflows/stable-1.0-maintenance-release.yml"
+                or producer["runId"] != str(coordinates["runId"])
+                or producer["runAttempt"] != coordinates["runAttempt"]):
+            raise ProductAdmissionError("maintenance-freeze-original-producer-mismatch")
+        expected_name = (f"stable-1-0-maintenance-frozen-{freeze['releaseId']}-{freeze['buildVersion']}-"
+                         f"{coordinates['runId']}-{coordinates['runAttempt']}")
+        if coordinates["artifactName"] != expected_name:
+            raise ProductAdmissionError("maintenance-freeze-original-artifact-name-mismatch")
+        generated, frozen, observed = (maintenance.parse_timestamp(value) for value in
+            (freeze["generatedAt"], freeze["frozenAt"], freeze["predecessorObservation"]["observedAt"]))
+        if (generated is None or frozen is None or observed is None or generated < frozen or observed > frozen
+                or int(freeze["predecessorObservation"]["buildVersion"]) >= int(freeze["buildVersion"])):
+            raise ProductAdmissionError("maintenance-freeze-time-or-predecessor-order-invalid")
+        rows = freeze["assets"]
+        names = [row["fileName"] for row in rows]
+        products = [row for row in rows if row["role"] == "product"]
+        if (len(names) != len(set(names)) or len(products) != 1
+                or not {"product", "stable-catalog", "stable-catalog-signature"} <= {row["role"] for row in rows}
+                or freeze["assetSetDigest"] != maintenance.semantic_digest(sorted(rows, key=lambda row: row["fileName"]))):
+            raise ProductAdmissionError("maintenance-freeze-asset-set-invalid")
+        product = products[0]
+        if (product["fileName"] != f"cryptad-v{freeze['buildVersion']}.tar.gz"
+                or product["digest"] != node["artifactDigest"] or product["sizeBytes"] != node["artifactSize"]
+                or identity["commit"] != node["sourceCommit"] or node["product"] != "cryptad"
+                or node["packageTarget"] != "linux-x64"):
+            raise ProductAdmissionError("maintenance-portable-selected-subject-mismatch")
+        checksums = source.read("freeze/checksums.txt")
+        if "sha256:" + hashlib.sha256(checksums).hexdigest() != freeze["checksumsDigest"]:
+            raise ProductAdmissionError("maintenance-freeze-checksums-digest-mismatch")
+        expected_members = {"freeze/assets/" + name for name in names}
+        actual_members = {member.filename for member in source.infolist()
+                          if member.filename.startswith("freeze/assets/") and not member.is_dir()}
+        if actual_members != expected_members:
+            raise ProductAdmissionError("maintenance-freeze-asset-members-mismatch")
+        payloads = {}
+        for row in rows:
+            payload = source.read("freeze/assets/" + row["fileName"])
+            if (len(payload) != row["sizeBytes"]
+                    or "sha256:" + hashlib.sha256(payload).hexdigest() != row["digest"]):
+                raise ProductAdmissionError("maintenance-freeze-asset-byte-mismatch")
+            payloads[row["fileName"]] = payload
+    root.mkdir(mode=0o700)
+    freeze_path = root / maintenance.CANDIDATE_FREEZE_FILE
+    checksum_path = root / "checksums.txt"
+    _write(freeze_path, freeze_bytes)
+    _write(checksum_path, checksums)
+    checksum_rows, errors = maintenance._checksum_rows(checksum_path)
+    if errors or checksum_rows != {row["fileName"]: row["digest"] for row in rows}:
+        raise ProductAdmissionError("maintenance-freeze-checksum-set-mismatch")
+    # Materialize only the selected portable archive, not native installers or private handoffs.
+    package = root / product["fileName"]
+    _write(package, payloads[product["fileName"]])
+    if maintenance.archive_hygiene_errors(package):
+        raise ProductAdmissionError("maintenance-portable-archive-invalid")
+    return {"role": node["role"], "sourceCommit": identity["commit"], "releaseId": freeze["releaseId"],
+            "buildVersion": freeze["buildVersion"], "artifactDigest": product["digest"],
+            "artifactSize": product["sizeBytes"], "packageTarget": node["packageTarget"],
+            "maintenanceFreezeDigest": freeze_digest, "freezeCompletedAt": freeze["generatedAt"],
+            "frozenAt": freeze["frozenAt"], "portableOrigin": coordinates,
+            "runtimeContractAuthentication": "not-established-runtime-observation-required",
+            "frozenPortableBinding": "existing-maintenance-freeze-exact-product-v1", "path": package}
+
+
+def authenticate_maintenance_product(selection, node, private_root):
+    """Authenticate original freeze, checksums and portable member before runtime intake.
+
+    No final maintenance receipt is an input. This authenticates only product/freeze identity;
+    measured post-freeze observations and the existing train admission must still be supplied.
+    """
+    if (not isinstance(selection, dict) or set(selection) != {"coordinates", "freezeDigest"}
+            or not isinstance(selection["coordinates"], dict)
+            or selection["coordinates"].get("sourceFamily") != "stable-maintenance-freeze"
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", str(selection["freezeDigest"]))):
+        raise ProductAdmissionError("maintenance-product-selection-invalid")
+    root = Path(private_root)
+    if root.exists() or root.is_symlink() or any(parent.is_symlink() for parent in root.parents):
+        raise ProductAdmissionError("maintenance-product-root-must-be-new")
+    root.mkdir(mode=0o700)
+    try:
+        original = authenticate_original(selection["coordinates"], root)
+        row = verify_maintenance_artifact(original, node, selection["freezeDigest"], root / "selected")
+        invocation = (f"https://github.com/crypta-network/cryptad/actions/runs/"
+                      f"{original.coordinates['runId']}/attempts/{original.coordinates['runAttempt']}")
+        for member in (row["path"].parent / maintenance.CANDIDATE_FREEZE_FILE,
+                       row["path"].parent / "checksums.txt", row["path"]):
+            results = _gh(["attestation", "verify", str(member), "--repo", "crypta-network/cryptad",
+                           "--signer-workflow", "crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml",
+                           "--source-digest", original.coordinates["sourceCommit"],
+                           "--signer-digest", original.coordinates["sourceCommit"], "--format", "json"], _environment())
+            if not isinstance(results, list) or not any(
+                    item.get("verificationResult", {}).get("signature", {}).get("certificate", {}).get("runInvocationURI") == invocation
+                    for item in results if isinstance(item, dict)):
+                raise ProductAdmissionError("maintenance-product-attested-attempt-mismatch")
+        return row
+    except ProductAdmissionError:
+        raise
+    except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile) as exc:
+        raise ProductAdmissionError("maintenance-original-product-admission-failed") from exc
+
+
 def verify_app_projection(selected_rc, node, selection, root):
     """Bind Java-derived signed declarations to the RC's exact contract snapshot.
 
@@ -325,6 +445,15 @@ def authenticate_products(plan, selection, private_root):
         for node in plan["nodes"]:
             role = node["role"]
             selected = selection["roles"][role]
+            if isinstance(selected, dict) and set(selected) == {"maintenanceProduct"}:
+                # Existing maintenance freezes authenticate the daemon, but contain no frozen
+                # Platform API contract snapshot. Do not admit an app-bearing role through an
+                # unrelated RC snapshot or caller declarations. The app-free runtime path can
+                # already consume the exact portable bytes with the normal packaged checks.
+                if node["appDigests"]:
+                    raise ProductAdmissionError("maintenance-app-contract-projection-not-established")
+                rows[role] = authenticate_maintenance_product(selected["maintenanceProduct"], node, root / role)
+                continue
             if not isinstance(selected, dict) or set(selected) not in ({"rcCoordinates", "portableCoordinates"}, {"rcCoordinates", "portableCoordinates", "appProjection"}):
                 raise ProductAdmissionError("product-coordinate-selection-invalid")
             if selected["rcCoordinates"].get("sourceFamily") != "stable-rc-product" or selected["portableCoordinates"].get("sourceFamily") != "first-party-release":

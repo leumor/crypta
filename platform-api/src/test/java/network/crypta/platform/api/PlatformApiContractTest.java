@@ -71,8 +71,8 @@ class PlatformApiContractTest {
           new RouteVersionPrefix("/apps/{appId}/updates", 2));
 
   @Test
-  void current_whenNamedBaselineMetadataIsPublished_expectContractVersion25() {
-    assertEquals(25, PlatformApiContract.CURRENT_CONTRACT_VERSION);
+  void current_whenMailRenewalIsPublished_expectContractVersion26() {
+    assertEquals(26, PlatformApiContract.CURRENT_CONTRACT_VERSION);
   }
 
   @Test

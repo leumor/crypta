@@ -88,6 +88,14 @@ def build_parser() -> argparse.ArgumentParser:
     cross_version.add_argument("--execute", action="store_true")
     cross_version.add_argument("--self-test", action="store_true")
 
+    maintenance_drill = subparsers.add_parser("stable-maintenance-drill")
+    maintenance_drill.add_argument("--mode", choices=("plan", "run", "verify", "closeout"))
+    maintenance_drill.add_argument("--record", type=Path)
+    maintenance_drill.add_argument("--output", type=Path)
+    maintenance_drill.add_argument("--root", type=Path)
+    maintenance_drill.add_argument("--execute-isolated", action="store_true")
+    maintenance_drill.add_argument("--self-test", action="store_true")
+
     security = subparsers.add_parser("security-response")
     _add_run_arguments(security)
     security.add_argument("action", nargs="?", choices=SECURITY_ACTIONS)
@@ -1350,6 +1358,17 @@ def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
         return selftest.run(command)
+    if command == "stable-maintenance-drill":
+        from .maintenance_drill_command import main
+
+        selected = []
+        for name in ("mode", "record", "root", "output"):
+            value = getattr(args, name, None)
+            if value is not None:
+                selected.extend(("--" + name, str(value)))
+        if args.execute_isolated:
+            selected.append("--execute-isolated")
+        return main(selected)
     if command == "cross-version-soak":
         from .cross_version_command import run
 

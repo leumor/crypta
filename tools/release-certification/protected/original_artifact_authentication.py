@@ -19,6 +19,11 @@ REPOSITORY = "crypta-network/cryptad"
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 # These are existing upstream authorities, never caller-selected workflows or environments.
 PRODUCERS = {
+    "stable-maintenance-freeze": (
+        ".github/workflows/stable-1.0-maintenance-release.yml",
+        "stable-1.0-maintenance-evidence",
+        "Freeze exact bytes or validate a prior frozen Stable maintenance candidate",
+    ),
     "stable-rc-product": (
         ".github/workflows/stable-1.0-rc-release.yml", "stable-1-0-rc", "stable-rc",
     ),

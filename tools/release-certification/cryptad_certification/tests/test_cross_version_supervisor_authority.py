@@ -245,6 +245,14 @@ class SupervisorAuthorityTest(unittest.TestCase):
                 # A writer may have appended beyond the selected checkpoint.
                 journal.append('probe', counters={'operations': 0})
                 report = authority.snapshot(plan, root, expected_uid=os.getuid())
+                measured = authority.snapshot(plan, root, expected_uid=os.getuid(),
+                    activation={'planDigest': digest(plan), 'producer': plan['producer'], 'products': None})
+                self.assertEqual(report['checkpoint'], measured['checkpoint'])
+                self.assertEqual(report['checkpoint']['digest'], measured['maintenanceMeasurements']['checkpointDigest'])
+                self.assertEqual('blocked', measured['maintenanceMeasurements']['maintenanceEligibility'])
+                self.assertEqual([], authority.scan_value(measured))
+                with self.assertRaisesRegex(authority.AuthorityError, 'activation-substituted'):
+                    authority.snapshot(plan, root, expected_uid=os.getuid(), activation={'planDigest': 'wrong'})
                 self.assertEqual(checkpoint['sequence'], report['checkpoint']['sequence'])
                 substituted = {'checkpoint': {**report['checkpoint'], 'tailDigest': 'sha256:' + 'a' * 64}}
                 with self.assertRaisesRegex(authority.AuthorityError, 'tail-substitution'):

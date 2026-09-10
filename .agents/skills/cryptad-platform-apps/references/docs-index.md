@@ -73,3 +73,8 @@ Experimental Mail implementation uses [Mail design](../../../../docs/mail-app-se
 [vault boundary](../../../../docs/mail-vault-boundary.md), and
 [worker channel](../../../../docs/mail-worker-channel.md). Keep private Mail state in the Java
 worker, purpose crypto in the vault, and historical five-profile selection unchanged.
+
+For explicit experimental Mail contact renewal, read
+[Mail lifecycle and recovery](../../../../docs/mail-lifecycle-recovery.md). Preserve one-use
+current-worker consent, exact CAS/grant/identity snapshots and original signed validity intervals.
+Contact renewal does not implement historical key authority, rotation or recovery resume.

@@ -218,11 +218,20 @@ def validate_report(report):
         'checkpoint': {'previousReportDigest', 'previousOrigin', 'serviceState', 'approvalOrigin', 'approvalReportDigest', 'checkpoint', 'observation'},
         'finish': {'previousReportDigest', 'previousOrigin', 'serviceState', 'approvalOrigin', 'approvalReportDigest', 'checkpoint', 'observation'},
     }
+    version = report.get('schemaVersion') if isinstance(report, dict) else None
+    extra = {'maintenanceMeasurements'} if version == 2 else set()
     if (not isinstance(report, dict) or report.get('operation') not in variants
-            or set(report) != common | variants[report['operation']]
-            or report.get('schemaVersion') != 1 or report.get('kind') != 'cryptad-cross-version-supervisor'
+            or set(report) != common | variants[report['operation']] | extra
+            or type(version) is not int or version not in {1, 2} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
+            or report.get('kind') != 'cryptad-cross-version-supervisor'
             or report.get('purpose') != 'nonrelease-observed-experiment' or report.get('releaseEligible') is not False):
         raise AuthorityError('protected-supervisor-report-contract-invalid')
+    if version == 2:
+        from maintenance_runtime_projection import validate
+        measured = validate(report['maintenanceMeasurements'])
+        if (measured['planDigest'] != report['planDigest'] or measured['producer'] != report['producer']
+                or measured['checkpointDigest'] != report['checkpoint']['digest']):
+            raise AuthorityError('protected-supervisor-measurements-binding-invalid')
     if report['operation'] == 'authorize':
         plan = validate_plan(report['plan'])
         if digest(plan) != report['planDigest'] or plan['producer'] != report['producer']:
@@ -355,7 +364,7 @@ def authenticate_runner(plan, private_config, authorization):
     return AuthenticatedRunner(_SEAL, activation)
 
 
-def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False):
+def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None):
     expected_uid = pwd.getpwnam('cryptad-soak').pw_uid if expected_uid is None else expected_uid
     maximum = plan['policy']['maxEvents']
     root_fd = directory_fd(root)
@@ -399,8 +408,14 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False)
         sequence = prior['sequence']
         if sequence > len(events) or (digest(events[sequence - 1]) if sequence else 'sha256:' + '0' * 64) != prior['tailDigest']:
             raise AuthorityError('protected-checkpoint-tail-substitution')
-    return {'checkpoint': {'sequence': checkpoint['sequence'], 'tailDigest': checkpoint['tailDigest'],
-                           'digest': digest(checkpoint), 'status': checkpoint['status']}, 'observation': observation}
+    result = {'checkpoint': {'sequence': checkpoint['sequence'], 'tailDigest': checkpoint['tailDigest'],
+                            'digest': digest(checkpoint), 'status': checkpoint['status']}, 'observation': observation}
+    if activation is not None:
+        if activation.get('planDigest') != digest(plan) or activation.get('producer') != plan['producer']:
+            raise AuthorityError('protected-measurements-activation-substituted')
+        from maintenance_runtime_projection import project
+        result['maintenanceMeasurements'] = project(plan, events, checkpoint, activation.get('products'))
+    return result
 
 
 def control(operation):
@@ -478,7 +493,9 @@ def control(operation):
     report['serviceState'] = _service_state()
     if operation == 'finish' and report['serviceState'] != 'stopped':
         raise AuthorityError('protected-finish-service-still-running')
-    report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid, require_eof=operation == 'finish'))
+    report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid,
+                           require_eof=operation == 'finish', activation=activation))
+    report['schemaVersion'] = 2
     return report
 
 

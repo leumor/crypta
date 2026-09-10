@@ -2127,6 +2127,7 @@ def runner_identity():
              "tools/release-certification/protected/original_artifact_authentication.py",
              "tools/release-certification/protected/cross_version_product_admission.py",
              "tools/release-certification/protected/cross_version_supervisor_authority.py",
+             "tools/release-certification/protected/maintenance_runtime_projection.py",
              "tools/interop/cross_version_service.py",
              "tools/interop/systemd/cryptad-cross-version-soak.service",
              "tools/interop/systemd/cryptad-cross-version-control.sudoers",

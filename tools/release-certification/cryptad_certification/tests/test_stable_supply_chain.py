@@ -78,6 +78,7 @@ OVERRIDES_PATH = (
     / "tools/release-certification/stable-1.0-supply-chain-license-overrides.json"
 )
 WORKFLOW_PATH = REPOSITORY / ".github/workflows/stable-1.0-supply-chain.yml"
+PLATFORM_HANDOFF_PATH = REPOSITORY / "tools/release-certification/protected/stable_supply_chain_platform_handoff.py"
 CI_WORKFLOW_PATH = REPOSITORY / ".github/workflows/ci.yml"
 GIT_ATTRIBUTES_PATH = REPOSITORY / ".gitattributes"
 DISTRIBUTION_BUILD_LOGIC_PATH = (
@@ -3711,6 +3712,16 @@ class StableSupplyChainTest(unittest.TestCase):
         self.assertIn("candidateProductAvailableBeforeBuild", platform)
         self.assertIn("Attest complete cross-platform builder handoff", platform)
 
+    def test_interpolated_workflow_run_scalars_stay_below_expression_budget(self) -> None:
+        # GitHub rejected the original oversized interpolated platform script before creating jobs.
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        blocks = re.findall(r"^        run: [|>]\n((?:(?:          .*|)\n)+)", text, re.MULTILINE)
+        self.assertTrue(blocks)
+        for block in blocks:
+            if "${{" in block:
+                self.assertLess(len(textwrap.dedent(block)), 20000)
+        compile(PLATFORM_HANDOFF_PATH.read_text(encoding="utf-8"), str(PLATFORM_HANDOFF_PATH), "exec")
+
     def test_platform_build_uses_a_closed_cross_platform_python_launcher(self) -> None:
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
         platform = text[
@@ -3719,7 +3730,8 @@ class StableSupplyChainTest(unittest.TestCase):
         ]
         self.assertEqual(platform.count("python_cmd: python3"), 2)
         self.assertEqual(platform.count("python_cmd: py -3.14"), 1)
-        self.assertEqual(platform.count("${{ matrix.python_cmd }} -"), 5)
+        self.assertEqual(platform.count("${{ matrix.python_cmd }} -"), 4)
+        self.assertIn("${{ matrix.python_cmd }} tools/release-certification/protected/stable_supply_chain_platform_handoff.py", platform)
         self.assertNotIn("python3 -", platform)
 
     def test_exporter_builds_and_binds_a_fresh_canonical_jlink_inventory(self) -> None:
@@ -3728,7 +3740,7 @@ class StableSupplyChainTest(unittest.TestCase):
             REPOSITORY
             / "build-logic/src/main/kotlin/cryptad.runtime.gradle.kts"
         ).read_text(encoding="utf-8")
-        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8") + "\n" + PLATFORM_HANDOFF_PATH.read_text(encoding="utf-8")
         self.assertIn('val inventoryJreModules = tasks.named("inventoryJreModules")', build_logic)
         self.assertIn(
             "dependsOn(inventoryJreModules, exportStableBuildLogicResolution)",
@@ -3812,6 +3824,7 @@ class StableSupplyChainTest(unittest.TestCase):
             text.index("\n  platform-package-build:") :
             text.index("\n  compare-evaluate:")
         ]
+        platform += "\n" + PLATFORM_HANDOFF_PATH.read_text(encoding="utf-8")
         for section in (producer, platform):
             self.assertNotIn('"primaryBuilderReceipt",', section)
             self.assertNotIn('"verifierBuilderReceipt",', section)
@@ -3889,6 +3902,7 @@ class StableSupplyChainTest(unittest.TestCase):
             text.index("\n  platform-package-build:") :
             text.index("\n  aggregate-builder-handoff:")
         ]
+        platform += "\n" + PLATFORM_HANDOFF_PATH.read_text(encoding="utf-8")
         platform_build = platform.index("Build exact Linux or macOS installer payload independently")
         platform_download = platform.index("Download exact frozen signed candidate after producer staged build")
         self.assertLess(platform_build, platform_download)
@@ -4072,6 +4086,7 @@ class StableSupplyChainTest(unittest.TestCase):
             text.index("\n  platform-package-build:") :
             text.index("\n  compare-evaluate:")
         ]
+        platform += "\n" + PLATFORM_HANDOFF_PATH.read_text(encoding="utf-8")
         self.assertEqual(text.count('--argjson runId "$GITHUB_RUN_ID"'), 2)
         self.assertNotIn('--arg runId "$GITHUB_RUN_ID"', text)
         self.assertNotIn('int(handoff.get("runId"', text)
@@ -4319,6 +4334,7 @@ class StableSupplyChainTest(unittest.TestCase):
             text.index("\n  platform-package-build:") :
             text.index("\n  compare-evaluate:")
         ]
+        platform += "\n" + PLATFORM_HANDOFF_PATH.read_text(encoding="utf-8")
         self.assertIn('codesign = Path("/usr/bin/codesign")', platform)
         self.assertIn('shutil.copyfile(source, copy)', platform)
         self.assertIn('[str(codesign), "--remove-signature", str(copy)]', platform)

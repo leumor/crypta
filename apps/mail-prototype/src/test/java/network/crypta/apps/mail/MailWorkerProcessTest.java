@@ -136,6 +136,42 @@ class MailWorkerProcessTest {
   }
 
   @Test
+  void sameKeyRenewalUsesLiveWorkerConsentAndRemoteExplicitApproval() throws Exception {
+    Map<String, byte[]> simulatedNetwork = new ConcurrentHashMap<>();
+    try (Endpoint alice = new Endpoint(root.resolve("renew-alice"), simulatedNetwork);
+        Endpoint bob = new Endpoint(root.resolve("renew-bob"), simulatedNetwork)) {
+      alice.start();
+      bob.start();
+      alice.command("initialize", Map.of());
+      bob.command("initialize", Map.of());
+      String oldCard = alice.command("export-contact", Map.of()).get("card");
+      String fingerprint = approve(bob, oldCard);
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      Map<String, String> preview;
+      do {
+        preview = alice.command("preview-renew-contact", Map.of());
+      } while ("renewal-too-soon".equals(preview.get("status")) && System.nanoTime() < deadline);
+      assertEquals("preview", preview.get("status"));
+      var consent = Map.of("renewalToken", preview.get("renewalToken"));
+      alice.restart();
+      assertEquals(
+          "renewal-approval-required",
+          alice.command("confirm-renew-contact", consent).get("status"));
+      preview = alice.command("preview-renew-contact", Map.of());
+      consent = Map.of("renewalToken", preview.get("renewalToken"));
+      assertEquals("renewed", alice.command("confirm-renew-contact", consent).get("status"));
+      assertEquals(
+          "renewal-approval-required",
+          alice.command("confirm-renew-contact", consent).get("status"));
+      String renewed = alice.command("export-contact", Map.of()).get("card");
+      assertNotEquals(oldCard, renewed);
+      assertEquals(fingerprint, approve(bob, renewed));
+      assertEquals(3, alice.backend.vault.listIdentities().size());
+      assertTrue(simulatedNetwork.isEmpty());
+    }
+  }
+
+  @Test
   void killedWorkerRecoversSealedCommitAndUncertainInsertionWithoutResealing() throws Exception {
     int scenario = 0;
     for (String faultPath : java.util.List.of("/app-data/records", "/queue/inserts/app-document")) {

@@ -237,7 +237,7 @@
   }
 
   async function mailCommand(command, payload, options) {
-    const allowed = ["initialize", "export-contact", "import-contact", "approve-contact", "revoke-contact", "save-draft", "preview-send", "confirm-send", "import-reference", "retry", "read", "status", "backup", "restore"];
+    const allowed = ["initialize", "export-contact", "preview-renew-contact", "confirm-renew-contact", "import-contact", "approve-contact", "revoke-contact", "save-draft", "preview-send", "confirm-send", "import-reference", "retry", "read", "status", "backup", "restore"];
     if (!allowed.includes(command)) throw new Error("Unsupported Mail command.");
     const bytes = new TextEncoder().encode(JSON.stringify(payload || {}));
     if (bytes.length > 280000) throw new Error("Mail request is too large.");

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+import gzip
 import importlib.util
 import io
 import json
 from pathlib import Path
 import sys
 import tempfile
+import tarfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -31,6 +33,128 @@ def archive(files):
 
 
 class CrossVersionProductAdmissionTest(unittest.TestCase):
+    def maintenance_fixture(self, mutate=None):
+        from cryptad_certification.tests.test_stable_maintenance_workflows import _activation_candidate_freeze
+        freeze = _activation_candidate_freeze("2026-09-10T00:00:00Z")
+        tar_bytes = io.BytesIO()
+        with tarfile.open(fileobj=tar_bytes, mode="w") as tar:
+            member = tarfile.TarInfo("cryptad-dist/README.txt")
+            member.size, member.mode = 7, 0o644
+            member.uname = member.gname = "root"
+            tar.addfile(member, io.BytesIO(b"fixture"))
+        payload = gzip.compress(tar_bytes.getvalue(), mtime=0)
+        files = {"cryptad-v301.tar.gz": payload, "stable-catalog.json": b"synthetic catalog",
+                 "stable-catalog.json.sig": b"synthetic signature"}
+        for row in freeze["assets"]:
+            if row["role"] == "product":
+                row["fileName"] = "cryptad-v301.tar.gz"
+            value = files[row["fileName"]]
+            row.update(digest="sha256:" + hashlib.sha256(value).hexdigest(), sizeBytes=len(value))
+        freeze["assets"].sort(key=lambda row: row["fileName"])
+        checksums = "".join(row["digest"][7:] + "  " + row["fileName"] + "\n" for row in freeze["assets"]).encode()
+        freeze["checksumsDigest"] = "sha256:" + hashlib.sha256(checksums).hexdigest()
+        freeze["assetSetDigest"] = products.maintenance.semantic_digest(freeze["assets"])
+        if mutate:
+            mutate(freeze)
+        freeze_bytes = json.dumps(freeze).encode()
+        content = archive({"freeze/" + products.maintenance.CANDIDATE_FREEZE_FILE: freeze_bytes,
+                           "freeze/checksums.txt": checksums,
+                           **{"freeze/assets/" + name: value for name, value in files.items()}})
+        coordinates = {"sourceFamily": "stable-maintenance-freeze", "sourceCommit": "b" * 40,
+                       "runId": 1, "runAttempt": 1,
+                       "artifactName": "stable-1-0-maintenance-frozen-stable-1.0-maintenance-301-301-1-1"}
+        node = {"role": "previous", "sourceCommit": "b" * 40, "product": "cryptad",
+                "artifactDigest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+                "artifactSize": len(payload), "packageTarget": "linux-x64", "appDigests": []}
+        return SimpleNamespace(content=content, coordinates=coordinates), node, "sha256:" + hashlib.sha256(freeze_bytes).hexdigest()
+
+    def test_maintenance_original_freeze_selects_exact_portable_and_all_asset_checksums(self):
+        original, node, freeze_digest = self.maintenance_fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            row = products.verify_maintenance_artifact(original, node, freeze_digest, Path(temporary).resolve() / "selected")
+            self.assertEqual(node["artifactDigest"], products.file_digest(row["path"]))
+            self.assertEqual(freeze_digest, row["maintenanceFreezeDigest"])
+            self.assertEqual("existing-maintenance-freeze-exact-product-v1", row["frozenPortableBinding"])
+            self.assertEqual("not-established-runtime-observation-required", row["runtimeContractAuthentication"])
+            self.assertNotIn("contractVersion", row)
+            self.assertNotIn("releaseEligible", row)
+
+    def test_maintenance_app_only_freeze_and_original_producer_or_time_substitution_are_denied(self):
+        mutations = (
+            lambda value: value.update(kind="stable-1.0-rc-freeze"),
+            lambda value: value["producer"].update(runAttempt=2),
+            lambda value: value["producer"].update(workflowCommit="c" * 40),
+            lambda value: value.update(generatedAt="2026-09-09T00:00:00Z"),
+            lambda value: value["predecessorObservation"].update(observedAt="2026-09-11T00:00:00Z"),
+            lambda value: value["assets"].pop(0),
+        )
+        for index, mutation in enumerate(mutations):
+            original, node, freeze_digest = self.maintenance_fixture(mutation)
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as temporary:
+                with self.assertRaises(products.ProductAdmissionError):
+                    products.verify_maintenance_artifact(original, node, freeze_digest, Path(temporary).resolve() / "selected")
+
+    def test_maintenance_exact_byte_digest_is_not_semantic_digest_or_other_package(self):
+        original, node, freeze_digest = self.maintenance_fixture()
+        with zipfile.ZipFile(io.BytesIO(original.content)) as source:
+            freeze = json.loads(source.read("freeze/" + products.maintenance.CANDIDATE_FREEZE_FILE))
+        cases = ((products.maintenance.semantic_digest(freeze), node),
+                 (freeze_digest, {**node, "artifactDigest": "sha256:" + "c" * 64}))
+        for selected_digest, selected_node in cases:
+            with self.subTest(digest=selected_digest), tempfile.TemporaryDirectory() as temporary:
+                with self.assertRaises(products.ProductAdmissionError):
+                    products.verify_maintenance_artifact(original, selected_node, selected_digest, Path(temporary).resolve() / "selected")
+
+    def test_maintenance_checks_every_frozen_asset_not_only_portable(self):
+        original, node, freeze_digest = self.maintenance_fixture()
+        with zipfile.ZipFile(io.BytesIO(original.content)) as source:
+            files = {name: source.read(name) for name in source.namelist()}
+        files["freeze/assets/stable-catalog.json"] += b"substitution"
+        original.content = archive(files)
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(products.ProductAdmissionError, "asset-byte-mismatch"):
+                products.verify_maintenance_artifact(original, node, freeze_digest, Path(temporary).resolve() / "selected")
+
+    def test_maintenance_authentication_checks_three_exact_original_member_attestations(self):
+        original, node, freeze_digest = self.maintenance_fixture()
+        invocation = "https://github.com/crypta-network/cryptad/actions/runs/1/attempts/1"
+        result = [{"verificationResult": {"signature": {"certificate": {"runInvocationURI": invocation}}}}]
+        for accepted in (True, False):
+            with self.subTest(accepted=accepted), tempfile.TemporaryDirectory() as temporary:
+                with patch.object(products, "authenticate_original", return_value=original), \
+                        patch.object(products, "_environment", return_value={}), \
+                        patch.object(products, "_gh", return_value=result if accepted else []) as gh:
+                    selection = {"coordinates": original.coordinates, "freezeDigest": freeze_digest}
+                    if accepted:
+                        row = products.authenticate_maintenance_product(selection, node, Path(temporary).resolve() / "private")
+                        self.assertEqual(3, gh.call_count)
+                        self.assertEqual(node["artifactDigest"], products.file_digest(row["path"]))
+                    else:
+                        with self.assertRaisesRegex(products.ProductAdmissionError, "attested-attempt-mismatch"):
+                            products.authenticate_maintenance_product(selection, node, Path(temporary).resolve() / "private")
+
+    def test_maintenance_app_bearing_runtime_intake_fails_before_original_fetch(self):
+        from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
+        plan = fixture_plan()
+        plan.update(profile="bounded-live", provenanceClass="production-artifact-comparison")
+        selection = {"schemaVersion": 1, "roles": {node["role"]: {"maintenanceProduct": {}}
+                     for node in plan["nodes"]}}
+        with tempfile.TemporaryDirectory() as temporary, patch.object(products, "authenticate_original") as authenticate:
+            with self.assertRaisesRegex(products.ProductAdmissionError, "app-contract-projection-not-established"):
+                products.authenticate_products(plan, selection, Path(temporary).resolve() / "private")
+            authenticate.assert_not_called()
+
+    def test_maintenance_path_rejects_symlink_parent_without_authentication(self):
+        original, node, freeze_digest = self.maintenance_fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            (root / "link").symlink_to(root, target_is_directory=True)
+            with patch.object(products, "authenticate_original") as authenticate:
+                with self.assertRaisesRegex(products.ProductAdmissionError, "root-must-be-new"):
+                    products.authenticate_maintenance_product(
+                        {"coordinates": original.coordinates, "freezeDigest": freeze_digest}, node, root / "link" / "private")
+                authenticate.assert_not_called()
+
     def rc(self, root):
         _context, paths = _write_exact_rc_fixture(root / "fixture")
         artifact_root = paths["selectedStableRcFreeze"].parent
@@ -238,6 +362,27 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
             copy.write_bytes(b"substituted")
             with self.assertRaises(products.ProductAdmissionError):
                 admitted.bind(plan, private)
+
+            # The existing roster can mix original RC/supply-chain subjects with an app-free
+            # maintenance subject. Each keeps its own producer; no current-SHA relabeling.
+            maintenance_original, maintenance_node, freeze_digest = self.maintenance_fixture()
+            relay = next(node for node in plan["nodes"] if node["role"] == "relay-no-apps")
+            relay.update({key: value for key, value in maintenance_node.items() if key != "role"})
+            originals[("stable-maintenance-freeze", maintenance_node["sourceCommit"])] = maintenance_original
+            selection["roles"]["relay-no-apps"] = {"maintenanceProduct": {
+                "coordinates": maintenance_original.coordinates, "freezeDigest": freeze_digest}}
+            def mixed_attest(arguments, environment):
+                if "stable-1.0-maintenance-release.yml" in " ".join(arguments):
+                    return [{"verificationResult": {"signature": {"certificate": {
+                        "runInvocationURI": "https://github.com/crypta-network/cryptad/actions/runs/1/attempts/1"}}}}]
+                return attest(arguments, environment)
+            with patch.object(products, "authenticate_original", side_effect=authenticate), \
+                    patch.object(products, "_environment", return_value={}), patch.object(products, "_gh", side_effect=mixed_attest):
+                mixed = products.authenticate_products(plan, selection, root / "mixed-authenticated")
+            mixed_private = {"nodes": {role: {"archivePath": path} for role, path in mixed.package_paths().items()}}
+            self.assertTrue(mixed.bind(plan, mixed_private))
+            selected_relay = next(row for row in mixed.public_identities() if row["role"] == "relay-no-apps")
+            self.assertEqual(freeze_digest, selected_relay["maintenanceFreezeDigest"])
 
     def app_projection_fixture(self, root, required=None, optional=None):
         import app_subject_projection as projection

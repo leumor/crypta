@@ -159,7 +159,8 @@ No local adapter test establishes a live delivery or closes the review/lifecycle
 Review the composition and deployment boundaries independently before using real private mail.
 Observe the exact-target two-node command, including restart and reply, only with explicit operator
 authorization. Complete hostile-origin and full support/audit canary integration coverage. Design
-retained-key rotation, expiry renewal and a reviewed restore-resume policy separately: this version
+retained-key rotation and a reviewed restore-resume policy separately. Explicit same-key contact
+renewal is described in [Mail lifecycle](mail-lifecycle-recovery.md); this version
 uses one active account/key epoch, does not export private keys, and remains paused after restore.
 Keep external consumer proposals disabled until a narrow approval interface is implemented and
 tested. None of this work activates Stable, baseline 1.1 or the missing protected Phase 12 producers.

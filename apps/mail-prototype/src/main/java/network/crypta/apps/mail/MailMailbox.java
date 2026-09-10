@@ -105,6 +105,9 @@ public final class MailMailbox {
   /** Record prefix for locally pinned contact cards in the protected dataset. */
   private static final String CONTACT_PREFIX = "contact.";
 
+  /** Record prefix for exact prior signed own contact validity statements. */
+  private static final String OWN_CARD_HISTORY_PREFIX = "own-card-history.";
+
   /** Record prefix for contact revocations retained through data restore. */
   private static final String REVOKED_PREFIX = "revoked.";
 
@@ -178,6 +181,13 @@ public final class MailMailbox {
   /** Last loaded or committed protected dataset bytes used for deterministic backup. */
   private byte[] stored;
 
+  /** One-use private renewal consent; never persisted across a worker launch. */
+  private RenewalPlan renewal;
+
+  /** Exact state and grant snapshot approved for a new same-key validity statement. */
+  private record RenewalPlan(
+      String token, String datasetDigest, Object grants, long created, long expires) {}
+
   /**
    * Constructs a worker-owned mailbox over an authenticated platform connection.
    *
@@ -209,6 +219,8 @@ public final class MailMailbox {
       if (state.isEmpty()) throw new MailFailure("initialize-required");
       return switch (command) {
         case STATUS -> status();
+        case "preview-renew-contact" -> previewRenewContact();
+        case "confirm-renew-contact" -> confirmRenewContact(input);
         case "export-contact" -> Map.of("card", state.get(OWN_CARD), STATUS, "public-export");
         case "import-contact" -> importContact(input);
         case "approve-contact" -> approveContact(input);
@@ -223,8 +235,10 @@ public final class MailMailbox {
         default -> throw new MailFailure("invalid");
       };
     } catch (MailFailure e) {
+      renewal = null;
       return Map.of(STATUS, e.getMessage());
     } catch (IllegalArgumentException _) {
+      renewal = null;
       return Map.of(STATUS, "invalid");
     }
   }
@@ -364,6 +378,98 @@ public final class MailMailbox {
     return status();
   }
 
+  /** Prepares a new same-key statement without changing any signed card or durable state. */
+  private Map<String, String> previewRenewContact() {
+    if (!NORMAL.equals(state.get(RECOVERY))) throw new MailFailure("recovery-paused");
+    var card = contact(state.get(OWN_CARD), false);
+    requireHistoryCapacity(OWN_CARD_HISTORY_PREFIX);
+    long created = now();
+    // Require a distinct statement, including when preview follows initialization immediately.
+    if (created <= MailWire.decimal(card.get(CREATED))) throw new MailFailure("renewal-too-soon");
+    renewal = new RenewalPlan(randomId(), digest, renewalAuthority(), created, created + 365 * DAY);
+    return Map.of(
+        STATUS,
+        "preview",
+        "renewalToken",
+        renewal.token(),
+        EXPIRES,
+        Long.toString(renewal.expires()),
+        "approvalExpires",
+        Long.toString(created + 30),
+        ACCOUNT,
+        card.get(ACCOUNT),
+        SIGNING_FINGERPRINT,
+        card.get(SIGNING_FINGERPRINT),
+        RECIPIENT_FINGERPRINT,
+        card.get(RECIPIENT_FINGERPRINT),
+        "warning",
+        "Same keys. Contacts must explicitly approve the new validity statement.");
+  }
+
+  /** Snapshots current grants and identity metadata; private operations still check authority. */
+  private Object renewalAuthority() {
+    Object grants = backend.request("GET", "/app-vault/grants", Map.of()).get("grants");
+    if (!(grants instanceof List<?>)) throw new MailFailure("key-unavailable");
+    var snapshot = new LinkedHashMap<String, Object>();
+    snapshot.put("grants", grants);
+    for (String key : List.of(SIGNING_ID, RECIPIENT_ID, STORAGE_ID)) {
+      var identity =
+          object(
+              backend
+                  .request("GET", "/app-vault/identities/" + required(state, key), Map.of())
+                  .get("identity"));
+      if (identity.isEmpty()) throw new MailFailure("key-unavailable");
+      snapshot.put(key, identity);
+    }
+    return snapshot;
+  }
+
+  /** Consumes current-launch consent and atomically replaces only the own contact statement. */
+  private Map<String, String> confirmRenewContact(Map<String, String> input) {
+    RenewalPlan plan = renewal;
+    renewal = null;
+    if (plan == null || !plan.token().equals(input.get("renewalToken")))
+      throw new MailFailure("renewal-approval-required");
+    requireCurrentRenewal(plan);
+    if (!NORMAL.equals(state.get(RECOVERY))) throw new MailFailure("recovery-paused");
+    var card = contact(state.get(OWN_CARD), false);
+    card.put(CREATED, Long.toString(plan.created()));
+    card.put(EXPIRES, Long.toString(plan.expires()));
+    String renewed =
+        new String(
+            crypto("sign", state.get(SIGNING_ID), MailWire.contactPayload(card)),
+            StandardCharsets.UTF_8);
+    // Check the snapshot again after private signing; seal-storage also rechecks current grants.
+    requireCurrentRenewal(plan);
+    retainCard(OWN_CARD_HISTORY_PREFIX, state.get(OWN_CARD));
+    state.put(OWN_CARD, renewed);
+    state.remove(APPROVAL);
+    commit(plan);
+    return Map.of(
+        STATUS,
+        "renewed",
+        EXPIRES,
+        Long.toString(plan.expires()),
+        "warning",
+        "Export the new card for explicit contact approval. Existing messages are unchanged.");
+  }
+
+  /** Rechecks consent after blocking crypto and immediately before submitting the CAS write. */
+  private void requireCurrentRenewal(RenewalPlan plan) {
+    if (!plan.datasetDigest().equals(digest)
+        || !plan.grants().equals(renewalAuthority())
+        || now() < plan.created()
+        || now() >= plan.created() + 30) throw new MailFailure("renewal-approval-required");
+    // App-visible grant metadata includes expired grants. The typed contact operation checks
+    // current signing and recipient purposes using the vault's clock, even with separate grants.
+    crypto(
+        "sign",
+        state.get(SIGNING_ID),
+        MailWire.signedPayload(state.get(OWN_CARD).getBytes(StandardCharsets.UTF_8)));
+    if (now() < plan.created() || now() >= plan.created() + 30)
+      throw new MailFailure("renewal-approval-required");
+  }
+
   /**
    * Reuses the sole retained purpose identity after a lost creation response.
    *
@@ -397,7 +503,11 @@ public final class MailMailbox {
         RECIPIENT_FINGERPRINT,
         contact.get(RECIPIENT_FINGERPRINT),
         ACCOUNT,
-        contact.get(ACCOUNT));
+        contact.get(ACCOUNT),
+        CREATED,
+        contact.get(CREATED),
+        EXPIRES,
+        contact.get(EXPIRES));
   }
 
   /**
@@ -412,7 +522,9 @@ public final class MailMailbox {
     String fp = required(input, FINGERPRINT);
     if (!fp.equals(card.get(SIGNING_FINGERPRINT))) throw new MailFailure("contact-mismatch");
     String prior = state.get(CONTACT_PREFIX + fp);
-    if (prior != null && !prior.equals(pending)) throw new MailFailure("pin-change-blocked");
+    if (prior != null && !prior.equals(pending)) {
+      requireRenewedBinding(contact(prior, false), card);
+    }
     for (var e : state.entrySet())
       if (e.getKey().startsWith(CONTACT_PREFIX)) {
         var c = contact(e.getValue(), false);
@@ -420,11 +532,21 @@ public final class MailMailbox {
           throw new MailFailure("pin-change-blocked");
       }
     if (prior == null && count(CONTACT_PREFIX) >= 16) throw new MailFailure("quota");
+    if (prior != null && !prior.equals(pending))
+      retainCard("contact-card-history." + fp + ".", prior);
     state.put(CONTACT_PREFIX + fp, pending);
     state.remove(PENDING_CONTACT);
     state.remove(APPROVAL);
     commit();
     return Map.of(STATUS, "contact-approved");
+  }
+
+  /** Allows a later validity statement only for the exact previously approved identity. */
+  private static void requireRenewedBinding(Map<String, String> old, Map<String, String> card) {
+    if (!contactBinding(old).equals(contactBinding(card))
+        || MailWire.decimal(card.get(CREATED)) <= MailWire.decimal(old.get(CREATED))
+        || MailWire.decimal(card.get(EXPIRES)) <= MailWire.decimal(old.get(EXPIRES)))
+      throw new MailFailure("pin-change-blocked");
   }
 
   /**
@@ -695,7 +817,12 @@ public final class MailMailbox {
         MailWire.unbase64(sender.get(SIGNING_KEY), 32),
         MailWire.preimage(MailWire.MESSAGE, payload),
         MailWire.signature(signed))) throw new MailFailure("invalid");
-    var own = contact(state.get(OWN_CARD), false);
+    var own = incomingCard(OWN_CARD_HISTORY_PREFIX, state.get(OWN_CARD), msg);
+    sender =
+        incomingCard(
+            "contact-card-history." + required(msg, SENDER) + ".",
+            state.get(CONTACT_PREFIX + required(msg, SENDER)),
+            msg);
     validateIncomingBindings(msg, sender, own);
     String replay =
         hash(
@@ -719,6 +846,59 @@ public final class MailMailbox {
     state.put(INBOX_PREFIX + replay, MailWire.base64(signed));
     commit();
     return Map.of(STATUS, "accepted", MESSAGE_ID, replay, "senderTrust", "locally-pinned");
+  }
+
+  /** Refuses bounded history exhaustion without deleting an original signed statement. */
+  private void requireHistoryCapacity(String prefix) {
+    if (count(prefix) >= 3) throw new MailFailure("contact-history-capacity");
+  }
+
+  /** Retains the exact prior signature and interval inside the authenticated dataset. */
+  private void retainCard(String prefix, String card) {
+    requireHistoryCapacity(prefix);
+    String key = prefix + count(prefix);
+    if (state.containsKey(key)) throw new MailFailure("invalid-contact-history");
+    state.put(key, card);
+  }
+
+  /**
+   * Selects a previously signed same-identity interval covering the original message timestamps.
+   * Every retained statement is authenticated and compared even when the current interval fits.
+   */
+  private Map<String, String> incomingCard(String prefix, String current, Map<String, String> msg) {
+    var selected = contact(current, false);
+    long currentCreated = MailWire.decimal(selected.get(CREATED));
+    long currentExpires = MailWire.decimal(selected.get(EXPIRES));
+    var binding = contactBinding(selected);
+    long created = MailWire.decimal(msg.get(CREATED));
+    long expires = MailWire.decimal(msg.get(EXPIRES));
+    if (count(prefix) > 3) throw new MailFailure("invalid-contact-history");
+    long previousCreated = -1;
+    long previousExpires = -1;
+    for (int index = 0; index < count(prefix); index++) {
+      String value = state.get(prefix + index);
+      if (value == null) throw new MailFailure("invalid-contact-history");
+      var historical = contact(value, false);
+      long start = MailWire.decimal(historical.get(CREATED));
+      long end = MailWire.decimal(historical.get(EXPIRES));
+      if (!binding.equals(contactBinding(historical))
+          || start <= previousCreated
+          || end <= previousExpires
+          || start >= currentCreated
+          || end >= currentExpires) throw new MailFailure("invalid-contact-history");
+      previousCreated = start;
+      previousExpires = end;
+      if (created >= start && expires <= end) selected = historical;
+    }
+    return selected;
+  }
+
+  /** Immutable contact claims; validity alone may change in an explicit same-key renewal. */
+  private static Map<String, String> contactBinding(Map<String, String> card) {
+    var binding = new LinkedHashMap<>(card);
+    binding.remove(CREATED);
+    binding.remove(EXPIRES);
+    return binding;
   }
 
   /**
@@ -891,6 +1071,13 @@ public final class MailMailbox {
 
   /** Protects and CAS-publishes the complete dataset with insertion-completion headroom. */
   private void commit() {
+    commit(null);
+  }
+
+  /**
+   * Protects state and optionally fences renewal consent after encryption before CAS submission.
+   */
+  private void commit(RenewalPlan consent) {
     byte[] plaintext = MailWire.encode(state);
     if (plaintext.length + completionReserve() > MAX_STATE || count(REPLAY_PREFIX) > 128)
       throw new MailFailure("quota");
@@ -901,6 +1088,7 @@ public final class MailMailbox {
     wrapper.put(ENVELOPE, MailWire.base64(envelope));
     byte[] value = MailWire.encode(wrapper);
     if (value.length > 262144) throw new MailFailure("quota");
+    if (consent != null) requireCurrentRenewal(consent);
     storeDataset(value);
   }
 

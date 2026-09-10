@@ -93,6 +93,26 @@ class PlatformApiMailRoutesTest {
   }
 
   @Test
+  void contactRenewalCommandsRemainOwnBrowserAndCurrentLaunchOnly() {
+    for (String command : List.of("preview-renew-contact", "confirm-renew-contact")) {
+      var values = Map.of("command", command, "payloadBase64", "e30=");
+      assertEquals(403, call(browser("other-app"), "command", values).statusCode());
+      assertEquals(403, call(process(APP, "current", PERMISSIONS), "command", values).statusCode());
+      var submitted = call(browser(APP), "command", values);
+      assertEquals(200, submitted.statusCode(), submitted.body());
+      String request = field(submitted, "requestId");
+      assertEquals(403, call(process(APP, "old", PERMISSIONS), "poll", Map.of()).statusCode());
+      var frame = call(process(APP, "current", PERMISSIONS), "poll", Map.of());
+      assertEquals(command, field(frame, "command"));
+      assertEquals(request, field(frame, "requestId"));
+      when(host.currentLaunch(APP)).thenReturn(Optional.empty());
+      assertEquals(409, call(browser(APP), "result", Map.of("requestId", request)).statusCode());
+      launch(PERMISSIONS);
+    }
+    assertTrue(vault.listIdentities().isEmpty());
+  }
+
+  @Test
   void browserAndOtherAppCannotUsePrivateMailRoutes() {
     for (String action :
         List.of(
