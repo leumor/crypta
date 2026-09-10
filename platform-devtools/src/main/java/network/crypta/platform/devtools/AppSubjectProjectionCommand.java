@@ -38,6 +38,17 @@ import picocli.CommandLine.Spec;
  * use the same Java implementations as catalog installation. Its output is a local cryptographic
  * projection, not a protected producer attestation or permission to install an app. A protected
  * collector must independently authenticate the selected source artifacts and this executable.
+ *
+ * <p>Invoke through picocli so required options and command metadata are populated before {@link
+ * #call()}. Each invocation copies selected artifact inputs into a temporary directory beneath an
+ * existing POSIX private root with permissions {@code rwx------}. The output contains verified
+ * artifact identities and manifest declarations; it does not contain extracted bundle contents or
+ * local source paths. An optional submission must contain the same bundle bytes, and a catalog
+ * review receipt requires a trusted, positive review under the current default policy.
+ *
+ * <p>Instances hold mutable invocation state and must not be shared between concurrent executions.
+ * The caller owns the trust registries, private root, and output destination; this command does not
+ * grant installation authority or fetch an artifact from the catalog's bundle URI.
  */
 @Command(
     name = "subject-projection",
@@ -80,12 +91,20 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
   @Option(names = "--output", required = true)
   private Path output;
 
-  /** Creates an invocation whose inputs are populated by Picocli. */
+  /**
+   * Creates an uninitialized invocation for picocli to populate.
+   *
+   * <p>Construction alone does not supply the required paths or command output streams.
+   */
   public AppSubjectProjectionCommand() {
     // Picocli supplies invocation fields after constructing this command.
   }
 
-  // Picocli discovers this method through @Spec when it builds the command model.
+  /**
+   * Receives command metadata from picocli when it builds the command model.
+   *
+   * @param spec metadata providing this invocation's output and diagnostic streams
+   */
   @SuppressWarnings("unused")
   @Spec
   void setSpec(CommandSpec spec) {
@@ -95,7 +114,16 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
   /**
    * Writes a new public projection only after the entire selected artifact verifies.
    *
-   * @return zero on successful derivation, one on a bounded verification failure
+   * <p>The destination is created with {@link StandardOpenOption#CREATE_NEW}; an existing file is
+   * never overwritten. Verification or I/O failures emit a fixed diagnostic and return one without
+   * exposing exception details. A write failure can leave a partial destination, so callers must
+   * require a successful exit before consuming it.
+   *
+   * <p>Temporary extraction files are deleted on both success and failure. An I/O error during
+   * cleanup emits a separate fixed diagnostic but does not change the selected return code; callers
+   * requiring complete cleanup must also inspect that diagnostic.
+   *
+   * @return zero when the projection was written, or one on verification, runtime, or I/O failure
    */
   @Override
   public Integer call() {
@@ -134,6 +162,14 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     }
   }
 
+  /**
+   * Verifies local artifact snapshots and derives declarations from the signed manifest.
+   *
+   * @param scratch invocation-owned directory for snapshots and extracted bundle files
+   * @return ordered projection fields, with absent review and submission identities represented by
+   *     {@code null}
+   * @throws IOException if reading, extraction, verification, or subject matching fails
+   */
   private Map<String, Object> derive(Path scratch) throws IOException {
     Path catalogSnapshot = snapshot(catalog, scratch.resolve("catalog"), 8L * 1024 * 1024);
     Path signatureSnapshot = snapshot(catalogSignature, scratch.resolve("signature"), 64L * 1024);
@@ -210,6 +246,14 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     return result;
   }
 
+  /**
+   * Adds the catalog receipt's identity only after trust, verdict, and publisher checks pass.
+   *
+   * @param entry verified catalog entry whose optional receipt is evaluated
+   * @param publisherId signing key identifier from bundle verification
+   * @param result projection to update; unchanged when the entry has no receipt
+   * @throws IOException if a receipt lacks reviewer trust or fails the required checks
+   */
   private void addReviewProjection(
       AppCatalogEntry entry, String publisherId, Map<String, Object> result) throws IOException {
     if (entry.reviewReceipt().isPresent()) {
@@ -231,6 +275,17 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     }
   }
 
+  /**
+   * Copies a regular input file into a new bounded snapshot without following its final symlink.
+   *
+   * <p>The caller owns cleanup of the destination, including a partial copy after failure.
+   *
+   * @param source local input file
+   * @param destination new snapshot path beneath the invocation's scratch directory
+   * @param maximum maximum copied bytes, from one byte through 512 MiB inclusive
+   * @return the destination path after the copy completes
+   * @throws IOException if the bound or input is invalid, the destination exists, or copying fails
+   */
   private static Path snapshot(Path source, Path destination, long maximum) throws IOException {
     if (maximum < 1
         || maximum > 512L * 1024 * 1024
@@ -250,6 +305,14 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     return destination;
   }
 
+  /**
+   * Streams a file into the public artifact digest representation.
+   *
+   * @param file artifact snapshot or extracted signed metadata file
+   * @return {@code sha256:} followed by the lowercase hexadecimal SHA-256 digest
+   * @throws IOException if the file cannot be read
+   * @throws IllegalStateException if the runtime lacks the required SHA-256 algorithm
+   */
   private static String digest(Path file) throws IOException {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
