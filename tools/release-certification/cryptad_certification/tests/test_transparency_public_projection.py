@@ -44,7 +44,7 @@ class PublicProjectionTest(unittest.TestCase):
 
     def test_actual_maintenance_verifier_and_conflict(self):
         with tempfile.TemporaryDirectory() as directory:
-            args,receipt=maintenance_fixture.StableMaintenanceAuthorizationAndPublicationTest()._publication_fixture(Path(directory),'created')
+            args,receipt=maintenance_fixture.StableMaintenanceAuthorizationAndPublicationTest()._publication_fixture(Path(directory).resolve(),'created')
             context,*rest=args
             inputs=public.MaintenancePublicationContext(*rest)
             raw=public.export_verified('maintenance',context,inputs=inputs)
@@ -107,7 +107,7 @@ class PublicProjectionTest(unittest.TestCase):
 
     def test_operator_private_root_collision_and_manifest_errors_are_fixed(self):
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory); manifest=root/'manifest.json'; manifest.write_text('{"canary":"secret"}')
+            root=Path(directory).resolve(); manifest=root/'manifest.json'; manifest.write_text('{"canary":"secret"}')
             for scratch in (root,root/'new-private'):
                 with self.assertRaises(public.PublicProjectionError) as failure:
                     public.export_from_manifest('release',manifest,scratch)
@@ -118,7 +118,7 @@ class PublicProjectionTest(unittest.TestCase):
         import socket
         from cryptad_certification.engines import stable_1_0_ga
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory)
+            root=Path(directory).resolve()
             context,_inputs=self.ga(); m=context.manifest
             manifest=root/'manifest.json'
             manifest.write_bytes(public._canonical({'schemaVersion':1,

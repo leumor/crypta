@@ -46,6 +46,7 @@ class TransparencySourcesTests(unittest.TestCase):
         selection["mode"] = "demo"
         selection['sources'] = [{"role": "keys", "file": "keys.json", "digest": sources.digest(b'{}'), "size": 2, "required": False}]
         with tempfile.TemporaryDirectory() as root:
+            root = Path(root).resolve()
             package = sources.collect(selection, root)
             self.assertEqual([{"role": "keys", "status": "optional-source-unavailable"}], sources.admit(package)['sources'])
             package['selection']['sources'][0]['required'] = True
@@ -136,7 +137,7 @@ class TransparencySourcesTests(unittest.TestCase):
     def test_local_synthetic_http_observation_compares_every_asset(self):
         from cryptad_certification import transparency_bundle as bundle
         with tempfile.TemporaryDirectory() as root:
-            root = Path(root)
+            root = Path(root).resolve()
             package = sources.collect(self.selection(), root)
             site = root / 'site'
             bundle.build(package, site)
@@ -192,6 +193,7 @@ class TransparencySourcesTests(unittest.TestCase):
         from cryptad_certification.transparency_adapters import demo_sources
         selection = self.selection(); selection['mode'] = 'demo'
         with tempfile.TemporaryDirectory() as root:
+            root = Path(root).resolve()
             for number, entry in enumerate(demo_sources()):
                 name = f'source-{number}.json'
                 Path(root,name).write_bytes(entry['raw'])
@@ -202,6 +204,7 @@ class TransparencySourcesTests(unittest.TestCase):
 
     def test_empty_production_is_valid(self):
         with tempfile.TemporaryDirectory() as root:
+            root = Path(root).resolve()
             package = sources.collect(self.selection(), root)
             self.assertEqual([], sources.admit(package)["records"])
 
@@ -248,7 +251,7 @@ class TransparencySourcesTests(unittest.TestCase):
 
     def test_symlinks_hardlinks_and_bounds_fail(self):
         with tempfile.TemporaryDirectory() as root:
-            root = Path(root)
+            root = Path(root).resolve()
             original = root / 'a'
             original.write_bytes(b'canary')
             link = root / 'b'
@@ -263,11 +266,29 @@ class TransparencySourcesTests(unittest.TestCase):
             with self.assertRaises(sources.SourceError):
                 sources.safe_read(original, 2)
 
+    def test_linked_temporary_root_requires_explicit_resolution(self):
+        from cryptad_certification import transparency_bundle as bundle
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            actual = root/'actual'
+            actual.mkdir()
+            alias = root/'alias'
+            alias.symlink_to(actual, target_is_directory=True)
+            raw = b'{}'
+            (actual/'keys.json').write_bytes(raw)
+            with self.assertRaisesRegex(sources.SourceError, 'source-path-invalid'):
+                sources.safe_read(alias/'keys.json')
+            with self.assertRaisesRegex(ValueError, 'path-link-denied'):
+                bundle.confined(alias/'site')
+            self.assertEqual(sources.safe_read(alias.resolve()/'keys.json'), raw)
+            self.assertEqual(bundle.confined(alias.resolve()/'site'), actual/'site')
+
     def test_nonempty_production_never_trusts_checksum(self):
         raw = b'{}'
         selection = self.selection()
         selection['sources'] = [{"role": "keys", "file": "keys.json", "digest": sources.digest(raw), "size": len(raw), "required": True}]
         with tempfile.TemporaryDirectory() as root:
+            root = Path(root).resolve()
             Path(root, 'keys.json').write_bytes(raw)
             with self.assertRaisesRegex(sources.SourceError, 'source-not-approved'):
                 sources.collect(selection, root)
@@ -277,6 +298,7 @@ class TransparencySourcesTests(unittest.TestCase):
         selection = self.selection()
         selection['sources'] = [{"role": "keys", "file": "keys.json", "digest": sources.digest(raw), "size": len(raw), "required": True}]
         with tempfile.TemporaryDirectory() as root:
+            root = Path(root).resolve()
             with self.assertRaises(sources.SourceError):
                 sources.collect(selection, root)
             Path(root, 'keys.json').write_bytes(b'[]')
@@ -321,6 +343,7 @@ class TransparencySourcesTests(unittest.TestCase):
 
     def test_policy_and_inventory_tampering_fail(self):
         with tempfile.TemporaryDirectory() as root:
+            root = Path(root).resolve()
             package = sources.collect(self.selection(), root)
         package['members'].append({'file':'secret.json','bytes':'e30='})
         with self.assertRaises(sources.SourceError):
