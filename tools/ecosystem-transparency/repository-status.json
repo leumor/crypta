@@ -1,0 +1,70 @@
+{
+  "asOf": "2026-09-10T12:09:39Z",
+  "closeoutOwner": "PR-303",
+  "kind": "public-ecosystem-repository-status",
+  "mail": {
+    "apiContract": 26,
+    "apiUrlVersion": "v1",
+    "restore": "paused",
+    "stableBaselineContract": 19,
+    "stableMilestone": "1.0",
+    "status": "experimental"
+  },
+  "obligations": [
+    {
+      "description": "Selected federation app-subject projection remains unsupported; original protected projection not observed.",
+      "id": "pr296-federation",
+      "status": "open"
+    },
+    {
+      "description": "Browser literal preview, bundle rollback and cleanup adapters and actual approved migration observations remain open.",
+      "id": "pr297-migration",
+      "status": "open"
+    },
+    {
+      "description": "Exact published source CI and analyzer dispositions require their original hosted checks; local tests do not substitute.",
+      "id": "exact-source-ci",
+      "status": "open"
+    },
+    {
+      "description": "Historical binaries, production Trust reader, Java-to-JS directions and independent implementation remain open.",
+      "id": "profile-runtime",
+      "status": "open"
+    },
+    {
+      "description": "Trust, Social and unsigned aggregate proposals remain separate; Feed stable status remains unchanged.",
+      "id": "profile-redesign",
+      "status": "open"
+    },
+    {
+      "description": "Actual two-node delivery, full origin and diagnostic canary coverage and independent security review remain unobserved.",
+      "id": "mail-prototype",
+      "status": "open"
+    },
+    {
+      "description": "Same-key contact renewal is implemented; recipient and storage rotation, account replacement and recovery resume remain unimplemented. Restore remains paused.",
+      "id": "mail-lifecycle",
+      "status": "open"
+    },
+    {
+      "description": "Complete catalog-origin consent, mirror fallback, rollback, budgets and process denial adapters remain open.",
+      "id": "runtime-adapters",
+      "status": "open"
+    },
+    {
+      "description": "Observed live coverage is zero; actual approved 72-hour run, complete scenario adapters and consumer mappings remain open.",
+      "id": "cross-version-long-run",
+      "status": "open"
+    },
+    {
+      "description": "Fourteen fixed synthetic cases are local rehearsal only. Implementation coverage partial, protected runtime not observed, maintenance blocked, publication and activation not performed, independent security review pending.",
+      "id": "maintenance-drill",
+      "status": "open"
+    }
+  ],
+  "phase12": "incomplete",
+  "schemaVersion": 1,
+  "sourceCommit": "ca54bcbc16f30a4edaf72f813a287ddc3a40e165",
+  "sourceDocumentDigest": "sha256:301b6ffc956922798b26bb6948ba4405536df5035fbcf07f5ecd59cf78d0d01c",
+  "sourceTree": "5a4e6cdc3f9b3406c34d6e8545f758d9c07b7af6"
+}
