@@ -305,6 +305,12 @@ jobs:
         uses: ./.github/actions/setup-gradle-properties
       - name: Install bounded export sandbox
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Check unprivileged export sandbox
+        run: |
+          /usr/bin/bwrap --version
+          /usr/bin/bwrap --unshare-all --die-with-parent --new-session \
+            --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64 \
+            --proc /proc --dev /dev --size 16777216 --tmpfs /tmp -- /usr/bin/true
       - name: Build fixed native test tools
         run: ./gradlew :platform-devtools:installDist
       - name: Exercise synthetic producer and original consumer semantics

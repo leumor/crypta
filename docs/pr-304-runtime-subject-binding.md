@@ -210,7 +210,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:b9f3f21c773af3757d7bb90380ad4e6574d7d704cdda466efe9c17743a287c98` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:398e7ce676b31210211e6fda88d635701eebd70a40a69b749438c4c13f40e9eb` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ed5ca0e190e45c5e377f10794832e4eefb1290dfe928ab45488a1d02b9194ad7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
