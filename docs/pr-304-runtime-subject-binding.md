@@ -213,7 +213,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:4faa20a8cf51c03a87b4a5ecc6f6941d468ea9a3504e49c336fe953f5db654ac` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:0103e0dcdbb5e2e7e430173605f99e5e341e1c7639396f6b1c3538d98b94fe47` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ddf43ed72bf32096a63217e319d459ba04e443c6d683729ac7a451fcc1ee74f7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
@@ -308,3 +308,20 @@ product paths. A symlinked temporary root reproduced the original package-substi
 on Linux; after correction all 23 product-admission tests passed under the same setup. Production
 symlink rejection remains unchanged. The successor policy refreshes only that test's existing
 source digest; requirement scope and historical inputs are unchanged.
+
+Exporter subprocess tests now propagate the test worker's JaCoCo agent with append enabled and
+instrumentation restricted to the two production exporters. The fixed commands, clean environment,
+exact fixture package bytes, process exit checks and private diagnostic assertions remain intact.
+Recompiled fixture contract classes do not contribute coverage. API and root coverage reports and
+verification tasks include devtools execution data, because those tests execute the API exporter
+across the module boundary. This changes test measurement only, with no production instrumentation,
+coverage exclusion or threshold change.
+The local JaCoCo XML, mapped to SonarCloud PR 1406's current new executable lines and conditions,
+records 74/75 covered lines and 23/26 covered conditions: 97/101, or 96.0% new-code coverage.
+The native exporter is 100.0% and the historical bridge 91.7%; the other two changed production
+classes remain at 100.0%. These are locally measured results; the hosted percentage requires
+the subsequent CI scan. The bridge's remaining defensive classloader branches stay in scope.
+The final exporter suite adds a positive ordinary-manifest case (no external Class-Path), exercising
+the layout accepted for real package manifests, and passes all 17 tests. Both module suites pass
+(261 devtools, 1,165 API); the preceding full test/report run recorded 17,220 tests with zero
+failures/errors and ten existing platform, benchmark and crypto-condition skips.

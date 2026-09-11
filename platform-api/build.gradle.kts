@@ -31,3 +31,15 @@ dependencies {
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }
+
+// Native packaged-export tests live with the devtools historical bridge and execute this module.
+// Include those executions in module reports as well as the root aggregate consumed by Sonar.
+tasks.withType<JacocoReport>().configureEach {
+  dependsOn(":platform-devtools:test")
+  executionData(project(":platform-devtools").layout.buildDirectory.file("jacoco/test.exec"))
+}
+
+tasks.withType<JacocoCoverageVerification>().configureEach {
+  dependsOn(":platform-devtools:test")
+  executionData(project(":platform-devtools").layout.buildDirectory.file("jacoco/test.exec"))
+}

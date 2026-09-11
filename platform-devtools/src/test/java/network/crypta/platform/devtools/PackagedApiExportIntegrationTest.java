@@ -1,6 +1,7 @@
 package network.crypta.platform.devtools;
 
 import java.io.File;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -134,6 +135,29 @@ class PackagedApiExportIntegrationTest {
     ExportResult result = invoke(jar, true, jar.toString());
 
     assertHistoricalFailure(result);
+  }
+
+  @Test
+  void historicalExport_whenManifestHasNoExternalClasspath_expectExactJsonProtocol()
+      throws Exception {
+    Path original = abiPackage(Abi.NORMAL);
+    Path jar = temporary.resolve("manifest.jar");
+    var manifest = new Manifest();
+    manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+    try (var source = new java.util.jar.JarFile(original.toFile());
+        var output = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
+      for (var member : source.stream().toList()) {
+        output.putNextEntry(new JarEntry(member.getName()));
+        try (var input = source.getInputStream(member)) {
+          input.transferTo(output);
+        }
+        output.closeEntry();
+      }
+    }
+
+    ExportResult result = invoke(jar, true, jar.toString());
+
+    assertExactProtocol(result);
   }
 
   @Test
@@ -387,10 +411,27 @@ class PackagedApiExportIntegrationTest {
 
   private record ExportResult(int exitCode, String stdout, String stderr) {}
 
+  private static List<String> exporterCoverageArguments() {
+    // Gradle instruments the test worker, not its child JVMs. Reuse its JaCoCo destination with
+    // append enabled so child exits (including System.exit failures) join the owning test report.
+    // Limit instrumentation to the real exporters: deliberately recompiled fixture API classes
+    // must not contribute coverage or class-ID mismatches to the production API report.
+    return ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+        .filter(
+            argument -> argument.startsWith("-javaagent:") && argument.contains("jacocoagent.jar="))
+        .map(
+            argument ->
+                argument.replaceAll(",(?:includes|append)=[^,]*", "")
+                    + ",append=true,includes=network.crypta.platform.api.PackagedApiExport:"
+                    + "network.crypta.platform.devtools.HistoricalPackagedApiExport")
+        .toList();
+  }
+
   private ExportResult invoke(Path jar, boolean historical, String... arguments) throws Exception {
     var command =
-        new ArrayList<>(
-            List.of(Path.of(System.getProperty("java.home"), "bin/java").toString(), "-cp"));
+        new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin/java").toString()));
+    command.addAll(exporterCoverageArguments());
+    command.add("-cp");
     if (historical) {
       String helper =
           Path.of(
