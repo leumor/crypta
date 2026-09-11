@@ -2057,7 +2057,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:e60b4e0be22a953e2e487805adf424e1fee00ca2d6b668c65ab43c3347db0650",
+            "digest": "sha256:57432c173fc27c314f44d3b1cb704339798d77b0501353305ef6d9aedcb790d9",
             "path": "tools/release-certification/protected/test_maintenance_runtime_metadata.py"
           },
           {
@@ -2067,7 +2067,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:671a8f3d8a2cba3b44a1f7283cf1ad98aa9d36a99f2fa2eac73a3a9eb8cf491b",
+            "digest": "sha256:878733af11e69e18b68cb9cd859ddd5fbc922397045493e34de89e65e1ce20e0",
             "path": "tools/release-certification/protected/test_maintenance_app_handoff.py"
           },
           {
@@ -2092,7 +2092,7 @@
           },
           {
             "assertion": "Production preparation materializes internal JDK links against independently specified approved bytes, preserves cohort authority and rejects changed or unsafe inputs before tool authentication. Local synthetic input only.",
-            "digest": "sha256:e847180763a2bd4264407be2eb9d6e2c68ef31141c285cf616f76aafa4f11d99",
+            "digest": "sha256:49b69ab658bb74d8c20fdc1d3d3e7d57ab915cba833cd068582e90b365657606",
             "path": "tools/release-certification/protected/test_jdk_preparation.py"
           }
         ]

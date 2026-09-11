@@ -54,7 +54,7 @@ class PackagedObservationTests(unittest.TestCase):
 
     def test_two_compiled_surfaces_with_same_integer_export_distinct_exact_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             first = self.package(root / "first", "first")
             second = self.package(root / "second", "second")
             first_snapshot, _, first_executable = metadata.observe_package(first, self.java_home, root)
@@ -71,14 +71,14 @@ class PackagedObservationTests(unittest.TestCase):
 
     def test_manifest_cannot_escape_fixed_package_classpath(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             package = self.package(root / "package", "first", manifest="Manifest-Version: 1.0\nClass-Path: foreign.jar\n")
             with self.assertRaisesRegex(metadata.RuntimeMetadataError, "external-classpath"):
                 metadata.observe_package(package, self.java_home, root)
 
     def test_portable_case_collision_rejects_before_export(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             package = root / "cryptad-v999.tar.gz"
             with package.open("wb") as destination, gzip.GzipFile(fileobj=destination, mode="wb", filename="", mtime=0) as compressed, tarfile.open(fileobj=compressed, mode="w") as archive:
                 for name in ("lib/cryptad.jar", "LIB/CRYPTAD.JAR"):
@@ -92,7 +92,7 @@ class PackagedObservationTests(unittest.TestCase):
 
     def test_archive_without_fixed_exporter_is_specific_blocker(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             package = root / "cryptad-v999.tar.gz"
             with package.open("wb") as destination, gzip.GzipFile(fileobj=destination, mode="wb", filename="", mtime=0) as compressed, tarfile.open(fileobj=compressed, mode="w"):
                 pass
@@ -126,7 +126,7 @@ class MetadataBoundaryTests(unittest.TestCase):
             "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64": "c3ludGhldGlj", "STABLE_CATALOG_SIGNING_PUBLIC_KEY_BASE64": "c3ludGhldGlj",
             "STABLE_CATALOG_SIGNING_PRIVATE_KEY_BASE64": "synthetic-unused"}
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, environment):
-            root = Path(directory)
+            root = Path(directory).resolve()
             with self.assertRaisesRegex(metadata.RuntimeMetadataError, "signing-roles-overlap"):
                 app_products.produce_app_products(root, root / "output", release_id="synthetic", build_version="999",
                     source_commit="a" * 40, include_mail=True, artifact_base="https://example.invalid/apps",
@@ -145,9 +145,22 @@ class MetadataBoundaryTests(unittest.TestCase):
         with self.assertRaises(metadata.RuntimeMetadataError):
             metadata.read_json(b'{"contractVersion":26,"contractVersion":26}')
 
+    def test_symlinked_parent_rejects_even_when_subject_bytes_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            original = root / "original"
+            original.mkdir()
+            subject = original / "subject"
+            subject.write_bytes(b"exact synthetic subject")
+            alias = root / "alias"
+            alias.symlink_to(original, target_is_directory=True)
+            self.assertEqual(metadata.digest_bytes(b"exact synthetic subject"), metadata.identity(subject)["digest"])
+            with self.assertRaisesRegex(metadata.RuntimeMetadataError, "input-link"):
+                metadata.identity(alias / "subject")
+
     def test_member_hard_links_reject(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             original = root / "original"
             original.write_bytes(b"subject")
             os.link(original, root / "alias")

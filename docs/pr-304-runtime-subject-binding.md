@@ -213,8 +213,8 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:0103e0dcdbb5e2e7e430173605f99e5e341e1c7639396f6b1c3538d98b94fe47` |
-| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ddf43ed72bf32096a63217e319d459ba04e443c6d683729ac7a451fcc1ee74f7` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:7bcc7b2fdc7729667e1834f21cba462ea6e5671d6ca83fb9411ae73e4f86ba16` |
+| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:2c05f2dd7783c42ec6dc40508f6199e934829278fea35ed6feb137ed6f306246` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
 Both assessments report `phaseDecision=incomplete`, `phaseComplete=false` and 47 unresolved
@@ -325,3 +325,9 @@ The final exporter suite adds a positive ordinary-manifest case (no external Cla
 the layout accepted for real package manifests, and passes all 17 tests. Both module suites pass
 (261 devtools, 1,165 API); the preceding full test/report run recorded 17,220 tests with zero
 failures/errors and ten existing platform, benchmark and crypto-condition skips.
+
+The protected Python discovery fixtures also canonicalize temporary roots for JDK preparation,
+app package selection and runtime metadata checks. Running the full protected suite under a
+symlinked temporary parent reproduces the macOS path-precondition failures; after correction all
+91 tests pass locally. An explicit regression still rejects a symlinked subject parent even when
+the file bytes match. Only test-source pins change; production path checks remain intact.

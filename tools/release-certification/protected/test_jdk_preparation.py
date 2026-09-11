@@ -52,7 +52,7 @@ class JdkPreparationTest(unittest.TestCase):
 
     def test_materialized_tree_matches_independent_identity_and_keeps_link_rejection(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source, expected = self.installed_jdk(root)
             with self.assertRaisesRegex(projection.ProjectionFailure, "tree-link-invalid"):
                 projection.tree_digest(source)
@@ -64,7 +64,7 @@ class JdkPreparationTest(unittest.TestCase):
 
     def test_actual_preparation_uses_staged_path_without_changing_approved_cohort(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source, expected = self.installed_jdk(root)
             inputs, cohort, original = self.inputs(root, expected)
             with patch("original_artifact_authentication.authenticate_original", return_value=original), \
@@ -78,7 +78,7 @@ class JdkPreparationTest(unittest.TestCase):
 
     def test_preparation_authenticates_separate_tool_revision_and_exact_member(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source, expected = self.installed_jdk(root)
             inputs, cohort, original = self.inputs(root, expected)
             coordinates = {"sourceFamily": "projection-tools", "sourceCommit": "c" * 40,
@@ -107,7 +107,7 @@ class JdkPreparationTest(unittest.TestCase):
     def test_separate_tool_revision_still_rejects_wrong_attempt_and_changed_bytes(self):
         for mismatch in ("attempt", "source", "installed-bytes", "family"):
             with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 _, expected = self.installed_jdk(root)
                 _, cohort, original = self.inputs(root, expected)
                 cohort["toolOriginal"] = {"sourceFamily": "projection-tools", "sourceCommit": "c" * 40,
@@ -135,7 +135,7 @@ class JdkPreparationTest(unittest.TestCase):
 
     def test_unapproved_bytes_reject_before_online_authentication_and_remove_stage(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source, expected = self.installed_jdk(root)
             inputs, _, _ = self.inputs(root, expected)
             (source / "bin/java").write_bytes(b"changed executable")
@@ -149,7 +149,7 @@ class JdkPreparationTest(unittest.TestCase):
     def test_invalid_links_and_special_files_reject_without_partial_stage(self):
         for kind in ("dangling", "cycle", "external", "fifo"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 source, expected = self.installed_jdk(root)
                 extra = source / "extra"
                 if kind == "fifo":
@@ -163,7 +163,7 @@ class JdkPreparationTest(unittest.TestCase):
 
     def test_existing_or_overlapping_stage_is_never_removed(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source, expected = self.installed_jdk(root)
             for destination in (source, source / "stage", root):
                 with self.assertRaises(metadata.RuntimeMetadataError):

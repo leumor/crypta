@@ -113,7 +113,7 @@ class PackagedBundleSelectionTest(unittest.TestCase):
     def test_independent_app_version_selects_exact_package(self):
         from maintenance_app_products import packaged_bundle
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             package = root / "apps/site-publisher/build/cryptad-app-bundle/site-publisher-3.1.zip"
             package.parent.mkdir(parents=True)
             package.write_bytes(b"synthetic package")
@@ -124,7 +124,7 @@ class PackagedBundleSelectionTest(unittest.TestCase):
         from maintenance_runtime_metadata import RuntimeMetadataError
         for names in ((), ("site-publisher-3.1.zip", "site-publisher-300.zip"), ("other-app-3.1.zip",)):
             with self.subTest(names=names), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 packages = root / "apps/site-publisher/build/cryptad-app-bundle"
                 packages.mkdir(parents=True)
                 for name in names:
@@ -138,7 +138,7 @@ class PackagedBundleSelectionTest(unittest.TestCase):
         from maintenance_runtime_metadata import RuntimeMetadataError
         for link in (os.symlink, os.link):
             with self.subTest(link=link.__name__), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 original = root / "original.zip"
                 original.write_bytes(b"synthetic package")
                 package = root / "apps/site-publisher/build/cryptad-app-bundle/site-publisher-3.1.zip"
