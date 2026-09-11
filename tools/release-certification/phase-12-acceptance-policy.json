@@ -2077,7 +2077,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:04eeace3a9d8d72d8f6d9247a9b384aed18e6c1003753c5410bc899397c4b92e",
+            "digest": "sha256:d8f917c37d4a8c4de11c5ba06db6d0ab526f375892fcbf6fb3f633f0c7d914ea",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3174,7 +3174,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:04eeace3a9d8d72d8f6d9247a9b384aed18e6c1003753c5410bc899397c4b92e",
+            "digest": "sha256:d8f917c37d4a8c4de11c5ba06db6d0ab526f375892fcbf6fb3f633f0c7d914ea",
             "path": ".github/workflows/ci.yml"
           },
           {

@@ -1,0 +1,10 @@
+# Disposable ordinary CI runner only: allow the system Bubblewrap executable to
+# create the namespaces used by the packaged exporter. Bubblewrap still applies
+# --unshare-all, drops capabilities for the child, and mounts inputs read-only.
+# Do not disable AppArmor or its system-wide unprivileged-userns restriction.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile cryptad-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+}

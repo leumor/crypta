@@ -210,7 +210,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:398e7ce676b31210211e6fda88d635701eebd70a40a69b749438c4c13f40e9eb` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:f1e270f2196d516ed1acc13196d699d01360ef8688626e344bb90afa05a86695` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ed5ca0e190e45c5e377f10794832e4eefb1290dfe928ab45488a1d02b9194ad7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
@@ -261,3 +261,10 @@ selections are outside this correction. Hosted execution must be verified agains
 The same job also requested `:platform-api:jar` explicitly, which the repository build guard
 rejects. Its build command now requests only `:platform-devtools:installDist`, whose dependency
 graph produces the required API JAR. The test prerequisite diagnostic uses the same command.
+
+The hosted Ubuntu runner also denied Bubblewrap's isolated loopback setup (`RTM_NEWADDR`).
+An early no-product sandbox probe reproduces this prerequisite failure directly. Ordinary CI
+now loads a checked-in AppArmor user-namespace permission attached only to `/usr/bin/bwrap`.
+AppArmor and the system-wide user-namespace restriction remain enabled; the exporter retains
+`--unshare-all`, read-only input mounts, bounded temporary storage and execution limits. This
+runner setup is not installed on protected or live systems by this change.

@@ -304,7 +304,11 @@ jobs:
       - name: Install Gradle properties
         uses: ./.github/actions/setup-gradle-properties
       - name: Install bounded export sandbox
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap apparmor
+          sudo install -o root -g root -m 0644 .github/ci/cryptad-ci-bwrap.apparmor /etc/apparmor.d/cryptad-ci-bwrap
+          sudo apparmor_parser --replace /etc/apparmor.d/cryptad-ci-bwrap
       - name: Check unprivileged export sandbox
         run: |
           /usr/bin/bwrap --version
