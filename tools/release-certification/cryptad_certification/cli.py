@@ -98,6 +98,16 @@ def build_parser() -> argparse.ArgumentParser:
     for option in ("demo", "production", "online", "self-test"):
         transparency.add_argument("--" + option, action="store_true")
 
+    phase12 = subparsers.add_parser("phase-12-closeout", allow_abbrev=False)
+    phase12.add_argument("--mode", choices=("inventory", "evaluate", "verify", "public-export"))
+    for option in ("selection", "source-root", "assessment", "output"):
+        phase12.add_argument("--" + option, type=Path)
+    phase12.add_argument("--as-of")
+    phase12.add_argument("--require-complete", action="store_true")
+    phase12.add_argument("--collect-original", action="store_true",
+                         help="Explicit original-producer GET/attestation acquisition; offline by default.")
+    phase12.add_argument("--self-test", action="store_true")
+
     maintenance_drill = subparsers.add_parser("stable-maintenance-drill")
     maintenance_drill.add_argument("--mode", choices=("plan", "run", "verify", "closeout"))
     maintenance_drill.add_argument("--record", type=Path)
@@ -1368,6 +1378,10 @@ def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
         return selftest.run(command)
+    if command == "phase-12-closeout":
+        from .phase_12_closeout import run
+
+        return run(args)
     if command == "public-ecosystem-transparency":
         from .transparency_command import run
 
@@ -1543,7 +1557,21 @@ def _run_command(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Run the unified CLI with sanitized error handling."""
 
-    args = build_parser().parse_args(argv)
+    selected_argv = argv if argv is not None else sys.argv[1:]
+    if selected_argv and selected_argv[0] == "phase-12-closeout":
+        import contextlib
+        import io
+
+        # Evidence-selected strings must not appear in parser errors at this private boundary.
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                args = build_parser().parse_args(selected_argv)
+        except SystemExit as exc:
+            if exc.code:
+                print('{"auditExecuted":false,"phaseComplete":false,"reason":"phase12-command-invalid"}')
+            return int(exc.code or 0)
+    else:
+        args = build_parser().parse_args(selected_argv)
     try:
         if args.command == "self-test":
             return selftest.run(args.suite)

@@ -50,7 +50,8 @@
               "reproducibility",
               "lifecycle",
               "drill",
-              "repository-status"
+              "repository-status",
+              "phase-assessment"
             ]
           },
           "file": {

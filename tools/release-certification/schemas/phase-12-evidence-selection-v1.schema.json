@@ -1,0 +1,323 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "phase-12-evidence-selection"
+    },
+    "policyDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "requirementIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "maxItems": 96,
+      "uniqueItems": true
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,95}$"
+          },
+          "adapter": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9./_-]{0,219}$"
+                },
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 536870912
+                }
+              },
+              "required": [
+                "name",
+                "digest",
+                "size"
+              ]
+            },
+            "maxItems": 64
+          },
+          "subject": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "audit-tool",
+                  "current-product",
+                  "historical-product",
+                  "app-bundle",
+                  "subject-projection",
+                  "runtime",
+                  "public-site",
+                  "ci",
+                  "authority-record"
+                ]
+              },
+              "commit": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "tree": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "build": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,9}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "kind",
+              "commit",
+              "tree",
+              "build",
+              "digest"
+            ]
+          },
+          "predecessors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "maxItems": 64
+          },
+          "proof": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "coordinates": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "repository": {
+                        "const": "crypta-network/cryptad"
+                      },
+                      "sourceFamily": {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      "sourceCommit": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{40}$"
+                      },
+                      "runId": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "runAttempt": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "jobId": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "jobName": {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      "artifactId": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "artifactName": {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      "artifactDigest": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      },
+                      "artifactSize": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 536870912
+                      }
+                    },
+                    "required": [
+                      "repository",
+                      "sourceFamily",
+                      "sourceCommit",
+                      "runId",
+                      "runAttempt",
+                      "jobId",
+                      "jobName",
+                      "artifactId",
+                      "artifactName",
+                      "artifactDigest",
+                      "artifactSize"
+                    ]
+                  },
+                  "members": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 256
+                    }
+                  }
+                },
+                "required": [
+                  "coordinates",
+                  "members"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observedAt": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expiresAt": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "adapter",
+          "files",
+          "subject",
+          "predecessors",
+          "proof",
+          "observedAt",
+          "expiresAt"
+        ]
+      },
+      "maxItems": 64
+    },
+    "previousAssessment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9./_-]{0,219}$"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 536870912
+            }
+          },
+          "required": [
+            "name",
+            "digest",
+            "size"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hostedCi": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9./_-]{0,219}$"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 536870912
+            }
+          },
+          "required": [
+            "name",
+            "digest",
+            "size"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "policyDigest",
+    "requirementIds",
+    "artifacts",
+    "previousAssessment",
+    "hostedCi"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase-12-evidence-selection-v1.schema.json",
+  "title": "Closed input identities. The reviewed policy and fixed adapters impose the mandatory requirement and file cohorts; coordinates are not proof until original authentication."
+}

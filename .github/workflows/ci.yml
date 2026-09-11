@@ -16,9 +16,14 @@ on:
 jobs:
   build:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
+    permissions:
+      contents: read
+      actions: write # Preserve the existing reusable build's cache permissions.
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/build.yml
     with:
-      git-ref: ${{ github.head_ref || github.ref_name }}
+      git-ref: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -231,6 +236,8 @@ jobs:
     name: release certification self-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -247,6 +254,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -260,6 +270,14 @@ jobs:
       - name: Test protected producer boundaries offline
         shell: bash
         run: ${{ matrix.python_cmd }} -m unittest discover -s tools/release-certification/protected -p 'test_*.py'
+
+      - name: Reconcile Phase 12 without operational inputs
+        shell: bash
+        run: |
+          ${{ matrix.python_cmd }} tools/release-certification/certify.py phase-12-closeout --mode evaluate --as-of 2026-09-10T20:00:00Z --output "$RUNNER_TEMP/phase12-private"
+          ${{ matrix.python_cmd }} tools/release-certification/certify.py phase-12-closeout --mode verify --as-of 2026-09-10T20:00:00Z --assessment "$RUNNER_TEMP/phase12-private/phase-12-assessment.json"
+          mkdir -p "$RUNNER_TEMP/phase12-public"
+          ${{ matrix.python_cmd }} tools/release-certification/certify.py phase-12-closeout --mode public-export --as-of 2026-09-10T20:00:00Z --assessment "$RUNNER_TEMP/phase12-private/phase-12-assessment.json" --output "$RUNNER_TEMP/phase12-public/status.json"
 
   dependency-submission:
     if: github.event_name == 'pull_request' || github.event_name == 'push'

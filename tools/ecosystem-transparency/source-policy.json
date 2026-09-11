@@ -27,7 +27,8 @@
     "reproducibility",
     "lifecycle",
     "drill",
-    "repository-status"
+    "repository-status",
+    "phase-assessment"
   ],
   "disclosure": "typed-approved-public-originals-only",
   "productionAdmission": "reviewed-exact-public-source-pins-and-original-authority-required",

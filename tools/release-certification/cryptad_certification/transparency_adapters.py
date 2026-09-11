@@ -261,6 +261,41 @@ def _repository_status(value):
     return _pick(value, "asOf sourceCommit sourceTree sourceDocumentDigest phase12 closeoutOwner mail obligations")
 
 
+def _phase_assessment(value):
+    """Validate a reviewed public Phase 12 projection; it never supplies original authority."""
+    from .phase_12_closeout import DIMENSIONS, PASS, policy
+    from .transparency_sources import timestamp
+    allowed = {"schemaVersion", "kind", "asOf", "classification", "originalProducerProof",
+               "phaseDecision", "phaseComplete", "requirements", "publication", "activation"}
+    if (type(value) is not dict or set(value) != allowed or type(value["schemaVersion"]) is not int
+            or value["schemaVersion"] != 1 or value["kind"] != "phase-12-public-status"
+            or value["classification"] != "repository-local-assessment"
+            or value["originalProducerProof"] != "not-exported"
+            or value["publication"] != "not-performed" or value["activation"] != "not-performed"
+            or type(value["phaseDecision"]) is not str or value["phaseDecision"] not in {"incomplete", "blocked", "complete-as-of"}
+            or type(value["phaseComplete"]) is not bool
+            or value["phaseComplete"] != (value["phaseDecision"] == "complete-as-of")):
+        _fail("transparency-phase-assessment-contract-invalid")
+    timestamp(value["asOf"])
+    rules, _ = policy()
+    expected = {row["id"]: set(row["dimensions"]) for row in rules["requirements"]}
+    rows = value["requirements"]
+    if (type(rows) is not list or len(rows) != len(expected)
+            or any(type(row) is not dict or set(row) != {"id", "dimensions", "decision"} for row in rows)
+            or [row["id"] for row in rows] != sorted(expected)):
+        _fail("transparency-phase-assessment-inventory-invalid")
+    for row in rows:
+        dimensions = row["dimensions"]
+        if (type(dimensions) is not dict or set(dimensions) != expected[row["id"]]
+                or any(type(v) is not str or v not in DIMENSIONS[k] for k, v in dimensions.items())
+                or type(row["decision"]) is not str or row["decision"] not in {"satisfied", "unresolved"}
+                or row["decision"] == "satisfied" and any(v != PASS[k] for k, v in dimensions.items())):
+            _fail("transparency-phase-assessment-dimension-invalid")
+    if value["phaseComplete"] and any(row["decision"] != "satisfied" for row in rows):
+        _fail("transparency-phase-assessment-completion-invalid")
+    return _pick(value, "asOf classification originalProducerProof phaseDecision phaseComplete requirements publication activation")
+
+
 def _signature_verification(role, raw, value, approved):
     """Use explicitly selected public trust roots; never infer a root from subject keys."""
     from .engines.stable_1_0_catalog_authority import (
@@ -317,7 +352,8 @@ def _signature_verification(role, raw, value, approved):
 ADAPTERS = {"release": _release, "maintenance": _release, "keys": _keys,
             "lifecycle": _lifecycle, "advisories": _advisories, "supply-chain": _supply_chain,
             "reproducibility": _reproducibility, "sbom": _sbom,
-            "catalogs": _catalog, "reviews": _review, "repository-status": _repository_status}
+            "catalogs": _catalog, "reviews": _review, "repository-status": _repository_status,
+            "phase-assessment": _phase_assessment}
 
 
 def _project_public_statement(role, raw, context):
@@ -366,22 +402,22 @@ def project(role: str, raw: bytes, context: dict[str, Any]) -> dict[str, Any]:
         _fail("transparency-source-owned-public-export-unavailable")
     if production and role == "keys" and value["governance"]["custodyClass"] == "fixture-memory-only":
         _fail("transparency-fixture-authority-in-production")
-    if role == 'repository-status':
+    if role in {'repository-status', 'phase-assessment'}:
         from .transparency_sources import policy
         rules, _ = policy()
         approved_revisions = [entry for entry in rules['approvedSources']
                               if entry.get('role') == role and entry.get('digest') == _digest(raw)
                               and entry.get('size') == len(raw)
-                              and entry.get('disclosureRule') == 'reviewed-repository-status-v1'
-                              and entry.get('evidenceClass') == 'repository-reported']
+                              and entry.get('disclosureRule') == ('reviewed-repository-status-v1' if role == 'repository-status' else 'reviewed-phase12-public-status-v1')
+                              and entry.get('evidenceClass') == ('repository-reported' if role == 'repository-status' else 'repository-local-assessment')]
         if len(approved_revisions) != 1:
-            _fail('transparency-repository-statement-not-reviewed')
+            _fail('transparency-repository-statement-not-reviewed' if role == 'repository-status' else 'transparency-phase-assessment-not-reviewed')
     fields = ADAPTERS[role](value)
     identity = str(value.get("advisoryId", value.get("releaseId", value.get("catalog.id", value.get("review.receipt.app.id", role)))))
     if role == "keys":
         identity = f"governance-keyset-{value['keysetVersion']}"
-    elif role == "repository-status":
-        identity = "repository-status:" + _digest(raw)
+    elif role in {"repository-status", "phase-assessment"}:
+        identity = role + ":" + _digest(raw)
     elif role == "lifecycle":
         identity = f"support-lifecycle-edition-{value['descriptorEdition']}"
     elif role == "catalogs":
@@ -402,7 +438,7 @@ def project(role: str, raw: bytes, context: dict[str, Any]) -> dict[str, Any]:
     if production and role in {"reviews", "keys", "catalogs", "lifecycle"}:
         verification = _signature_verification(role, raw, value, approved)
     view = {"role": role, "identity": ("" if production else "demo-") + identity,
-            "evidenceClass": "repository-reported" if role == "repository-status" else ("selected-public-source" if production else "synthetic-preview"),
+            "evidenceClass": "repository-local-assessment" if role == "phase-assessment" else ("repository-reported" if role == "repository-status" else ("selected-public-source" if production else "synthetic-preview")),
             "provenance": "reviewed-source-selection-original-producer-unavailable" if production else "not-authenticated",
             "verification": verification, "disclosure": "reviewed-exact-source-policy" if production else "synthetic-only",
             "publication": "not-established", "activation": "not-established",
@@ -412,7 +448,8 @@ def project(role: str, raw: bytes, context: dict[str, Any]) -> dict[str, Any]:
     original_names = {"catalogs": "cryptad-app-catalog.properties", "reviews": "app-review-receipt.properties",
                       "keys": "stable-1.0-public-key-transparency.json", "lifecycle": "stable-1.0-support-lifecycle-descriptor.json",
                       "sbom": "stable-1.0-sbom-binding.json", "supply-chain": "stable-1.0-component-inventory.json",
-                      "reproducibility": "stable-1.0-reproducibility-result.json", "repository-status": "repository-status.json"}
+                      "reproducibility": "stable-1.0-reproducibility-result.json", "repository-status": "repository-status.json",
+                      "phase-assessment": "phase-12-public-status.json"}
     if role in original_names:
         downloads[original_names[role]] = raw
     if verification == "valid-signature-selected-root-snapshot-only":

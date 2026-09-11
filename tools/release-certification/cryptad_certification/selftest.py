@@ -7,6 +7,16 @@ import unittest
 from pathlib import Path
 
 SUITE_MODULES = {
+    "phase-12-closeout": [
+        "cryptad_certification.tests.test_phase_12_closeout",
+        "cryptad_certification.tests.test_phase_12_adapters",
+        "cryptad_certification.tests.test_phase_12_runtime_adapters",
+        "cryptad_certification.tests.test_phase_12_authority_context",
+        "cryptad_certification.tests.test_phase_12_public",
+        "cryptad_certification.tests.test_phase_12_ci",
+        "cryptad_certification.tests.test_phase_12_site_evidence",
+        "cryptad_certification.tests.test_phase_12_federation_context",
+    ],
     "public-ecosystem-transparency": [
         "cryptad_certification.tests.test_transparency_public_projection",
         "cryptad_certification.tests.test_transparency_sources",
