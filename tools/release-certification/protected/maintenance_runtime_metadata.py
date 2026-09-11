@@ -304,6 +304,11 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
     inventory = original_projection.inventory()
     if (cohort["releaseId"] != freeze["releaseId"] or cohort["sourceCommit"] != freeze["source"]["commit"]):
         raise RuntimeMetadataError("runtime-metadata-cohort-release-mismatch")
+    if any(source["original"]["sourceFamily"] != "maintenance-app-products"
+           for source in cohort["sources"] if source["appId"] in FIRST_PARTY | {"mail-prototype"}):
+        raise RuntimeMetadataError("runtime-metadata-prospective-app-source-required")
+    expected_release = {"releaseId": freeze["releaseId"], "buildVersion": freeze["buildVersion"],
+                        "sourceCommit": freeze["source"]["commit"]}
     tool_root, java_home = Path(cohort["toolRoot"]), Path(cohort["javaHome"])
     projection.authenticate_tool_tree(cohort, tool_root, private_root)
     if projection.tree_digest(java_home) != cohort["javaTreeDigest"]:
@@ -347,7 +352,8 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
                 contract_path=output / MEMBER_NAMES["snapshot"],
                 baseline_registry_path=output / MEMBER_NAMES["registry"])
             declaration = result["declaration"]
-            projection.verify_upstream_subject(source, declaration, artifact, private_root)
+            projection.verify_upstream_subject(source, declaration, artifact, private_root,
+                expected_release=expected_release)
             declarations.append(declaration)
         if (projection.tree_digest(tool_root) != cohort["toolTreeDigest"]
                 or projection.tree_digest(java_home) != cohort["javaTreeDigest"]):

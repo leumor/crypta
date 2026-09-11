@@ -49,7 +49,7 @@ class MaintenanceAppHandoffTest(unittest.TestCase):
     def digest(raw):
         return "sha256:" + hashlib.sha256(raw).hexdigest()
 
-    def verify(self, handoff, members, coordinates, *, extra=None, proofs=True):
+    def verify(self, handoff, members, coordinates, *, extra=None, proofs=True, expected_release=None):
         raw = json.dumps(handoff, sort_keys=True).encode()
         zipped = io.BytesIO()
         with zipfile.ZipFile(zipped, "w") as archive:
@@ -64,7 +64,8 @@ class MaintenanceAppHandoffTest(unittest.TestCase):
         proof = [{"verificationResult": {"signature": {"certificate": {
             "runInvocationURI": "https://github.com/crypta-network/cryptad/actions/runs/123/attempts/2"}}}}] if proofs else []
         with tempfile.TemporaryDirectory() as root, patch.object(projection, "_environment", return_value={}), patch.object(projection, "_gh", return_value=proof) as transport:
-            projection.verify_upstream_subject(source, selected["signedProjection"], original, Path(root))
+            projection.verify_upstream_subject(source, selected["signedProjection"], original, Path(root),
+                expected_release=expected_release)
             return transport.call_count
 
     def test_closed_original_member_handoff_accepts_exact_attempt_without_independent_claim(self):
@@ -72,6 +73,28 @@ class MaintenanceAppHandoffTest(unittest.TestCase):
         self.assertEqual(len(members) + 1, self.verify(handoff, members, coordinates))
         self.assertNotIn("independentReproducibility", handoff)
         self.assertNotEqual(handoff["sourceCommit"], handoff["producer"]["workflowSourceCommit"])
+
+    def test_candidate_product_identity_matches_with_distinct_workflow_revision(self):
+        handoff, members, coordinates = self.fixture()
+        expected = {key: handoff[key] for key in ("releaseId", "buildVersion", "sourceCommit")}
+        self.assertNotEqual(expected["sourceCommit"], coordinates["sourceCommit"])
+        self.assertEqual(len(members) + 1, self.verify(handoff, members, coordinates, expected_release=expected))
+
+    def test_previous_candidate_identity_cannot_be_relabelled(self):
+        handoff, members, coordinates = self.fixture()
+        for key, replacement in (("releaseId", "different-maintenance"), ("buildVersion", "2001"),
+                                 ("sourceCommit", "c" * 40)):
+            with self.subTest(field=key):
+                expected = {field: handoff[field] for field in ("releaseId", "buildVersion", "sourceCommit")}
+                expected[key] = replacement
+                with self.assertRaisesRegex(projection.ProjectionFailure, "candidate-identity-mismatch"):
+                    self.verify(handoff, members, coordinates, expected_release=expected)
+
+    def test_matching_candidate_cannot_substitute_original_workflow_revision(self):
+        handoff, members, coordinates = self.fixture()
+        expected = {key: handoff[key] for key in ("releaseId", "buildVersion", "sourceCommit")}
+        with self.assertRaisesRegex(projection.ProjectionFailure, "handoff-fields-invalid"):
+            self.verify(handoff, members, dict(coordinates, sourceCommit="c" * 40), expected_release=expected)
 
     def test_substituted_member_rejects_before_attestation(self):
         handoff, members, coordinates = self.fixture()

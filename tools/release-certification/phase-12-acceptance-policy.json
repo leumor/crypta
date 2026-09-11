@@ -1115,7 +1115,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify original v2 signed-artifact declarations for complete current-eight/historical-seven cohort with publisher/catalog/review/API/product bindings; broad v1 summaries are insufficient.",
-            "digest": "sha256:3b5494e6df921f125e79cf0b57f1e0e6fd8683c5fd84d8a842f3c92853249a5c",
+            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           }
         ],
@@ -1175,7 +1175,7 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate selected federation signed-artifact projection under scoped installed-origin and trust authority; selected projection is currently unsupported.",
-            "digest": "sha256:3b5494e6df921f125e79cf0b57f1e0e6fd8683c5fd84d8a842f3c92853249a5c",
+            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           }
         ],
@@ -1999,7 +1999,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:c99288e0d0546b59a68a27878c1241f96fd8c669cf7d13457886b4832c76ccee",
+            "digest": "sha256:4063a7edb4be33199de7b3ac51757e0c04861272aafb3924a4fd4e0d29b81d03",
             "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
           },
           {
@@ -2009,7 +2009,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:3b5494e6df921f125e79cf0b57f1e0e6fd8683c5fd84d8a842f3c92853249a5c",
+            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           },
           {
@@ -2052,7 +2052,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:614b7f4872ec45887d3f653d6289111875828815369cfba1fa18321b176459ef",
+            "digest": "sha256:9c0971708f4a2a67a67a02e507656871ad5a37e6cae7d17536a5ede1462e459f",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py"
           },
           {
@@ -2067,7 +2067,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:878733af11e69e18b68cb9cd859ddd5fbc922397045493e34de89e65e1ce20e0",
+            "digest": "sha256:15b918675b5fa722efb2a519e86f62459359184e80fd5733237196306282af3b",
             "path": "tools/release-certification/protected/test_maintenance_app_handoff.py"
           },
           {
@@ -2292,7 +2292,7 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:614b7f4872ec45887d3f653d6289111875828815369cfba1fa18321b176459ef",
+            "digest": "sha256:9c0971708f4a2a67a67a02e507656871ad5a37e6cae7d17536a5ede1462e459f",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py"
           },
           {

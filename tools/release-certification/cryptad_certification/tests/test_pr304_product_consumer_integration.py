@@ -170,7 +170,7 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         self.assertEqual(metadata.digest_bytes(artifact.content), coordinates["artifactDigest"])
         return artifact
 
-    def cohort(self, release, source):
+    def cohort(self, release, source, handoff_overrides=None):
         roots = {key: "sha256:" + "8" * 64 for key in ("maintenanceAppProducts", "thirdPartyPilot")}
         tool_origin = self.artifact("projection-tools", {"tools.zip": self.tool_bytes}, source="c" * 40)
         cohort = {"schemaVersion": 1, "cohortPolicy": "current-eight-experimental-mail", "releaseId": release,
@@ -194,6 +194,11 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         site = next(row for row in handoff["subjects"] if row["appId"] == "site-publisher")
         self.assertEqual("3.1", site["signedProjection"]["appVersion"])
         self.assertEqual(build, handoff["buildVersion"])
+        if handoff_overrides:
+            # Synthetic original authority seam: retain real signed app/catalog bytes while the
+            # authenticated handoff identifies a different product. No production fixture switch.
+            handoff.update(handoff_overrides)
+            (product_root / app_products.HANDOFF_FILE).write_bytes(metadata.canonical_bytes(handoff))
         handoff_digest = products.file_digest(product_root / app_products.HANDOFF_FILE)
         maintenance_origin = self.artifact("maintenance-app-products", {
             path.relative_to(product_root).as_posix(): path.read_bytes() for path in product_root.rglob("*") if path.is_file()}, source)
@@ -237,9 +242,9 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         origin = self.artifact("app-subject-projection", {"platform-api-1.x-app-subject-inventory.json": output.read_bytes()})
         return cohort, SelectedRootPolicy(path), inventory, origin, product_root
 
-    def freeze(self, build, source, predecessor=None):
+    def freeze(self, build, source, predecessor=None, *, handoff_overrides=None):
         release = "stable-1.0-maintenance-" + str(build)
-        cohort, policy_path, inventory, projection_origin, app_root = self.cohort(release, source)
+        cohort, policy_path, inventory, projection_origin, app_root = self.cohort(release, source, handoff_overrides)
         root = self.work / str(build)
         root.mkdir()
         package = root / ("cryptad-v" + str(build) + ".tar.gz")
@@ -374,6 +379,22 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
                        "buildVersion": selected.freeze["candidate"]["buildVersion"], "productDigest": selected.product_digest,
                        "sourceCommit": selected.freeze["candidate"]["sourceCommit"]}
         return package, {"rcCoordinates": rc_origin, "portableCoordinates": portable_origin, "runtimeObservation": observation}, predecessor
+
+    def test_original_app_handoff_cannot_be_relabelled_for_another_candidate(self):
+        for build, field, value in ((401, "releaseId", "stable-1.0-maintenance-299"),
+                                     (402, "buildVersion", "299"), (403, "sourceCommit", "b" * 40)):
+            with self.subTest(field=field):
+                with self.assertRaises((projection.ProjectionFailure, metadata.RuntimeMetadataError)) as caught:
+                    self.freeze(build, "a" * 40, handoff_overrides={field: value})
+                causes = []
+                error = caught.exception
+                while error is not None:
+                    causes.append(str(error))
+                    error = error.__context__
+                self.assertIn("app-subject-maintenance-candidate-identity-mismatch", causes)
+                self.assertFalse((self.work / str(build) / "runtime").exists())
+                self.assertFalse(any(artifact.coordinates["sourceFamily"] == "stable-maintenance-freeze"
+                                     for artifact in self.artifacts.values()))
 
     def test_real_producer_app_admission_and_journal_have_positive_narrow_path(self):
         predecessor = self.freeze(301, "b" * 40)

@@ -213,8 +213,8 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:7bcc7b2fdc7729667e1834f21cba462ea6e5671d6ca83fb9411ae73e4f86ba16` |
-| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:2c05f2dd7783c42ec6dc40508f6199e934829278fea35ed6feb137ed6f306246` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:9a61b4b20646f1738c0cf0878580b37e1a2eb4f1d16c692144055e484c2f846e` |
+| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:68e6accd770bea03688cd1d417732cd4fab4c3490f82107202199e2994be194b` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
 Both assessments report `phaseDecision=incomplete`, `phaseComplete=false` and 47 unresolved
@@ -331,3 +331,14 @@ app package selection and runtime metadata checks. Running the full protected su
 symlinked temporary parent reproduces the macOS path-precondition failures; after correction all
 91 tests pass locally. An explicit regression still rejects a symlinked subject parent even when
 the file bytes match. Only test-source pins change; production path checks remain intact.
+
+Prospective app handoffs bind their authenticated `releaseId`, integer `buildVersion` and product
+`sourceCommit` to the candidate freeze before sealing. Cohort production also compares release
+and product source, so changing only the cohort header cannot relabel an older app handoff.
+Every first-party or experimental Mail source in a prospective freeze must use the maintenance
+app-product authority; external submissions retain their separate reviewed authority. The original
+artifact coordinates still bind the workflow revision, signer and attempt, which may legitimately
+differ from the separately attested product source. No universal SHA equality is introduced.
+The real producer/exporter integration rejects substituted release, build and source identities
+without emitting a frozen artifact or retaining runtime metadata; isolated test authorities do
+not create operational receipts. Existing historical formats keep their original meaning.

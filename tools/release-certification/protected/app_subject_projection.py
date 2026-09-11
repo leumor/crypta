@@ -385,7 +385,7 @@ def _artifact_json(artifact: OriginalArtifact, name: str) -> dict:
 
 
 def _verify_maintenance_handoff(source: dict, declaration: dict, artifact: OriginalArtifact,
-                                private_root: Path) -> None:
+                                private_root: Path, *, expected_release: dict | None = None) -> None:
     """Authenticate prefreeze app product bytes without claiming an independent rebuild."""
     name = "maintenance-app-subject-handoff.json"
     if (source["originalInventory"] != artifact.coordinates or source["original"] != artifact.coordinates
@@ -417,6 +417,10 @@ def _verify_maintenance_handoff(source: dict, declaration: dict, artifact: Origi
             or not isinstance(value["buildVersion"], str) or re.fullmatch(r"[1-9][0-9]*", value["buildVersion"]) is None
             or value["cohortPolicy"] not in {"historical-seven", "current-eight-experimental-mail"}):
         raise ProjectionFailure("app-subject-maintenance-handoff-fields-invalid")
+    # Artifact coordinates identify the original workflow revision above. The handoff separately
+    # attests the checked-out product source; only that product identity must match the candidate.
+    if expected_release is not None and any(value[key] != expected for key, expected in expected_release.items()):
+        raise ProjectionFailure("app-subject-maintenance-candidate-identity-mismatch")
     try:
         observed = datetime.datetime.fromisoformat(value["generatedAt"].replace("Z", "+00:00"))
         if observed.tzinfo is None or (artifact.job_completed_at is not None
@@ -495,11 +499,11 @@ def _verify_maintenance_handoff(source: dict, declaration: dict, artifact: Origi
 
 
 def verify_upstream_subject(source: dict, declaration: dict, artifact: OriginalArtifact,
-                            private_root: Path) -> None:
+                            private_root: Path, *, expected_release: dict | None = None) -> None:
     """Match derived signed bytes to the original selected upstream subject, never caller fields."""
     family = source["original"]["sourceFamily"]
     if family == "maintenance-app-products":
-        _verify_maintenance_handoff(source, declaration, artifact, private_root)
+        _verify_maintenance_handoff(source, declaration, artifact, private_root, expected_release=expected_release)
         return
     expected = {"first-party-release": "first-party-inventory", "third-party-pilot": "third-party-inventory"}
     if source["originalInventory"].get("sourceFamily") != expected.get(family):
@@ -581,7 +585,8 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
         declaration = result["declaration"]
         if source["original"]["sourceFamily"] == "third-party-pilot" and (declaration["reviewDigest"] is None or declaration["submissionDigest"] is None):
             raise ProjectionFailure("app-subject-external-review-missing")
-        verify_upstream_subject(source, declaration, artifact, private_root)
+        verify_upstream_subject(source, declaration, artifact, private_root,
+            expected_release={key: cohort[key] for key in ("releaseId", "sourceCommit")})
         keys = {"appId", "appVersion", "bundleDigest", "manifestDigest", "publisherId", "catalogId",
                 "reviewDigest", "targetStability", "targetBaseline", "minimumContractVersion",
                 "maximumTestedContractVersion", "requiredCapabilities", "optionalCapabilities",
