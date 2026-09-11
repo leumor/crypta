@@ -2072,7 +2072,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:3240ded93f57bb6c3d720ee90dd2e7b7f752dc821cf9d484d30b8f4e89042bd7",
+            "digest": "sha256:9953132043560393a5bb0e266062969a981e884bae2cff6ef002aa01715938bc",
             "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/PackagedApiExportIntegrationTest.java"
           },
           {

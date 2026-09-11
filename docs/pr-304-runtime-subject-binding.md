@@ -213,7 +213,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:f7ef7117ba9de189d836ab851767ba9b8ecf1ab8a137084a78331f22697fc5f2` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:52e8bb83ea32ff185b849c6591c9ea007ea5ab5aca026a60d94b6be0b18394f4` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ddf43ed72bf32096a63217e319d459ba04e443c6d683729ac7a451fcc1ee74f7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
@@ -295,3 +295,10 @@ both archive and installed-tree digests must match the protected cohort. The dev
 producer remains unchanged. Preparation tests exercise distinct cohort/consumer/tool revisions
 and reject wrong source proofs, attempts, producer families and installed bytes; the signed
 producer/consumer integration uses a third tool revision distinct from both daemon products.
+
+An exporter-only coverage pass adds eight subprocess regressions for exact JSON envelope bytes
+and preserved snapshot whitespace, symlink/directory rejection, and compiled historical ABI
+failures (missing method, throwing factory, initialization error and wrong serializer return
+type). Both production exporter classes are unchanged. All 16 tests in the owning exporter
+integration class passed locally with no skips; the symlink case is scoped to Linux/macOS.
+These are local tests, not protected release receipts or a measured coverage percentage.
