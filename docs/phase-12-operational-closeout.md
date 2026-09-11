@@ -468,3 +468,10 @@ requires timezone-aware upload and completion times in order, with completion no
 that gap. The receipt and public projection formats are unchanged. Isolated original-provider
 tests cover historical cutoffs, equal/later cutoffs, equivalent timezone offsets, missing clocks
 and invalid ordering without collecting live evidence.
+
+## Prospective exact runtime subjects
+
+See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the prospective
+maintenance v2 private metadata, exact packaged API export, independently selected app sets and
+versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
+narrow admission success does not close missing runtime adapters or operational evidence.

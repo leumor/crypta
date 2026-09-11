@@ -1029,6 +1029,9 @@ jobs:
               "$freeze/stable-1.0-maintenance-candidate-freeze.json" \
               "$freeze/checksums.txt"
             find "$freeze/assets" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
+            if [[ "$(jq -r '.schemaVersion' "$freeze/stable-1.0-maintenance-candidate-freeze.json")" == 2 ]]; then
+              find "$freeze/runtime" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
+            fi
           )
           python3 - <<'PY'
           import hashlib
@@ -1041,7 +1044,12 @@ jobs:
           root = Path("build/stable-supply-chain-frozen-candidate/freeze").resolve(strict=True)
           freeze_path = root / "stable-1.0-maintenance-candidate-freeze.json"
           value = json.loads(freeze_path.read_text(encoding="utf-8"))
-          errors = validate_schema(value, "stable-1.0-maintenance-candidate-freeze-v1.schema.json")
+          errors = validate_schema(value, "stable-1.0-maintenance-candidate-freeze.schema.json")
+          if not errors and value.get("schemaVersion") == 2:
+              import sys
+              sys.path.insert(0, "tools/release-certification/protected")
+              from maintenance_runtime_metadata import validate_runtime_metadata
+              validate_runtime_metadata(value, root / "runtime")
           if errors:
               raise SystemExit("maintenance freeze schema failed: " + "; ".join(errors))
           expected = {
@@ -2271,6 +2279,9 @@ jobs:
               "$freeze/stable-1.0-maintenance-candidate-freeze.json" \
               "$freeze/checksums.txt"
             find "$freeze/assets" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
+            if [[ "$(jq -r '.schemaVersion' "$freeze/stable-1.0-maintenance-candidate-freeze.json")" == 2 ]]; then
+              find "$freeze/runtime" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
+            fi
           )
           ${{ matrix.python_cmd }} - <<'PY'
           import hashlib
@@ -2284,7 +2295,12 @@ jobs:
           value = json.loads(
               (root / "stable-1.0-maintenance-candidate-freeze.json").read_text(encoding="utf-8")
           )
-          errors = validate_schema(value, "stable-1.0-maintenance-candidate-freeze-v1.schema.json")
+          errors = validate_schema(value, "stable-1.0-maintenance-candidate-freeze.schema.json")
+          if not errors and value.get("schemaVersion") == 2:
+              import sys
+              sys.path.insert(0, "tools/release-certification/protected")
+              from maintenance_runtime_metadata import validate_runtime_metadata
+              validate_runtime_metadata(value, root / "runtime")
           if errors:
               raise SystemExit("maintenance freeze schema failed: " + "; ".join(errors))
           expected = {

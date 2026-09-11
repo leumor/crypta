@@ -55,8 +55,25 @@ class AuthenticatedProducts:
             if (row is None or not path.is_absolute() or not path.is_file() or path.is_symlink()
                     or any(parent.is_symlink() for parent in path.parents)
                     or file_digest(path) != row["artifactDigest"] or row["artifactDigest"] != node["artifactDigest"]
+                    or path.stat().st_nlink != 1
                     or path.stat().st_size != row["artifactSize"] or row["artifactSize"] != node["artifactSize"]):
                 raise ProductAdmissionError("product-authority-package-substituted")
+            if row.get("runtimeBinding"):
+                apps = private_config["nodes"][role].get("apps", [])
+                expected = {app["bundleDigest"]: app for app in row.get("appMatrix", [])}
+                if (len(apps) != len(expected)
+                        or {app.get("bundleDigest") for app in apps} != set(expected)):
+                    raise ProductAdmissionError("product-authority-app-roster-substituted")
+                for app in apps:
+                    selected = expected[app["bundleDigest"]]
+                    bundle = Path(app["bundlePath"])
+                    if (not bundle.is_absolute() or bundle.is_symlink() or not bundle.is_file()
+                            or any(parent.is_symlink() for parent in bundle.parents)
+                            or bundle.stat().st_nlink != 1
+                            or bundle.stat().st_size != selected["bundleSize"]
+                            or file_digest(bundle) != selected["bundleDigest"]
+                            or app["appId"] != selected["appId"]):
+                        raise ProductAdmissionError("product-authority-app-substituted")
         return True
 
     def bind_apps(self, plan):
@@ -66,13 +83,33 @@ class AuthenticatedProducts:
         for node in plan["nodes"]:
             if node["appDigests"] and not self._rows[node["role"]].get("appMatrix"):
                 raise ProductAdmissionError("authenticated-app-projection-required-before-launch")
+            row = self._rows[node["role"]]
+            if row.get("runtimeBinding"):
+                matrix = row.get("appMatrix", [])
+                if (sorted(app["bundleDigest"] for app in matrix) != sorted(node["appDigests"])
+                        or sorted(app["appId"] for app in matrix) != row["requiredAppIds"]
+                        or any(app.get("contractVerifier") != "executed"
+                               or app.get("nativeAdmission") != "accepted" for app in matrix)):
+                    raise ProductAdmissionError("authenticated-app-required-roster-mismatch")
+        return True
+
+    def verify_runtime_contract(self, role, payload):
+        """Corroborate admitted static API bytes; an endpoint never creates provenance."""
+        row = self._rows.get(role, {})
+        binding = row.get("runtimeBinding")
+        if binding is None:
+            return False  # Historical v1 retains its explicitly weaker guarantee.
+        if (not isinstance(payload, dict) or not isinstance(payload.get("contract"), dict)
+                or digest(payload["contract"]) != binding["contractSemanticDigest"]
+                or payload["contract"].get("contractVersion") != row["contractVersion"]):
+            raise ProductAdmissionError("runtime-contract-exact-subject-mismatch")
         return True
 
     def package_paths(self):
         return {role: str(row["path"]) for role, row in self._rows.items()}
 
     def public_identities(self):
-        return [{key: value for key, value in row.items() if key != "path"}
+        return [{key: value for key, value in row.items() if key not in {"path", "runtimeRoot"}}
                 for _role, row in sorted(self._rows.items())]
 
 
@@ -260,6 +297,15 @@ def verify_maintenance_artifact(original, node, expected_freeze_digest, root):
                           if member.filename.startswith("freeze/assets/") and not member.is_dir()}
         if actual_members != expected_members:
             raise ProductAdmissionError("maintenance-freeze-asset-members-mismatch")
+        if freeze["schemaVersion"] == 2:
+            from maintenance_runtime_metadata import MANIFEST_FILE, MEMBER_NAMES
+            complete = expected_members | {"freeze/" + maintenance.CANDIDATE_FREEZE_FILE,
+                                           "freeze/checksums.txt", "freeze/runtime/" + MANIFEST_FILE}
+            complete.update("freeze/runtime/" + name for name in MEMBER_NAMES.values())
+            frozen_members = {member.filename for member in source.infolist()
+                              if member.filename.startswith("freeze/") and not member.is_dir()}
+            if frozen_members != complete:
+                raise ProductAdmissionError("maintenance-freeze-unbound-member")
         payloads = {}
         for row in rows:
             payload = source.read("freeze/assets/" + row["fileName"])
@@ -280,13 +326,67 @@ def verify_maintenance_artifact(original, node, expected_freeze_digest, root):
     _write(package, payloads[product["fileName"]])
     if maintenance.archive_hygiene_errors(package):
         raise ProductAdmissionError("maintenance-portable-archive-invalid")
-    return {"role": node["role"], "sourceCommit": identity["commit"], "releaseId": freeze["releaseId"],
+    result = {"role": node["role"], "sourceCommit": identity["commit"], "releaseId": freeze["releaseId"],
             "buildVersion": freeze["buildVersion"], "artifactDigest": product["digest"],
             "artifactSize": product["sizeBytes"], "packageTarget": node["packageTarget"],
             "maintenanceFreezeDigest": freeze_digest, "freezeCompletedAt": freeze["generatedAt"],
             "frozenAt": freeze["frozenAt"], "portableOrigin": coordinates,
             "runtimeContractAuthentication": "not-established-runtime-observation-required",
             "frozenPortableBinding": "existing-maintenance-freeze-exact-product-v1", "path": package}
+    if freeze["schemaVersion"] == 2:
+        result["predecessorObservation"] = dict(freeze["predecessorObservation"])
+        from maintenance_runtime_metadata import validate_runtime_metadata, verify_package_identity
+        runtime_root = root / "runtime"
+        runtime_root.mkdir(mode=0o700)
+        with _members(original.content) as source:
+            runtime_members = [member for member in source.infolist()
+                               if member.filename.startswith("freeze/runtime/") and not member.is_dir()]
+            if not runtime_members or len(runtime_members) > 128:
+                raise ProductAdmissionError("maintenance-runtime-member-budget")
+            for member in runtime_members:
+                relative = member.filename.removeprefix("freeze/runtime/")
+                if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", relative)
+                        or member.file_size > 8 * 1024 * 1024):
+                    raise ProductAdmissionError("maintenance-runtime-member-invalid")
+                _write(runtime_root / relative, source.read(member))
+        metadata = validate_runtime_metadata(freeze, runtime_root)
+        verify_package_identity(package, metadata)
+        result.update(runtimeRoot=runtime_root,
+                      runtimeBinding={"metadataDigest": freeze["runtimeMetadata"]["digest"],
+                                      **{key: metadata[key] for key in (
+                                          "contractSnapshotDigest", "contractSemanticDigest", "baselineRegistryDigest",
+                                          "shippedCohortDigest", "experimentCohortDigest", "provenance")}},
+                      contractVersion=metadata["contractVersion"],
+                      runtimeContractAuthentication="frozen-with-original-release")
+        _bind_runtime_roster(result, metadata, runtime_root, node)
+    return result
+
+
+def _bind_runtime_roster(row, metadata, runtime_root, node):
+    """Select the owner-defined installed subset from the complete frozen native cohort."""
+    role = node["role"]
+    expected_ids = metadata["rolePolicy"].get(role)
+    if expected_ids is None or node.get("contractVersion") != metadata["contractVersion"]:
+        raise ProductAdmissionError("maintenance-runtime-role-or-contract-unsupported")
+    native = _json((runtime_root / metadata["members"]["nativeAdmissions"]["fileName"]).read_bytes())
+    by_id = {app["appId"]: app for app in native}
+    selected = [by_id[app_id] for app_id in expected_ids]
+    if sorted(app["bundleDigest"] for app in selected) != sorted(node["appDigests"]):
+        raise ProductAdmissionError("maintenance-runtime-required-app-roster-mismatch")
+    matrix = []
+    for app in selected:
+        if (app.get("nativeAdmission") != "accepted"
+                or app["contractSnapshotDigest"] != metadata["contractSnapshotDigest"]
+                or app["baselineRegistryDigest"] != metadata["baselineRegistryDigest"]):
+            raise ProductAdmissionError("maintenance-runtime-native-admission-mismatch")
+        minimum, maximum = app["minimumContractVersion"], app["maximumTestedContractVersion"]
+        if minimum is None or maximum is None or not minimum <= node["contractVersion"] <= maximum:
+            raise ProductAdmissionError("app-projection-outside-tested-contract-range")
+        matrix.append({key: app[key] for key in ("appId", "bundleDigest", "bundleSize", "manifestDigest",
+                                                "contractSnapshotDigest", "nativeAdmission", "catalogChannel")}
+                      | {"projectionDigest": metadata["projectionInventoryDigest"],
+                         "contractVerifier": "executed", "rangePolicy": "strict-tested-range"})
+    row.update(requiredAppIds=sorted(expected_ids), appMatrix=matrix)
 
 
 def authenticate_maintenance_product(selection, node, private_root):
@@ -309,8 +409,11 @@ def authenticate_maintenance_product(selection, node, private_root):
         row = verify_maintenance_artifact(original, node, selection["freezeDigest"], root / "selected")
         invocation = (f"https://github.com/crypta-network/cryptad/actions/runs/"
                       f"{original.coordinates['runId']}/attempts/{original.coordinates['runAttempt']}")
-        for member in (row["path"].parent / maintenance.CANDIDATE_FREEZE_FILE,
-                       row["path"].parent / "checksums.txt", row["path"]):
+        members = [row["path"].parent / maintenance.CANDIDATE_FREEZE_FILE,
+                   row["path"].parent / "checksums.txt", row["path"]]
+        if row.get("runtimeRoot"):
+            members.extend(sorted(row["runtimeRoot"].iterdir()))
+        for member in members:
             results = _gh(["attestation", "verify", str(member), "--repo", "crypta-network/cryptad",
                            "--signer-workflow", "crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml",
                            "--source-digest", original.coordinates["sourceCommit"],
@@ -424,6 +527,40 @@ def verify_portable_attestations(original, package, root):
             raise ProductAdmissionError("portable-original-attested-attempt-mismatch")
 
 
+def authenticate_runtime_projection(row, selection, root):
+    """Reauthenticate the original cohort independently of the freeze's native result."""
+    from app_subject_projection import authenticate_inventory
+    if (not isinstance(selection, dict) or set(selection) != {"coordinates", "cohortDigest"}
+            or not row.get("runtimeRoot")):
+        raise ProductAdmissionError("maintenance-app-contract-projection-not-established")
+    metadata = _json((row["runtimeRoot"] / "runtime-subjects.json").read_bytes())
+    if (selection["coordinates"] != metadata["projectionOrigin"]
+            or selection["cohortDigest"] != metadata["experimentCohortDigest"]):
+        raise ProductAdmissionError("maintenance-runtime-projection-selection-mismatch")
+    authenticated = authenticate_inventory(selection["coordinates"], root,
+                                          expected_cohort_digest=selection["cohortDigest"])
+    inventory = _json((row["runtimeRoot"] / metadata["members"]["inventory"]["fileName"]).read_bytes())
+    if (authenticated.digest != metadata["projectionInventoryDigest"]
+            or not authenticated.matches(inventory)):
+        raise ProductAdmissionError("maintenance-runtime-original-projection-mismatch")
+
+
+def _observe_historical(row, node, selection, root):
+    from historical_runtime_subjects import observe_historical_product
+    from maintenance_runtime_metadata import RuntimeMetadataError
+    try:
+        return observe_historical_product(row, node, selection, root)
+    except RuntimeMetadataError as error:
+        # These helpers expose only fixed codes. Preserve an unsupported original exporter as
+        # an explicit absence instead of suggesting a rebuild or silently using current classes.
+        if str(error) in {"runtime-metadata-packaged-exporter-unsupported",
+                          "runtime-metadata-packaged-exporter-unavailable"}:
+            raise ProductAdmissionError("historical-original-package-exporter-unsupported") from None
+        if str(error) == "historical-original-shipped-inventory-unsupported":
+            raise ProductAdmissionError("historical-original-shipped-inventory-unsupported") from None
+        raise ProductAdmissionError("historical-original-runtime-subject-admission-rejected") from None
+
+
 def authenticate_products(plan, selection, private_root):
     """Fetch each original producer at its own source; return admitted exact packaged bytes.
 
@@ -445,16 +582,33 @@ def authenticate_products(plan, selection, private_root):
         for node in plan["nodes"]:
             role = node["role"]
             selected = selection["roles"][role]
-            if isinstance(selected, dict) and set(selected) == {"maintenanceProduct"}:
-                # Existing maintenance freezes authenticate the daemon, but contain no frozen
-                # Platform API contract snapshot. Do not admit an app-bearing role through an
-                # unrelated RC snapshot or caller declarations. The app-free runtime path can
-                # already consume the exact portable bytes with the normal packaged checks.
-                if node["appDigests"]:
+            if isinstance(selected, dict) and set(selected) in ({"maintenanceProduct"}, {"maintenanceProduct", "appProjection"},
+                                                                {"maintenanceProduct", "runtimeObservation"}):
+                # Historical v1 keeps daemon-only guarantees. Prospective app-bearing selection
+                # also authenticates the original projection bound by the v2 freeze; it cannot
+                # borrow an unrelated RC snapshot or use caller declarations as authority.
+                if node["appDigests"] and not {"appProjection", "runtimeObservation"} & set(selected):
                     raise ProductAdmissionError("maintenance-app-contract-projection-not-established")
                 rows[role] = authenticate_maintenance_product(selected["maintenanceProduct"], node, root / role)
+                if "runtimeObservation" in selected and (rows[role].get("runtimeBinding") or role not in {"previous", "oldest"}):
+                    raise ProductAdmissionError("historical-observation-role-or-format-unsupported")
+                if rows[role].get("runtimeBinding"):
+                    projection = selected.get("appProjection")
+                    if projection is None:
+                        # The relay has no installed apps, but its frozen shipped inventory still
+                        # comes from the same independently authenticated owner-selected cohort.
+                        metadata = _json((rows[role]["runtimeRoot"] / "runtime-subjects.json").read_bytes())
+                        projection = {"coordinates": metadata["projectionOrigin"],
+                                      "cohortDigest": metadata["experimentCohortDigest"]}
+                    authenticate_runtime_projection(rows[role], projection, root)
+                elif "appProjection" in selected:
+                    raise ProductAdmissionError("maintenance-app-contract-projection-not-established")
+                elif "runtimeObservation" in selected:
+                    rows[role] = _observe_historical(rows[role], node, selected["runtimeObservation"], root)
                 continue
-            if not isinstance(selected, dict) or set(selected) not in ({"rcCoordinates", "portableCoordinates"}, {"rcCoordinates", "portableCoordinates", "appProjection"}):
+            if not isinstance(selected, dict) or set(selected) not in ({"rcCoordinates", "portableCoordinates"},
+                    {"rcCoordinates", "portableCoordinates", "appProjection"},
+                    {"rcCoordinates", "portableCoordinates", "runtimeObservation"}):
                 raise ProductAdmissionError("product-coordinate-selection-invalid")
             if selected["rcCoordinates"].get("sourceFamily") != "stable-rc-product" or selected["portableCoordinates"].get("sourceFamily") != "first-party-release":
                 raise ProductAdmissionError("product-original-authority-family-mismatch")
@@ -466,7 +620,14 @@ def authenticate_products(plan, selection, private_root):
             portable = authenticate_original(selected["portableCoordinates"], root)
             rows[role] = verify_portable_artifact(portable, rc_view, node, root / (role + ".tar.gz"))
             verify_portable_attestations(portable, rows[role]["path"], root)
-            if "appProjection" in selected:
+            if "runtimeObservation" in selected:
+                if role not in {"previous", "oldest"}:
+                    raise ProductAdmissionError("historical-observation-role-unsupported")
+                rows[role]["historicalShippedSubjects"] = rc.freeze["firstPartyApps"]
+                rows[role]["historicalShippedCatalog"] = rc.freeze["stableCatalog"]
+                rows[role]["frozenAt"] = rc.freeze["frozenAt"]
+                rows[role] = _observe_historical(rows[role], node, selected["runtimeObservation"], root)
+            elif "appProjection" in selected:
                 rows[role]["appMatrix"] = verify_app_projection(rc, node, selected["appProjection"], root)
     except ProductAdmissionError:
         raise
@@ -476,8 +637,38 @@ def authenticate_products(plan, selection, private_root):
     recipient = rows["candidate-recipient"]
     if any(candidate[key] != recipient[key] for key in ("releaseId", "buildVersion", "artifactDigest", "sourceCommit")):
         raise ProductAdmissionError("authenticated-candidate-roster-conflict")
+    if candidate.get("runtimeBinding") or recipient.get("runtimeBinding"):
+        if any(candidate.get(key) != recipient.get(key) for key in
+               ("runtimeBinding", "maintenanceFreezeDigest", "appMatrix", "requiredAppIds", "contractVersion")):
+            raise ProductAdmissionError("authenticated-candidate-runtime-cohort-conflict")
     if int(rows["previous"]["buildVersion"]) >= int(candidate["buildVersion"]):
         raise ProductAdmissionError("authenticated-predecessor-build-not-previous")
+    if rows["previous"]["artifactDigest"] == candidate["artifactDigest"]:
+        raise ProductAdmissionError("authenticated-predecessor-package-alias")
+    predecessor = candidate.get("predecessorObservation")
+    if predecessor is not None:
+        previous = rows["previous"]
+        # GA promotion retains the exact RC product digest and integer build but may have a
+        # different release ID. Maintenance successors retain their own release/product ID.
+        if (("rcProductDigest" not in previous and predecessor["releaseId"] != previous["releaseId"])
+                or str(predecessor["buildVersion"]) != str(previous["buildVersion"])
+                or predecessor["sourceCommit"] != previous["sourceCommit"]
+                or predecessor["productDigest"] != previous.get("rcProductDigest", previous["artifactDigest"])):
+            raise ProductAdmissionError("authenticated-actual-predecessor-mismatch")
+        # The candidate's original owning freeze producer observed and verified publication.
+        # Keep that authority distinct from the independently reopened predecessor package;
+        # this is not a claim that runtime admission reauthenticated a GA publication receipt.
+        previous["predecessorReleaseBinding"] = {
+            "provenance": "candidate-freeze-observed-published-predecessor",
+            "candidateFreezeDigest": candidate["maintenanceFreezeDigest"],
+            "publishedReleaseId": predecessor["releaseId"],
+            "originalProductReleaseId": previous["releaseId"],
+            "sourceCommit": predecessor["sourceCommit"],
+            "baselineDigest": predecessor["baselineDigest"],
+            "publicationReceiptDigest": predecessor["publicationReceiptDigest"],
+            "latestPublishedPointerDigest": predecessor["latestPublishedPointerDigest"],
+            "observedAt": predecessor["observedAt"],
+        }
     if "oldest" in rows and int(rows["oldest"]["buildVersion"]) > int(rows["previous"]["buildVersion"]):
         raise ProductAdmissionError("authenticated-oldest-build-order-invalid")
     return AuthenticatedProducts(_SEAL, digest(plan), rows)

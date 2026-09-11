@@ -1072,7 +1072,7 @@ def _load_bundle(root: Path) -> PublicationBundle:
     _validate_schema(core_plan, "cryptad-core-update-publication-plan-v1.schema.json")
     _validate_schema(core_info, "cryptad-core-info-v1.schema.json")
     _validate_schema(
-        candidate_freeze, "stable-1.0-maintenance-candidate-freeze-v1.schema.json"
+        candidate_freeze, "stable-1.0-maintenance-candidate-freeze.schema.json"
     )
     follow_up_closure_path, follow_up_closure = _load_follow_up_closure(
         authenticated_inputs,

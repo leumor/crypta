@@ -74,3 +74,7 @@ For isolated maintenance adapter work, run `certify.py stable-maintenance-drill 
 follow `docs/stable-maintenance-operations-drill.md`. Its fixed disposable drivers exercise local
 mutation/retry rules only. Keep `verified-local-integrity` distinct from original producer
 authentication; never feed its synthetic summary into production maintenance evidence.
+
+For prospective exact runtime subjects, follow `docs/pr-304-runtime-subject-binding.md`.
+Keep maintenance freeze v1 historical semantics, v2 internal runtime members outside public assets,
+and native package-derived API/app admission separate from measured scenario eligibility.

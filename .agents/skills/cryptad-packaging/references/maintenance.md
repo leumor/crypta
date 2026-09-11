@@ -87,3 +87,7 @@ When portable archive logic changes, build the affected `distZipCryptad`, `distT
 `python3 tools/release-certification/certify.py stable-maintenance --self-test` so the independent
 Python hygiene rules are exercised against the Java normalizer contract. These checks do not
 replace protected signing, notarization, multi-OS packaging, or publication.
+
+For prospective exact runtime subjects, follow `docs/pr-304-runtime-subject-binding.md`.
+Keep maintenance freeze v1 historical semantics, v2 internal runtime members outside public assets,
+and native package-derived API/app admission separate from measured scenario eligibility.

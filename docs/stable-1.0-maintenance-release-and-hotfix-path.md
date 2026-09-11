@@ -1012,3 +1012,10 @@ failure/retry checks against existing maintenance logic. Its synthetic authoriti
 integrity summary cannot satisfy this runbook's production prerequisites, authorization,
 publication, reconciliation or follow-up requirements. The drill keeps missing adapters distinct
 from missing original artifacts and approved infrastructure.
+
+## Prospective exact runtime subjects
+
+See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the prospective
+maintenance v2 private metadata, exact packaged API export, independently selected app sets and
+versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
+narrow admission success does not close missing runtime adapters or operational evidence.

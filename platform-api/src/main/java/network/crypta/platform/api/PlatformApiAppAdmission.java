@@ -97,20 +97,49 @@ public final class PlatformApiAppAdmission {
    */
   public static void requireCurrentCompatibility(
       AppApiCompatibilityMetadata metadata, Collection<String> permissions) {
+    requireCompatibility(
+        metadata,
+        permissions,
+        PlatformApiContract.current(),
+        PlatformApiBaselineRegistry.current());
+  }
+
+  /**
+   * Applies the normal runtime admission rules to an explicitly authenticated static target.
+   *
+   * <p>The caller authenticates the snapshot and complete registry. This method grants no
+   * permissions and deliberately preserves the runtime warning for an exceeded tested maximum.
+   *
+   * @param metadata signed manifest compatibility declarations
+   * @param permissions signed manifest permission names
+   * @param contract exact selected target contract
+   * @param registry exact selected target baseline registry
+   * @throws PlatformApiException when the target rejects the declaration
+   */
+  public static void requireCompatibility(
+      AppApiCompatibilityMetadata metadata,
+      Collection<String> permissions,
+      PlatformApiContract contract,
+      PlatformApiBaselineRegistry registry) {
+    Objects.requireNonNull(contract, "contract");
+    Objects.requireNonNull(registry, "registry");
     AppApiCompatibilityMetadata effective =
         metadata == null ? AppApiCompatibilityMetadata.undeclared() : metadata;
     if (!effective.declared()) {
       return;
     }
     PlatformApiContractVerifier.CompatibilityVerificationResult verification =
-        strictVerification(effective, permissions);
+        PlatformApiContractVerifier.verify(effective, permissions, contract, registry, true);
     if (unsupportedBaseline(verification)) {
       throw new PlatformApiException(
           409,
           "unsupported_platform_api_baseline",
           "The app targets a Platform API baseline that this node does not actively support.");
     }
-    String reviewStatus = String.valueOf(summarize(effective, permissions).get(FIELD_STATUS));
+    String reviewStatus =
+        String.valueOf(
+            PlatformApiContractVerifier.summarize(effective, permissions, contract, registry)
+                .get(FIELD_STATUS));
     if (baselineDeclarationRejected(effective, verification)
         || stableCapabilityDeclarationRejected(effective, verification)
         || "below_minimum".equals(reviewStatus)

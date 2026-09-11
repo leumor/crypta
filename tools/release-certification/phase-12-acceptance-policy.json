@@ -28,6 +28,14 @@
       "digest": "sha256:5e8de068a6c166a263ad470e7abae6d834710af51a4aa8d600f5394e2472bdb2",
       "kind": "historical-phase-11-context",
       "path": "tools/release-certification/stable-1.0-assurance-closeout.json"
+    },
+    {
+      "authority": "Immutable PR-303 acceptance scope; successor changes implementation evidence only, not historical acceptance.",
+      "digest": "sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e",
+      "kind": "prior-phase-12-acceptance-policy",
+      "path": "tools/release-certification/history/phase-12-acceptance-policy-pr303.json",
+      "sourceCommit": "27e478c2d1d72ce9f05925626e16c0c1fdcc8c71",
+      "sourceTree": "96f6fe8d7c17ed7a8beccaddb7625dae4c39daff"
     }
   ],
   "kind": "phase-12-acceptance-policy",
@@ -1107,7 +1115,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify original v2 signed-artifact declarations for complete current-eight/historical-seven cohort with publisher/catalog/review/API/product bindings; broad v1 summaries are insufficient.",
-            "digest": "sha256:082ab361733a8e92f4965353b5d7ea89ee21d049a9086f0d282720f6131cebcc",
+            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           }
         ],
@@ -1167,7 +1175,7 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate selected federation signed-artifact projection under scoped installed-origin and trust authority; selected projection is currently unsupported.",
-            "digest": "sha256:082ab361733a8e92f4965353b5d7ea89ee21d049a9086f0d282720f6131cebcc",
+            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           }
         ],
@@ -1959,7 +1967,7 @@
         ],
         "module": "tools/release-certification/protected/cross_version_product_admission.py",
         "policy": "tools/release-certification/protected/cross_version_product_admission.py",
-        "policyDigest": "sha256:df600dec14a38f7244d46646544962a5ea0fcc263cefc229b6c3b3878bdd9a64",
+        "policyDigest": "sha256:31bbb7f9a8d4d7daaeed61bb8c7b88796d3a4839ced1ddb6284b3024a5958bf4",
         "schema": "python:tools/release-certification/protected/cross_version_product_admission.py#authenticate_products",
         "verifier": "authenticate_products"
       },
@@ -1981,16 +1989,111 @@
         "sourceEvidence": [
           {
             "assertion": "Authenticate candidate/predecessor portable daemon and maintenance/RC freeze relationships with complete app/API/manifest/review/catalog bindings before workload admission.",
-            "digest": "sha256:df600dec14a38f7244d46646544962a5ea0fcc263cefc229b6c3b3878bdd9a64",
+            "digest": "sha256:31bbb7f9a8d4d7daaeed61bb8c7b88796d3a4839ced1ddb6284b3024a5958bf4",
             "path": "tools/release-certification/protected/cross_version_product_admission.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:7a297ec74a2db07dcb1ba12c14670667839d8228c581f6aa435b750050512cb5",
+            "path": "tools/release-certification/protected/maintenance_app_products.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:4063a7edb4be33199de7b3ac51757e0c04861272aafb3924a4fd4e0d29b81d03",
+            "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:95558f855076d4ac82d54ff1f2635e4fc2cf0e0d1f2b0d5e4de822b3fb9f40d5",
+            "path": "tools/release-certification/protected/historical_runtime_subjects.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
+            "path": "tools/release-certification/protected/app_subject_projection.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:1e8ed665a5b99001a379ac7b05441d1463d84179ca74ace49d3fe565466753c9",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/PackagedApiExport.java"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:d9c4b2884109c86428d98b29b469b9bd701ccbbe575724b8e9d63a15ac77b554",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppAdmission.java"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:c1c7c869a936f5bc68396ac10209a2b3c34340c92d8243b822e22cf7fcd1779d",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/HistoricalPackagedApiExport.java"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:c6f3845512d37db88d7cf1797eae9d9979788e7d037a94b8aec013a944758f0e",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/AppSubjectProjectionCommand.java"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:cc26c92cda3b79541519ded5f24f4dab31595308618d8be19e56130ca8a8bd60",
+            "path": ".github/workflows/stable-1.0-maintenance-release.yml"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:2c78805b804138eddf8c1e75c75f64dfbfdde712e428642582b6b761042325ea",
+            "path": "tools/release-certification/schemas/stable-1.0-maintenance-candidate-freeze-v2.schema.json"
           }
         ],
-        "state": "partial",
+        "state": "implemented",
         "testEvidence": [
           {
             "assertion": "Tests derive required cases/directions and one qualifying epoch, rejecting duplicates, time/coverage substitutions and unauthenticated original claims. This is audited test source, not an executed test claim.",
-            "digest": "sha256:8077b4b352b6fa1fc09c4d3b0013467602d3ba7f8d86785656a123b8d37283e7",
+            "digest": "sha256:badcaa15d3dd857ab18468b34bc46106f7858357b04eba8e89a9ea0be659573e",
             "path": "tools/release-certification/cryptad_certification/tests/test_cross_version_product_admission.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:9c0971708f4a2a67a67a02e507656871ad5a37e6cae7d17536a5ede1462e459f",
+            "path": "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:57432c173fc27c314f44d3b1cb704339798d77b0501353305ef6d9aedcb790d9",
+            "path": "tools/release-certification/protected/test_maintenance_runtime_metadata.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:c7e636a0136b3698f6780c225a7294b024ea1d835f8cb1eb55671be7ed35e01d",
+            "path": "tools/release-certification/protected/test_historical_runtime_subjects.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:15b918675b5fa722efb2a519e86f62459359184e80fd5733237196306282af3b",
+            "path": "tools/release-certification/protected/test_maintenance_app_handoff.py"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:bc1189211c28d3cfb4676af3b90691560d9a1c480fe1c5028345daf02e963bae",
+            "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/PackagedApiExportIntegrationTest.java"
+          },
+          {
+            "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
+            "digest": "sha256:954c82852b6c4b3267d1c4fb3498c715cf96163a5e6da3d982fada5ad2c05c32",
+            "path": ".github/workflows/ci.yml"
+          },
+          {
+            "assertion": "The actual prefreeze helper executes existing GA-root and published-maintenance predecessor graph validation; altered receipts, pointers, source and identity reject. This is test source, not observed publication.",
+            "digest": "sha256:72cafe762d36ee3423590d0a2a592bc1c9c4e4c116e6983419428dd60bd7cb27",
+            "path": "tools/release-certification/protected/test_maintenance_predecessor_observation.py"
+          },
+          {
+            "assertion": "Execute actual workflow cohort installation under Linux OS permissions: ordinary producer reads root-owned policy, unprivileged writes/replacement and unrelated-user reads are denied. Local fixture only.",
+            "digest": "sha256:23723e93bbc373f3321903ac736e302849aecb03c7f57609531812d82d375601",
+            "path": "tools/release-certification/protected/test_cohort_install_permissions.py"
+          },
+          {
+            "assertion": "Production preparation materializes internal JDK links against independently specified approved bytes, preserves cohort authority and rejects changed or unsafe inputs before tool authentication. Local synthetic input only.",
+            "digest": "sha256:49b69ab658bb74d8c20fdc1d3d3e7d57ab915cba833cd068582e90b365657606",
+            "path": "tools/release-certification/protected/test_jdk_preparation.py"
           }
         ]
       },
@@ -2139,7 +2242,7 @@
         "adapter": "maintenance-measurements",
         "module": "tools/release-certification/protected/maintenance_runtime_projection.py",
         "policy": "tools/release-certification/protected/maintenance_runtime_projection.py",
-        "policyDigest": "sha256:dc36400786271c807d0d5b3995b4307e36ef9293f4f4419babcf798f80f0144d",
+        "policyDigest": "sha256:0c155297a3994269ca542868b4bc9decd6c155266be0ddb5f89d65e790aa48ec",
         "schema": "python:tools/release-certification/protected/maintenance_runtime_projection.py#project",
         "verifier": "project"
       },
@@ -2161,8 +2264,23 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate all nine measured maintenance/release-consumer rows from original products and journal; subcase labels cannot replace required adapters.",
-            "digest": "sha256:dc36400786271c807d0d5b3995b4307e36ef9293f4f4419babcf798f80f0144d",
+            "digest": "sha256:0c155297a3994269ca542868b4bc9decd6c155266be0ddb5f89d65e790aa48ec",
             "path": "tools/release-certification/protected/maintenance_runtime_projection.py"
+          },
+          {
+            "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
+            "digest": "sha256:61cfe20ee9ef5f8f2ac6f7e1754f8d5dd62555283e030e6af9b5d4c191c60847",
+            "path": "tools/release-certification/protected/cross_version_supervisor_authority.py"
+          },
+          {
+            "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
+            "digest": "sha256:78c0852d4a098e3a0c7585fbc23ad02b382b04a290aa69f13b688ae17b2bd3da",
+            "path": "tools/interop/cross_version_runtime.py"
+          },
+          {
+            "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
+            "digest": "sha256:3f3cf18d609722e489beb4dc52f39badaaf519a9aad25a32f45d3bea631c2662",
+            "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           }
         ],
         "state": "partial",
@@ -2171,6 +2289,16 @@
             "assertion": "Tests derive required cases/directions and one qualifying epoch, rejecting duplicates, time/coverage substitutions and unauthenticated original claims. This is audited test source, not an executed test claim.",
             "digest": "sha256:d9f3f729c73d8cfca7a42f45f18398675bcbf84ccbf42e427b99d3b56ad72207",
             "path": "tools/release-certification/cryptad_certification/tests/test_cross_version_evidence.py"
+          },
+          {
+            "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
+            "digest": "sha256:9c0971708f4a2a67a67a02e507656871ad5a37e6cae7d17536a5ede1462e459f",
+            "path": "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py"
+          },
+          {
+            "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
+            "digest": "sha256:820896581b5b24b5b399642fa4c94dca909442660117b99a2c1b99c999684197",
+            "path": "tools/release-certification/protected/test_maintenance_runtime_projection.py"
           }
         ]
       },
@@ -2622,7 +2750,7 @@
         "sourceEvidence": [
           {
             "assertion": "Authenticate separately authorized maintenance successor activation, exact compare-and-swap predecessor and original observed current-pointer bytes under the existing maintenance authority; preserve renewable grant and immutable history semantics.",
-            "digest": "sha256:9741991757549b1c3036d9a34676b9bd352d0e988bbc2544ecbefff3d57b345a",
+            "digest": "sha256:1e76615fd83534437b03db3fa9513040888f940839d529a022e14d7661269980",
             "path": "tools/release-certification/protected/stable_maintenance_publication.py"
           },
           {
@@ -2931,7 +3059,7 @@
         "sourceEvidence": [
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:a76152cecdaaf310a9b1bca46209faa4633ff34ae06261cec185c2cefa90fa9a",
+            "digest": "sha256:6f00aaeb62d29a320572c6e77a91ef42ed2005b21a9ed6800f9c3c24a298f15f",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -2946,7 +3074,7 @@
           },
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:79f8a978e563bcdb2fddf22501054b707df0eeb721c2199785dabb3215872994",
+            "digest": "sha256:3f3cf18d609722e489beb4dc52f39badaaf519a9aad25a32f45d3bea631c2662",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2969,7 +3097,7 @@
         "testEvidence": [
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:5cf02cb07184f41f87b869cf34d8df1b6713ca4b262455c39ef0d4ae2174bdfd",
+            "digest": "sha256:3a672dabfa5e83f7223767e06abf4886dd3b32297e666eb8de85bc1213033cd7",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_closeout.py"
           },
           {
@@ -3046,7 +3174,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:e4c44cb76f045145b70e6a55de03354e53727ed0e7e15b6957fa9e03af9e9986",
+            "digest": "sha256:954c82852b6c4b3267d1c4fb3498c715cf96163a5e6da3d982fada5ad2c05c32",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3113,7 +3241,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify assessment then export only closed public fields, preserve reviewed history and prevent site feedback or circular phase authority.",
-            "digest": "sha256:a76152cecdaaf310a9b1bca46209faa4633ff34ae06261cec185c2cefa90fa9a",
+            "digest": "sha256:6f00aaeb62d29a320572c6e77a91ef42ed2005b21a9ed6800f9c3c24a298f15f",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3136,7 +3264,7 @@
           },
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:5cf02cb07184f41f87b869cf34d8df1b6713ca4b262455c39ef0d4ae2174bdfd",
+            "digest": "sha256:3a672dabfa5e83f7223767e06abf4886dd3b32297e666eb8de85bc1213033cd7",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_closeout.py"
           }
         ]
@@ -3530,6 +3658,29 @@
       "closure": "Bind exact candidate/predecessor portable freezes and complete app/API subjects in existing measured-consumer admission; preserve historical frozen bytes.",
       "closureEvidence": [],
       "dependencies": [],
+      "disposition": {
+        "authority": "PR-304 local producer/exporter/native admission and original consumer review",
+        "implementationEvidence": [
+          "tools/release-certification/protected/maintenance_app_products.py",
+          "tools/release-certification/protected/maintenance_runtime_metadata.py",
+          "tools/release-certification/protected/historical_runtime_subjects.py",
+          "tools/release-certification/protected/app_subject_projection.py",
+          "platform-api/src/main/java/network/crypta/platform/api/PackagedApiExport.java",
+          "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppAdmission.java",
+          "platform-devtools/src/main/java/network/crypta/platform/devtools/HistoricalPackagedApiExport.java",
+          "platform-devtools/src/main/java/network/crypta/platform/devtools/AppSubjectProjectionCommand.java",
+          ".github/workflows/stable-1.0-maintenance-release.yml",
+          "tools/release-certification/schemas/stable-1.0-maintenance-candidate-freeze-v2.schema.json",
+          "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py",
+          "tools/release-certification/protected/test_maintenance_runtime_metadata.py",
+          "tools/release-certification/protected/test_historical_runtime_subjects.py",
+          "tools/release-certification/protected/test_maintenance_app_handoff.py",
+          "platform-devtools/src/test/java/network/crypta/platform/devtools/PackagedApiExportIntegrationTest.java",
+          ".github/workflows/ci.yml"
+        ],
+        "remaining": "Supported prospective freeze v2 and historical exact-original-package observation paths are implemented and exercised with isolated synthetic authorities. Original protected products and experiment evidence were not supplied. Historical missing exporters or shipped-inventory authority remain specific blockers; original category, reason and clocks remain historical. No full maintenance, federation, publication, long-run or review acceptance is granted.",
+        "status": "implementation-prepared-observation-outstanding"
+      },
       "id": "product-subject-binding",
       "interfaces": [
         "tools/release-certification/protected/cross_version_product_admission.py",
@@ -3783,7 +3934,18 @@
       "requirements": [
         "p12-293-drills"
       ]
+    },
+    {
+      "authority": "docs/pr-304-runtime-subject-binding.md",
+      "disposition": "PR-304 explicitly adds prospective freeze/exporter/native admission and integration-test bindings, updates changed implementation-file pins, and changes only p12-300-products implementation from partial to implemented for the supported contract. Consumers remain partial. All 49 mandatory IDs, assertions, dimensions, subjects, dependencies, owner mappings, closure rules and historical clocks are unchanged. The original product residual remains open with a separate implementation disposition; missing originals cannot become code or runtime success. Runtime-only inventory v3 does not replace independent API governance v2. Review correction adds an executable root-owned cohort reader-permission regression and the matching workflow pin; root ownership and non-writable policy admission remain required. Review correction adds bounded internal-link JDK materialization before exact approved tree validation, tests actual preparation and uses the same production staging helper in compiled-package integration. Link-free validation and approved digest remain unchanged.",
+      "id": "pr304-runtime-subject-binding-successor",
+      "priorPolicyDigest": "sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e",
+      "requirements": [
+        "p12-300-products",
+        "p12-300-consumers",
+        "p12-296-subjects"
+      ]
     }
   ],
-  "version": 1
+  "version": 2
 }

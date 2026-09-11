@@ -1168,6 +1168,8 @@ class Supervisor:
             selected_node = next(row for row in self.plan["nodes"] if row["role"] == role)
             if status != 200 or contract.get("contract", {}).get("contractVersion") != selected_node["contractVersion"]:
                 raise RuntimeFailure("running-contract-roster-mismatch")
+            if self.product_admission is not None:
+                self.product_admission.verify_runtime_contract(role, contract)
             status, inventory = probe.request("GET", "/api/v1/apps")
             installed = inventory.get("apps", [])
             if status != 200 or sorted(app.get("appId") for app in installed) != sorted(app["appId"] for app in private["apps"]):
@@ -1204,6 +1206,8 @@ class Supervisor:
             selected_node = next(row for row in self.plan["nodes"] if row["role"] == role)
             if status != 200 or contract.get("contract", {}).get("contractVersion") != selected_node["contractVersion"]:
                 raise RuntimeFailure("running-contract-roster-mismatch")
+            if self.product_admission is not None:
+                self.product_admission.verify_runtime_contract(role, contract)
             status, inventory = probe.request("GET", "/api/v1/apps")
             if status != 200 or inventory.get("apps") != []:
                 raise RuntimeFailure("disposable-app-inventory-not-empty")
@@ -2126,6 +2130,9 @@ def runner_identity():
              "tools/release-certification/protected/app_subject_projection.py",
              "tools/release-certification/protected/original_artifact_authentication.py",
              "tools/release-certification/protected/cross_version_product_admission.py",
+             "tools/release-certification/protected/maintenance_runtime_metadata.py",
+             "tools/release-certification/protected/maintenance_app_products.py",
+             "tools/release-certification/protected/historical_runtime_subjects.py",
              "tools/release-certification/protected/cross_version_supervisor_authority.py",
              "tools/release-certification/protected/maintenance_runtime_projection.py",
              "tools/interop/cross_version_service.py",

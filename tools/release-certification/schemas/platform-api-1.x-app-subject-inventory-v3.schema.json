@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-1.x-app-subject-inventory-v3.schema.json",
+  "title": "Runtime-only prospective maintenance app subjects without independent-build authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "sourceCommit",
+    "authorityRoots",
+    "requiredAppIds",
+    "subjects",
+    "fixtureOnly",
+    "inventoryDigest",
+    "cohortPolicy",
+    "cohortDigest",
+    "producer"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 3
+    },
+    "kind": {
+      "const": "platform-api-1.x-app-subject-inventory"
+    },
+    "releaseId": {
+      "$ref": "#/$defs/id"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "authorityRoots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maintenanceAppProducts",
+        "thirdPartyPilot"
+      ],
+      "properties": {
+        "maintenanceAppProducts": {
+          "$ref": "#/$defs/digest"
+        },
+        "thirdPartyPilot": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "requiredAppIds": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/subject"
+      }
+    },
+    "fixtureOnly": {
+      "type": "boolean"
+    },
+    "inventoryDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "cohortPolicy": {
+      "enum": [
+        "historical-seven",
+        "current-eight-experimental-mail"
+      ]
+    },
+    "cohortDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceCommit",
+        "workflowPath",
+        "environment",
+        "runId",
+        "runAttempt"
+      ],
+      "properties": {
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "workflowPath": {
+          "const": ".github/workflows/stable-1.0-app-subject-projection.yml"
+        },
+        "environment": {
+          "const": "stable-1-0-app-subject-projection"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runAttempt": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appId",
+        "appVersion",
+        "bundleDigest",
+        "manifestDigest",
+        "publisherId",
+        "catalogId",
+        "reviewDigest",
+        "targetStability",
+        "targetBaseline",
+        "minimumContractVersion",
+        "maximumTestedContractVersion",
+        "requiredCapabilities",
+        "optionalCapabilities",
+        "experimentalCapabilitiesAccepted",
+        "sourceAuthority",
+        "sourceAuthorityRoot",
+        "sourceEvidenceDigest",
+        "fixtureOnly",
+        "requiredForRelease",
+        "subjectDigest",
+        "signedProjection",
+        "originalSource",
+        "originalCatalogSource",
+        "originalInventorySource"
+      ],
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/id"
+        },
+        "appVersion": {
+          "$ref": "#/$defs/id"
+        },
+        "bundleDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "manifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "publisherId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "catalogId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "reviewDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "targetStability": {
+          "enum": [
+            "legacy",
+            "stable",
+            "experimental"
+          ]
+        },
+        "targetBaseline": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^1\\.(?:0|[1-9][0-9]*)$"
+            }
+          ]
+        },
+        "minimumContractVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumTestedContractVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requiredCapabilities": {
+          "type": "array",
+          "maxItems": 512,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "optionalCapabilities": {
+          "type": "array",
+          "maxItems": 512,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "experimentalCapabilitiesAccepted": {
+          "type": "boolean"
+        },
+        "sourceAuthority": {
+          "enum": [
+            "maintenance-app-products",
+            "third-party-pilot"
+          ]
+        },
+        "sourceAuthorityRoot": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "sourceEvidenceDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "fixtureOnly": {
+          "type": "boolean"
+        },
+        "requiredForRelease": {
+          "type": "boolean"
+        },
+        "subjectDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "signedProjection": {
+          "type": "object"
+        },
+        "originalSource": {
+          "type": "object"
+        },
+        "originalCatalogSource": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "originalInventorySource": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

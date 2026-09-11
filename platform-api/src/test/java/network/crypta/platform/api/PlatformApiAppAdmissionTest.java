@@ -17,6 +17,87 @@ class PlatformApiAppAdmissionTest {
   private static final List<String> QUEUE_READ_PERMISSIONS = List.of("queue.read");
 
   @Test
+  void requireCompatibility_whenSelectedTargetBelowMinimum_expectNoCurrentContractFallback() {
+    var current = PlatformApiContract.current();
+    var selected =
+        new PlatformApiContract(
+            current.apiVersion(),
+            25,
+            current.generatedBy(),
+            current.stabilityPolicy(),
+            current.capabilities(),
+            current.endpoints());
+    var registry = PlatformApiBaselineRegistry.current();
+    var metadata =
+        new AppApiCompatibilityMetadata(
+            26, 26, List.of(), TargetStability.EXPERIMENTAL, true, false, false);
+    List<String> permissions = List.of();
+
+    assertDoesNotThrow(
+        () -> PlatformApiAppAdmission.requireCurrentCompatibility(metadata, permissions));
+    var exception =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                PlatformApiAppAdmission.requireCompatibility(
+                    metadata, permissions, selected, registry));
+
+    assertEquals(ERROR_INCOMPATIBLE_CONTRACT, exception.errorCode());
+    assertEquals(409, exception.statusCode());
+  }
+
+  @Test
+  void requireCompatibility_whenTestedMaximumExceeded_expectOrdinaryRuntimeWarningAllowed() {
+    var metadata =
+        new AppApiCompatibilityMetadata(
+            19, 23, List.of(), TargetStability.STABLE, true, false, false);
+
+    assertDoesNotThrow(
+        () ->
+            PlatformApiAppAdmission.requireCompatibility(
+                metadata,
+                QUEUE_READ_PERMISSIONS,
+                PlatformApiContract.current(),
+                PlatformApiBaselineRegistry.current()));
+  }
+
+  @Test
+  void requireCompatibility_whenStableOptionalCapabilityUnknown_expectSameNativeRejection() {
+    var metadata =
+        new AppApiCompatibilityMetadata(
+            19, 26, List.of("synthetic.unavailable"), TargetStability.STABLE, true, false, false);
+    var contract = PlatformApiContract.current();
+    var baselines = PlatformApiBaselineRegistry.current();
+
+    var exception =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                PlatformApiAppAdmission.requireCompatibility(
+                    metadata, QUEUE_READ_PERMISSIONS, contract, baselines));
+
+    assertEquals(ERROR_INCOMPATIBLE_CONTRACT, exception.errorCode());
+  }
+
+  @Test
+  void requireCompatibility_whenNamedBaselineUnsupported_expectSameNativeRejection() {
+    var metadata =
+        new AppApiCompatibilityMetadata(
+            19, 26, List.of(), TargetStability.STABLE, true, "1.1", true, false, false);
+    var contract = PlatformApiContract.current();
+    var baselines = PlatformApiBaselineRegistry.current();
+
+    var exception =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                PlatformApiAppAdmission.requireCompatibility(
+                    metadata, QUEUE_READ_PERMISSIONS, contract, baselines));
+
+    assertEquals("unsupported_platform_api_baseline", exception.errorCode());
+  }
+
+  @Test
   void requireCurrentCompatibility_whenStableBaselineIsImplicit_expectFrozen10DefaultAllowed() {
     AppApiCompatibilityMetadata metadata =
         new AppApiCompatibilityMetadata(

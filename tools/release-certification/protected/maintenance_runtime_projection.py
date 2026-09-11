@@ -66,7 +66,7 @@ class AuthenticatedMeasurements:
         return json.loads(self._origin)
 
 
-def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None):
+def _project_v1(plan, events, checkpoint, products, *, policy_path=POLICY, now=None):
     """Recompute measurements from the exact journal prefix; perform no network or node calls.
 
     ``products`` comes only from the root-owned activation in the protected caller. Direct calls
@@ -149,7 +149,7 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None)
             "products": bindings, "rows": rows, "maintenanceEligibility": "blocked"}
 
 
-def validate(value):
+def _validate_v1(value):
     """Validate the versioned bounded projection before original-artifact public admission."""
     fields = {"schemaVersion", "kind", "planDigest", "policyByteDigest", "producer", "checkpointDigest",
               "observedUntil", "observedEligibleSeconds", "observedNetworkOperations", "observedNetworkNodeCount",
@@ -211,16 +211,154 @@ def validate(value):
     return value
 
 
+BINDING_DIGESTS = ("metadataDigest", "contractSnapshotDigest", "contractSemanticDigest",
+                   "baselineRegistryDigest", "shippedCohortDigest", "experimentCohortDigest")
+SUBJECT_BLOCKERS = {"exact-runtime-product-subject-missing", "exact-runtime-api-subject-missing",
+                    "exact-runtime-app-roster-missing", "runtime-subject-observation-after-start",
+                    "original-production-products-required"}
+# Missing scenarios, duration and cleanup are separate parent gates. Every other journal finding
+# still prevents the narrow derivation from passing, including replay, gaps and clock changes.
+COVERAGE_FINDINGS = {"required-scenarios-not-observed", "observed-duration-insufficient", "cleanup-not-observed"}
+DERIVATION_BLOCKERS = {
+    "journal-lineage-invalid", "journal-wall-clock-invalid", "continuation-lineage-invalid",
+    "controller-epoch-changed", "event-role-outside-roster", "node-start-reuses-runtime-epoch",
+    "runtime-epoch-mismatch", "operation-on-stopped-node", "observed-failure", "fault-operation-replayed",
+    "fault-recovery-lineage-invalid", "peer-runtime-epoch-mismatch", "operation-replayed",
+    "operation-outside-required-case", "clock-discontinuity", "operation-counter-regressed",
+    "checkpoint-substitution-or-truncation", "controller-restarted-uninterrupted-soak-unproven",
+    "run-incomplete", "node-observations-incomplete", "idle-only-run", "unexplained-observation-gap",
+    "authorized-duration-exceeded", "fault-recovery-incomplete", "terminal-checkpoint-not-complete",
+    "maintenance-observation-stale-or-future",
+}
+
+
+def _digest_valid(value):
+    return isinstance(value, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+
+
+def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None):
+    """Project prospective exact subjects separately from incomplete maintenance scenarios.
+
+    Historical input without a runtime binding retains byte-for-byte v1 semantics. A v2 result
+    cannot be constructed by upgrading that report: the original journal and exact product rows
+    must be presented again to this producer, then authenticated through the original supervisor.
+    """
+    now = now or dt.datetime.now(dt.timezone.utc)
+    result = _project_v1(plan, events, checkpoint, products, policy_path=policy_path, now=now)
+    if not any("runtimeBinding" in row for row in (products or [])):
+        return result
+    from cryptad_certification.redaction import scan_value
+    if scan_value(products):
+        raise ProjectionError("maintenance-measurements-private-product-input")
+    checked = verify(plan, events, checkpoint, now=now)
+    start = parse_timestamp(events[0]["wallTime"]) if events else None
+    by_role = {row["role"]: row for row in products}
+    if set(by_role) != {node["role"] for node in plan["nodes"]}:
+        raise ProjectionError("maintenance-measurements-product-roster-mismatch")
+    subjects = []
+    all_blockers = set()
+    for node in plan["nodes"]:
+        row = by_role.get(node["role"], {})
+        binding = row.get("runtimeBinding", {})
+        if not isinstance(binding, dict):
+            binding = {}
+        blockers = set()
+        if plan["provenanceClass"] != "production-artifact-comparison":
+            blockers.add("original-production-products-required")
+        if not all(row.get(key) == node[key] for key in ("sourceCommit", "artifactDigest", "artifactSize", "packageTarget")):
+            blockers.add("exact-runtime-product-subject-missing")
+        if (not isinstance(binding, dict) or set(binding) != set(BINDING_DIGESTS) | {"provenance"}
+                or not all(_digest_valid(binding.get(key)) for key in BINDING_DIGESTS)
+                or binding.get("provenance") not in {"frozen-with-original-release", "observed-from-original-package"}
+                or row.get("contractVersion") != node["contractVersion"]):
+            blockers.add("exact-runtime-api-subject-missing")
+        matrix = row.get("appMatrix", [])
+        if (not isinstance(matrix, list) or any(not isinstance(app, dict) for app in matrix)
+                or sorted(app.get("bundleDigest", "") for app in matrix) != sorted(node["appDigests"])
+                or any(app.get("contractVerifier") != "executed" or app.get("nativeAdmission") != "accepted"
+                       or app.get("contractSnapshotDigest") != binding.get("contractSnapshotDigest") for app in matrix)):
+            blockers.add("exact-runtime-app-roster-missing")
+        cutoff = parse_timestamp(row.get("freezeCompletedAt") if binding.get("provenance") == "frozen-with-original-release"
+                                 else row.get("runtimeObservationCompletedAt"))
+        if cutoff is None or start is None or cutoff > start:
+            blockers.add("runtime-subject-observation-after-start")
+        subjects.append({"role": node["role"], "bindingDigest": digest(binding),
+                         "appMatrixDigest": digest(matrix), "status": "pass" if not blockers else "blocked",
+                         "blockers": sorted(blockers)})
+        all_blockers.update(blockers)
+    derivation = set(checked["findings"]) - COVERAGE_FINDINGS
+    if checkpoint["status"] != "complete":
+        derivation.add("terminal-checkpoint-not-complete")
+    if any("maintenance-observation-stale-or-future" in row["blockers"] for row in result["rows"]):
+        derivation.add("maintenance-observation-stale-or-future")
+    result.update(schemaVersion=2, admittedProductsDigest=digest(products),
+                  evaluationCutoff=now.isoformat(),
+                  subjectAdmission={"status": "pass" if not all_blockers else "blocked",
+                                    "subjects": subjects, "blockers": sorted(all_blockers)},
+                  measurementDerivation={"status": "pass" if not derivation else "blocked",
+                                         "journalDigest": digest(events),
+                                         "caseSamplesDigest": digest(checked["caseSamples"]),
+                                         "participantEpochsDigest": digest([{key: event.get(key) for key in
+                                             ("epoch", "role", "nodeEpoch", "peerRole", "peerNodeEpoch")} for event in events]),
+                                         "blockers": sorted(derivation)})
+    return result
+
+
+def validate(value):
+    """Validate historical diagnostics or the closed prospective narrow-component contract."""
+    if not isinstance(value, dict) or value.get("schemaVersion") != 2:
+        return _validate_v1(value)
+    extra = {"admittedProductsDigest", "evaluationCutoff", "subjectAdmission", "measurementDerivation"}
+    historical = {key: item for key, item in value.items() if key not in extra}
+    historical["schemaVersion"] = 1
+    _validate_v1(historical)
+    if not extra <= set(value) or not _digest_valid(value["admittedProductsDigest"]) or parse_timestamp(value["evaluationCutoff"]) is None:
+        raise ProjectionError("maintenance-measurements-v2-subject-contract-invalid")
+    observed = parse_timestamp(value["observedUntil"])
+    if observed is not None and observed > parse_timestamp(value["evaluationCutoff"]):
+        raise ProjectionError("maintenance-measurements-v2-evaluation-precedes-observation")
+    admission, derivation = value["subjectAdmission"], value["measurementDerivation"]
+    if (not isinstance(admission, dict) or set(admission) != {"status", "subjects", "blockers"}
+            or not isinstance(admission["subjects"], list)
+            or len(admission["subjects"]) != len(value["products"])):
+        raise ProjectionError("maintenance-measurements-v2-subject-contract-invalid")
+    roles, blockers = [], set()
+    for subject in admission["subjects"]:
+        if (not isinstance(subject, dict) or set(subject) != {"role", "bindingDigest", "appMatrixDigest", "status", "blockers"}
+                or not isinstance(subject["role"], str) or subject["role"] not in ROLES or subject["role"] in roles
+                or not all(_digest_valid(subject[key]) for key in ("bindingDigest", "appMatrixDigest"))
+                or not isinstance(subject["blockers"], list) or any(not isinstance(code, str) for code in subject["blockers"])
+                or subject["blockers"] != sorted(set(subject["blockers"]))
+                or not set(subject["blockers"]) <= SUBJECT_BLOCKERS
+                or subject["status"] != ("blocked" if subject["blockers"] else "pass")):
+            raise ProjectionError("maintenance-measurements-v2-subject-invalid")
+        roles.append(subject["role"])
+        blockers.update(subject["blockers"])
+    if (set(roles) != {row["role"] for row in value["products"]} or admission["blockers"] != sorted(blockers)
+            or admission["status"] != ("blocked" if blockers else "pass")):
+        raise ProjectionError("maintenance-measurements-v2-subject-roster-invalid")
+    if (not isinstance(derivation, dict) or set(derivation) != {"status", "journalDigest", "caseSamplesDigest", "participantEpochsDigest", "blockers"}
+            or not all(_digest_valid(derivation[key]) for key in ("journalDigest", "caseSamplesDigest", "participantEpochsDigest"))
+            or not isinstance(derivation["blockers"], list)
+            or any(not isinstance(code, str) or code not in DERIVATION_BLOCKERS for code in derivation["blockers"])
+            or derivation["blockers"] != sorted(set(derivation["blockers"]))
+            or derivation["status"] != ("blocked" if derivation["blockers"] else "pass")):
+        raise ProjectionError("maintenance-measurements-v2-derivation-invalid")
+    return value
+
+
 def authenticate(coordinates, private_root, *, expected_plan_digest, expected_policy_digest, now=None):
     """Materialize original measured inputs in the protected producer, never in offline verify."""
     from cross_version_supervisor_authority import authenticate_report
     report, origin = authenticate_report(coordinates, private_root)
-    if report.get("schemaVersion") != 2 or report.get("operation") != "finish":
+    if report.get("schemaVersion") not in {2, 3} or report.get("operation") != "finish":
         raise ProjectionError("maintenance-measurements-original-finish-v2-required")
     value = validate(report["maintenanceMeasurements"])
     if (value["planDigest"] != expected_plan_digest or report["planDigest"] != expected_plan_digest
             or value["policyByteDigest"] != expected_policy_digest
-            or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]):
+            or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]
+            or value["schemaVersion"] != report["schemaVersion"] - 1
+            or (value["schemaVersion"] == 2 and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
         raise ProjectionError("maintenance-measurements-original-selection-mismatch")
     policy_bytes = POLICY.read_bytes()
     if "sha256:" + hashlib.sha256(policy_bytes).hexdigest() != expected_policy_digest:
@@ -229,6 +367,7 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     end = parse_timestamp(value["observedUntil"])
     maximum_age = json.loads(policy_bytes)["evidenceWindows"]["maximumAgeDays"]
     if (now.tzinfo is None or now.utcoffset() is None or end is None or end > now
-            or now - end > dt.timedelta(days=maximum_age)):
+            or now - end > dt.timedelta(days=maximum_age)
+            or (value["schemaVersion"] == 2 and parse_timestamp(value["evaluationCutoff"]) > now)):
         raise ProjectionError("maintenance-measurements-original-observation-expired")
     return AuthenticatedMeasurements(value, origin, _AUTHORITY)

@@ -1213,7 +1213,7 @@ def _maintenance_promotion_bindings(
     freeze_loaded = load_document(
         context,
         "maintenanceCandidateFreeze",
-        "stable-1.0-maintenance-candidate-freeze-v1.schema.json",
+        "stable-1.0-maintenance-candidate-freeze.schema.json",
     )
     assert freeze_loaded is not None
     _, freeze, freeze_file_digest = freeze_loaded

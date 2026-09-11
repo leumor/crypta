@@ -32,6 +32,107 @@ class AppSubjectProjectionCommandTest {
   @TempDir Path temporary;
 
   @Test
+  void projection_whenStableChannelProvided_expectNativeAdmissionAndExactByteIdentities()
+      throws Exception {
+    assertNativeAdmissionChannel("stable");
+  }
+
+  @Test
+  void projection_whenBetaChannelProvided_expectNativeAdmissionAndExactByteIdentities()
+      throws Exception {
+    assertNativeAdmissionChannel("beta");
+  }
+
+  private void assertNativeAdmissionChannel(String channel) throws Exception {
+    var fixture = prepare(contents -> contents + "app.sample-app.channel=" + channel + "\n");
+    Path contract = temporary.resolve("contract.json");
+    Path registry = temporary.resolve("registry.json");
+    var baseline = network.crypta.platform.api.PlatformApiBaselineRegistry.current();
+    Files.writeString(
+        contract,
+        network.crypta.platform.api.PlatformApiContractJson.writeEnvelope(
+            network.crypta.platform.api.PlatformApiContract.current(), baseline));
+    Files.writeString(
+        registry,
+        network.crypta.platform.api.PlatformApiContractJson.writeBaselineRegistry(baseline));
+    Path output = temporary.resolve("native.json");
+
+    assertEquals(
+        0,
+        project(
+            fixture,
+            output,
+            "--contract",
+            contract.toString(),
+            "--baseline-registry",
+            registry.toString()));
+
+    String result = Files.readString(output);
+    assertTrue(result.contains("\"schemaVersion\":2"));
+    assertTrue(result.contains("\"nativeAdmission\":\"accepted\""));
+    assertTrue(result.contains("\"catalogChannel\":\"" + channel + "\""));
+    String digest =
+        java.util.HexFormat.of()
+            .formatHex(
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(Files.readAllBytes(contract)));
+    assertTrue(result.contains("\"contractSnapshotDigest\":\"sha256:" + digest + "\""));
+  }
+
+  @Test
+  void projection_whenOnlyContractProvided_expectNoOutput() throws Exception {
+    var fixture = prepare();
+    Path contract = temporary.resolve("contract.json");
+    Files.writeString(contract, "{}");
+    Path output = temporary.resolve("native.json");
+
+    assertEquals(1, project(fixture, output, "--contract", contract.toString()));
+
+    assertFalse(Files.exists(output));
+  }
+
+  @Test
+  void projection_whenOnlyRegistryProvided_expectNoOutput() throws Exception {
+    var fixture = prepare();
+    Path registry = temporary.resolve("registry.json");
+    Files.writeString(registry, "{}");
+    Path output = temporary.resolve("native.json");
+
+    int result = project(fixture, output, "--baseline-registry", registry.toString());
+
+    assertEquals(1, result);
+    assertFalse(Files.exists(output));
+  }
+
+  @Test
+  void projection_whenTargetSnapshotMalformed_expectNoAdmissionOrPrivateDiagnostic()
+      throws Exception {
+    var fixture = prepare();
+    Path contract = temporary.resolve("private-contract.json");
+    Path registry = temporary.resolve("registry.json");
+    Files.writeString(contract, "private malformed contract");
+    Files.writeString(
+        registry,
+        network.crypta.platform.api.PlatformApiContractJson.writeBaselineRegistry(
+            network.crypta.platform.api.PlatformApiBaselineRegistry.current()));
+    Path output = temporary.resolve("native.json");
+
+    Invocation result =
+        projectInvocation(
+            fixture,
+            output,
+            "--contract",
+            contract.toString(),
+            "--baseline-registry",
+            registry.toString());
+
+    assertEquals(1, result.exitCode());
+    assertFalse(Files.exists(output));
+    assertFalse(result.diagnostics().contains(temporary.toString()));
+    assertFalse(result.diagnostics().contains("private malformed contract"));
+  }
+
+  @Test
   void projection_whenExactSignedArtifactsProvided_expectManifestDerivedFields() throws Exception {
     var fixture = prepare();
     Path output = temporary.resolve("projection.json");

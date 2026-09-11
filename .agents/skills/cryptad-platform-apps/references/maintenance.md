@@ -25,3 +25,7 @@ Bind all app/catalog/update and durable-state scenarios to the exact candidate a
 digests. A security hotfix cannot waive these gates; only policy-listed observation windows may be
 shortened, creating a follow-up obligation. Follow
 `docs/stable-1.0-maintenance-release-and-hotfix-path.md`.
+
+For prospective exact runtime subjects, follow `docs/pr-304-runtime-subject-binding.md`.
+Keep maintenance freeze v1 historical semantics, v2 internal runtime members outside public assets,
+and native package-derived API/app admission separate from measured scenario eligibility.

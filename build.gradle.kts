@@ -461,11 +461,20 @@ tasks.named<Copy>("prepareWrapperLibs") {
   exclude { details -> details.file.name in internalLeafJarNames.get() }
 }
 
+// Devtools process tests execute packaged Platform API classes in addition to their own helper.
+val devtoolsCoverageData =
+  project(":platform-devtools").layout.buildDirectory.file("jacoco/test.exec")
+
 tasks.named<JacocoReport>("jacocoTestReport") {
+  dependsOn(":platform-devtools:test")
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   dependsOn(internalLeafProjectsWithLocalTests.map { "${it.path}:test" })
   executionData.setFrom(
-    files(layout.buildDirectory.file("jacoco/test.exec"), internalLeafJacocoExecFiles)
+    files(
+      layout.buildDirectory.file("jacoco/test.exec"),
+      internalLeafJacocoExecFiles,
+      devtoolsCoverageData,
+    )
   )
   classDirectories.setFrom(
     files(sourceSets.main.get().output.classesDirs, internalLeafMainClassDirs)
@@ -476,10 +485,15 @@ tasks.named<JacocoReport>("jacocoTestReport") {
 }
 
 tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+  dependsOn(":platform-devtools:test")
   dependsOn(internalLeafProjects.map { "${it.path}:classes" })
   dependsOn(internalLeafProjectsWithLocalTests.map { "${it.path}:test" })
   executionData.setFrom(
-    files(layout.buildDirectory.file("jacoco/test.exec"), internalLeafJacocoExecFiles)
+    files(
+      layout.buildDirectory.file("jacoco/test.exec"),
+      internalLeafJacocoExecFiles,
+      devtoolsCoverageData,
+    )
   )
   classDirectories.setFrom(
     files(sourceSets.main.get().output.classesDirs, internalLeafMainClassDirs)
