@@ -19,6 +19,11 @@ REPOSITORY = "crypta-network/cryptad"
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 # These are existing upstream authorities, never caller-selected workflows or environments.
 PRODUCERS = {
+    "maintenance-app-products": (
+        ".github/workflows/stable-1.0-maintenance-release.yml",
+        "stable-1.0-maintenance-evidence",
+        "Build and authenticate prospective maintenance app products",
+    ),
     "stable-maintenance-freeze": (
         ".github/workflows/stable-1.0-maintenance-release.yml",
         "stable-1.0-maintenance-evidence",

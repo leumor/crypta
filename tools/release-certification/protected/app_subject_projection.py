@@ -57,12 +57,34 @@ class ProjectionFailure(ValueError):
     """A fixed failure code without caller values or private diagnostics."""
 
 
+def _strict_json(raw):
+    def pairs(rows):
+        result = {}
+        for key, value in rows:
+            if key in result:
+                raise ProjectionFailure("app-subject-duplicate-json-key")
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=pairs)
+
+
+def inventory_schema(version):
+    if type(version) is not int or version not in {2, 3}:
+        raise ProjectionFailure("app-subject-inventory-version-unsupported")
+    return f"platform-api-1.x-app-subject-inventory-v{version}.schema.json"
+
+
 def validate_declaration(value: Any) -> dict[str, Any]:
     import re
-    if (not isinstance(value, dict) or set(value) != DECLARATION_FIELDS
-            or type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1
+    extra = {"contractSnapshotDigest", "baselineRegistryDigest", "nativeAdmission", "catalogChannel"} if isinstance(value, dict) and value.get("schemaVersion") == 2 else set()
+    if (not isinstance(value, dict) or set(value) != DECLARATION_FIELDS | extra
+            or type(value["schemaVersion"]) is not int or value["schemaVersion"] not in {1, 2}
             or value["kind"] != "signed-app-subject-projection"):
         raise ProjectionFailure("app-subject-declaration-fields-invalid")
+    if extra and (value["nativeAdmission"] != "accepted" or value["catalogChannel"] not in {"stable", "beta", "nightly", "deprecated"} or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(value[key])) is None
+            for key in ("contractSnapshotDigest", "baselineRegistryDigest"))):
+        raise ProjectionFailure("app-subject-native-admission-invalid")
     for key in ("bundleDigest", "manifestDigest", "signedContentDigest", "signatureDigest",
                 "publisherFingerprint", "catalogDigest", "catalogSignatureDigest"):
         if not isinstance(value[key], str) or re.fullmatch(r"sha256:[0-9a-f]{64}", value[key]) is None:
@@ -148,13 +170,16 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
             exporter_digest: str, app_id: str, catalog_key_id: str,
             catalog_keys: Path, publisher_keys: Path, reviewer_keys: Path | None,
             private_root: Path, java_home: Path | None = None,
-            catalog_artifact: OriginalArtifact | None = None) -> dict[str, Any]:
+            catalog_artifact: OriginalArtifact | None = None,
+            contract_path: Path | None = None, baseline_registry_path: Path | None = None) -> dict[str, Any]:
     """Execute the pinned Java exporter against exact selected original signed artifact bytes.
 
     The supervisor authenticates the exporter distribution and public-key registry artifact origins.
     This function verifies its selected executable bytes before launch, preserves original source
     coordinates, and emits an explicitly unattested result until the protected job attests it.
     """
+    if (contract_path is None) != (baseline_registry_path is None):
+        raise ProjectionFailure("app-subject-contract-pair-required")
     if (exporter.is_symlink() or not exporter.is_file() or exporter.stat().st_size > 512 * 1024 * 1024
             or "sha256:" + hashlib.sha256(exporter.read_bytes()).hexdigest() != exporter_digest):
         raise ProjectionFailure("app-subject-exporter-identity-invalid")
@@ -177,6 +202,8 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
                      "--catalog-keys", str(catalog_keys), "--publisher-keys", str(publisher_keys),
                      "--catalog-key-id", catalog_key_id, "--app-id", app_id,
                      "--private-root", str(root), "--output", str(output)]
+        if contract_path is not None:
+            arguments += ["--contract", str(contract_path), "--baseline-registry", str(baseline_registry_path)]
         if reviewer_keys is not None:
             arguments += ["--reviewer-keys", str(reviewer_keys)]
         if "submission" in members:
@@ -190,7 +217,7 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
             run_bounded(arguments, environment=environment)
             if not output.is_file() or output.stat().st_size > 32768:
                 raise ProjectionFailure("app-subject-java-verification-failed")
-            declaration = validate_declaration(json.loads(output.read_bytes()))
+            declaration = validate_declaration(_strict_json(output.read_bytes()))
         except (OSError, subprocess.TimeoutExpired, ValueError):
             raise ProjectionFailure("app-subject-java-verification-failed") from None
     if (declaration["appId"] != app_id or declaration["bundleSize"] != len(members["bundle"])
@@ -214,7 +241,7 @@ def _cohort() -> dict:
     info = COHORT_FILE.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 1024 * 1024:
         raise ProjectionFailure("app-subject-protected-cohort-unavailable")
-    value = json.loads(COHORT_FILE.read_bytes())
+    value = _strict_json(COHORT_FILE.read_bytes())
     if (not isinstance(value, dict) or set(value) != {"schemaVersion", "cohortPolicy", "releaseId",
             "sourceCommit", "authorityRoots", "toolRoot", "toolTreeDigest", "toolOriginal", "toolMember", "exporterRelativePath",
             "javaHome", "javaTreeDigest", "sources"} or value["schemaVersion"] != 1
@@ -232,7 +259,7 @@ def _cohort() -> dict:
             raise ProjectionFailure("app-subject-protected-cohort-subject-invalid")
         ids.add(source["appId"])
         family = source["original"]["sourceFamily"]
-        if family == "first-party-release":
+        if family in {"first-party-release", "maintenance-app-products"}:
             first_party.add(source["appId"])
         elif family == "third-party-pilot":
             external = True
@@ -243,6 +270,16 @@ def _cohort() -> dict:
     expected = FIRST_PARTY | ({"mail-prototype"} if value["cohortPolicy"] == "current-eight-experimental-mail" else set())
     if first_party != expected or not external:
         raise ProjectionFailure("app-subject-protected-cohort-coverage-invalid")
+    prospective = [source for source in value["sources"] if source["original"]["sourceFamily"] == "maintenance-app-products"]
+    if prospective:
+        if (len(prospective) != len(expected)
+                or set(value["authorityRoots"]) != {"maintenanceAppProducts", "thirdPartyPilot"}
+                or any(source["originalInventory"] != source["original"]
+                       or source["catalogOriginal"] is not None
+                       or source["sourceAuthorityRoot"] != value["authorityRoots"]["maintenanceAppProducts"]
+                       or source["sourceEvidenceDigest"] != source["sourceAuthorityRoot"] for source in prospective)
+                or len({_canonical_digest(source["original"]) for source in prospective}) != 1):
+            raise ProjectionFailure("app-subject-prospective-owner-roots-invalid")
     return value
 
 
@@ -339,16 +376,129 @@ def _artifact_json(artifact: OriginalArtifact, name: str) -> dict:
     content = selected_members(artifact, {"catalog": name})["catalog"]
     if len(content) > 1024 * 1024:
         raise ProjectionFailure("app-subject-upstream-inventory-budget")
-    value = json.loads(content)
+    value = _strict_json(content)
     if not isinstance(value, dict):
         raise ProjectionFailure("app-subject-upstream-inventory-invalid")
     return value
+
+
+def _verify_maintenance_handoff(source: dict, declaration: dict, artifact: OriginalArtifact,
+                                private_root: Path) -> None:
+    """Authenticate prefreeze app product bytes without claiming an independent rebuild."""
+    name = "maintenance-app-subject-handoff.json"
+    if (source["originalInventory"] != artifact.coordinates or source["original"] != artifact.coordinates
+            or source["catalogOriginal"] is not None):
+        raise ProjectionFailure("app-subject-maintenance-origin-mismatch")
+    raw = selected_members(artifact, {"catalog": name})["catalog"]
+    expected_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    if (len(raw) > 1024 * 1024 or source["sourceAuthorityRoot"] != expected_digest
+            or source["sourceEvidenceDigest"] != expected_digest):
+        raise ProjectionFailure("app-subject-maintenance-handoff-substitution")
+    value = _strict_json(raw)
+    from cryptad_certification.schema_validation import validate_schema
+    if validate_schema(value, "maintenance-app-subject-handoff-v1.schema.json"):
+        raise ProjectionFailure("app-subject-maintenance-handoff-schema-invalid")
+    fields = {"schemaVersion", "kind", "sourceCommit", "releaseId", "buildVersion", "generatedAt",
+              "cohortPolicy", "producer", "subjects", "members"}
+    producer = {"repository": REPOSITORY,
+        "workflowPath": ".github/workflows/stable-1.0-maintenance-release.yml",
+        "workflowSourceCommit": artifact.coordinates["sourceCommit"],
+        "runId": artifact.coordinates["runId"], "runAttempt": artifact.coordinates["runAttempt"],
+        "jobName": "Build and authenticate prospective maintenance app products"}
+    import re
+    import datetime
+    if (not isinstance(value, dict) or set(value) != fields or type(value["schemaVersion"]) is not int
+            or value["schemaVersion"] != 1 or value["kind"] != "maintenance-app-subject-handoff"
+            or value["producer"] != producer
+            or re.fullmatch(r"[0-9a-f]{40}", str(value["sourceCommit"])) is None
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", str(value["releaseId"])) is None
+            or not isinstance(value["buildVersion"], str) or re.fullmatch(r"[1-9][0-9]*", value["buildVersion"]) is None
+            or value["cohortPolicy"] not in {"historical-seven", "current-eight-experimental-mail"}):
+        raise ProjectionFailure("app-subject-maintenance-handoff-fields-invalid")
+    try:
+        observed = datetime.datetime.fromisoformat(value["generatedAt"].replace("Z", "+00:00"))
+        if observed.tzinfo is None or (artifact.job_completed_at is not None
+                and observed > datetime.datetime.fromisoformat(artifact.job_completed_at.replace("Z", "+00:00"))):
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError):
+        raise ProjectionFailure("app-subject-maintenance-handoff-time-invalid") from None
+    expected_ids = FIRST_PARTY | ({"mail-prototype"} if value["cohortPolicy"] == "current-eight-experimental-mail" else set())
+    if (not isinstance(value["subjects"], list) or len(value["subjects"]) != len(expected_ids)
+            or not isinstance(value["members"], list) or not 3 <= len(value["members"]) <= 32):
+        raise ProjectionFailure("app-subject-maintenance-handoff-roster-invalid")
+    subjects, referenced = {}, set()
+    for subject in value["subjects"]:
+        if (not isinstance(subject, dict) or set(subject) != {"appId", "members", "signedProjection"}
+                or subject["appId"] in subjects or not isinstance(subject["members"], dict)
+                or set(subject["members"]) != {"catalog", "catalogSignature", "bundle"}
+                or len(set(subject["members"].values())) != 3):
+            raise ProjectionFailure("app-subject-maintenance-handoff-subject-invalid")
+        signed = validate_declaration(subject["signedProjection"])
+        if signed["schemaVersion"] != 1 or signed["appId"] != subject["appId"]:
+            raise ProjectionFailure("app-subject-maintenance-handoff-declaration-invalid")
+        subjects[subject["appId"]] = subject
+        referenced.update(subject["members"].values())
+    if set(subjects) != expected_ids:
+        raise ProjectionFailure("app-subject-maintenance-handoff-roster-invalid")
+    inventory = {}
+    for member in value["members"]:
+        if (not isinstance(member, dict) or set(member) != {"fileName", "digest", "sizeBytes"}
+                or not isinstance(member["fileName"], str) or member["fileName"] in inventory
+                or type(member["sizeBytes"]) is not int or not 1 <= member["sizeBytes"] <= 512 * 1024 * 1024
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", str(member["digest"])) is None):
+            raise ProjectionFailure("app-subject-maintenance-member-invalid")
+        inventory[member["fileName"]] = member
+    if set(inventory) != referenced or name in referenced:
+        raise ProjectionFailure("app-subject-maintenance-member-roster-invalid")
+    exact = {name: raw}
+    with zipfile.ZipFile(io.BytesIO(artifact.content)) as archive:
+        if {entry.filename for entry in archive.infolist() if not entry.is_dir()} != referenced | {name}:
+            raise ProjectionFailure("app-subject-maintenance-unbound-member")
+        for member_name, member in inventory.items():
+            entry = archive.getinfo(member_name)
+            if entry.is_dir() or entry.file_size != member["sizeBytes"]:
+                raise ProjectionFailure("app-subject-maintenance-member-substituted")
+            payload = archive.read(entry)
+            if "sha256:" + hashlib.sha256(payload).hexdigest() != member["digest"]:
+                raise ProjectionFailure("app-subject-maintenance-member-substituted")
+            exact[member_name] = payload
+    for subject in subjects.values():
+        signed = subject["signedProjection"]
+        members = subject["members"]
+        if (inventory[members["bundle"]]["digest"] != signed["bundleDigest"]
+                or inventory[members["bundle"]]["sizeBytes"] != signed["bundleSize"]
+                or inventory[members["catalog"]]["digest"] != signed["catalogDigest"]
+                or inventory[members["catalogSignature"]]["digest"] != signed["catalogSignatureDigest"]):
+            raise ProjectionFailure("app-subject-maintenance-declared-member-substitution")
+    selected = subjects.get(declaration["appId"])
+    legacy = {key: item for key, item in declaration.items() if key not in
+              {"contractSnapshotDigest", "baselineRegistryDigest", "nativeAdmission", "catalogChannel"}}
+    legacy["schemaVersion"] = 1
+    if selected is None or selected["members"] != source["members"] or selected["signedProjection"] != legacy:
+        raise ProjectionFailure("app-subject-maintenance-selected-subject-substitution")
+    invocation = (f"https://github.com/{REPOSITORY}/actions/runs/{artifact.coordinates['runId']}"
+                  f"/attempts/{artifact.coordinates['runAttempt']}")
+    with tempfile.TemporaryDirectory(prefix="maintenance-subject-attest-", dir=private_root) as directory:
+        for index, (member_name, payload) in enumerate(sorted(exact.items())):
+            member = Path(directory) / str(index)
+            member.write_bytes(payload)
+            proofs = _gh(["attestation", "verify", str(member), "--repo", REPOSITORY,
+                "--signer-workflow", REPOSITORY + "/" + producer["workflowPath"],
+                "--source-digest", artifact.coordinates["sourceCommit"],
+                "--signer-digest", artifact.coordinates["sourceCommit"], "--format", "json"], _environment())
+            if not isinstance(proofs, list) or not any(
+                    proof.get("verificationResult", {}).get("signature", {}).get("certificate", {}).get("runInvocationURI") == invocation
+                    for proof in proofs if isinstance(proof, dict)):
+                raise ProjectionFailure("app-subject-maintenance-member-attested-attempt-mismatch")
 
 
 def verify_upstream_subject(source: dict, declaration: dict, artifact: OriginalArtifact,
                             private_root: Path) -> None:
     """Match derived signed bytes to the original selected upstream subject, never caller fields."""
     family = source["original"]["sourceFamily"]
+    if family == "maintenance-app-products":
+        _verify_maintenance_handoff(source, declaration, artifact, private_root)
+        return
     expected = {"first-party-release": "first-party-inventory", "third-party-pilot": "third-party-inventory"}
     if source["originalInventory"].get("sourceFamily") != expected.get(family):
         raise ProjectionFailure("app-subject-upstream-inventory-family-mismatch")
@@ -444,7 +594,8 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
         row["subjectDigest"] = "sha256:" + "0" * 64
         row["subjectDigest"] = _canonical_digest(row)
         rows.append(row)
-    inventory = {"schemaVersion": 2, "kind": "platform-api-1.x-app-subject-inventory",
+    version = 3 if any(row["sourceAuthority"] == "maintenance-app-products" for row in rows) else 2
+    inventory = {"schemaVersion": version, "kind": "platform-api-1.x-app-subject-inventory",
                  "releaseId": cohort["releaseId"], "sourceCommit": cohort["sourceCommit"],
                  "authorityRoots": cohort["authorityRoots"], "requiredAppIds": sorted(row["appId"] for row in rows),
                  "subjects": rows, "fixtureOnly": False, "cohortPolicy": cohort["cohortPolicy"],
@@ -457,7 +608,7 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from cryptad_certification.redaction import scan_value
     from cryptad_certification.schema_validation import validate_schema
-    if (validate_schema(inventory, "platform-api-1.x-app-subject-inventory-v2.schema.json")
+    if (validate_schema(inventory, inventory_schema(inventory.get("schemaVersion")))
             or scan_value(inventory)):
         raise ProjectionFailure("app-subject-public-inventory-rejected")
     with output.open("x", encoding="utf-8") as stream:
@@ -492,12 +643,12 @@ def authenticate_inventory(coordinates: dict, private_root: Path,
                 row.get("verificationResult", {}).get("signature", {}).get("certificate", {}).get("runInvocationURI")
                 == expected_invocation for row in verified):
             raise ProjectionFailure("app-subject-attested-attempt-mismatch")
-    inventory = json.loads(raw)
+    inventory = _strict_json(raw)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from cryptad_certification.schema_validation import validate_schema
     from cryptad_certification.redaction import scan_value
     from original_artifact_authentication import validate_coordinates
-    if validate_schema(inventory, "platform-api-1.x-app-subject-inventory-v2.schema.json") or scan_value(inventory):
+    if validate_schema(inventory, inventory_schema(inventory.get("schemaVersion"))) or scan_value(inventory):
         raise ProjectionFailure("app-subject-attested-schema-invalid")
     for subject in inventory["subjects"]:
         validate_declaration(subject["signedProjection"])

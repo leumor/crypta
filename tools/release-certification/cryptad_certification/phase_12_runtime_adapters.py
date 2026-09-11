@@ -270,16 +270,19 @@ def _product(adapter, values, payloads, scratch, now):
             view = SimpleNamespace(**rc.__dict__, _original_coordinates=selected.coordinates)
             row = owner.verify_portable_artifact(portable, view, node, root / "portable.tar.gz")
             blockers = ["product-original-producer-unverified", "rc-portable-post-freeze-binding-not-established"]
-    if node["appDigests"]:
+    runtime_bound = bool(row.get("runtimeBinding"))
+    if node["appDigests"] and not runtime_bound:
         blockers.append("product-app-api-cohort-binding-incomplete")
     result = _result(claims=("p12-300-products",), blockers=blockers,
                      required=("exact-portable-product", "frozen-api-app-cohort", "original-product-producer"),
-                     observed=("exact-portable-product",), implementation="partial",
+                     observed=("exact-portable-product",) + (("frozen-api-app-cohort",) if runtime_bound else ()), implementation="partial",
                      evidence_class="original-product-byte-consistency")
     result["subjectBindings"] = {"commit": row["sourceCommit"], "digest": row["artifactDigest"], "build": str(row["buildVersion"])}
     result["productBinding"] = {"role": node["role"], "commit": row["sourceCommit"], "digest": row["artifactDigest"],
                                 "appDigests": node["appDigests"], "contractVersion": node.get("contractVersion"),
-                                "appContractAuthentication": "not-established"}
+                                "appContractAuthentication": "frozen-byte-consistency" if runtime_bound else "not-established"}
+    if runtime_bound:
+        result["runtimeBinding"] = row["runtimeBinding"]
     return result
 
 
@@ -403,6 +406,12 @@ def _measured(values, now, *, mail=False, measurements=False):
         result["claims"] = ["p12-300-consumers"]
         result["coverage"] = {"required": sorted(row["id"] for row in measured["rows"]), "observed": []}
         result["blockers"].append("maintenance-required-consumer-adapters-incomplete")
+        if measured["schemaVersion"] == 2:
+            result["components"] = {"subjectAdmission": measured["subjectAdmission"]["status"],
+                                    "measurementDerivation": measured["measurementDerivation"]["status"],
+                                    "originalAuthentication": "unverified",
+                                    "maintenanceEligibility": measured["maintenanceEligibility"]}
+            result["measurements"]["consumerComponents"] = dict(result["components"])
     return result
 
 
@@ -517,6 +526,10 @@ def _supervisor_relationships(authority, values, now):
         if (report["approvalOrigin"] != chain[-1]["origin"]
                 or report["approvalReportDigest"] != soak.digest(authorization)):
             raise ValueError("phase12-runtime-supervisor-approval-substituted")
+        if final["schemaVersion"] == 3 and (
+                report["schemaVersion"] != 3
+                or report["admittedProductsDigest"] != final["admittedProductsDigest"]):
+            raise ValueError("phase12-runtime-supervisor-products-substituted")
     return final, observation
 
 
@@ -591,9 +604,20 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
             result["measurements"]["authenticatedObservedSeconds"] = observation["observedEligibleSeconds"] if qualifying else 0
             if adapter == "maintenance-measurements":
                 owner = _protected("maintenance_runtime_projection")
-                measured = owner.project(plan, values["events.json"], values["checkpoint.json"], values["products.json"], now=now)
-                if final.get("schemaVersion") != 2 or measured != final["maintenanceMeasurements"]:
+                original = final["maintenanceMeasurements"]
+                evaluated = (dt.datetime.fromisoformat(original["evaluationCutoff"])
+                             if original["schemaVersion"] == 2 else now)
+                if evaluated > now:
+                    raise ValueError("maintenance-measurements-future-evaluation")
+                measured = owner.project(plan, values["events.json"], values["checkpoint.json"], values["products.json"], now=evaluated)
+                if final.get("schemaVersion") not in {2, 3} or measured != original:
                     raise ValueError("maintenance-measurements-substituted")
+                if original["schemaVersion"] == 2:
+                    if (final["schemaVersion"] != 3
+                            or final["admittedProductsDigest"] != soak.digest(values["products.json"])):
+                        raise ValueError("maintenance-measurements-products-substituted")
+                    result["components"]["originalAuthentication"] = "authenticated"
+                    result["measurements"]["consumerComponents"] = dict(result["components"])
                 result["dimensions"].update(runtimeExecution="partial", coverage="partial")
         else:
             raise ValueError("authenticated-owner-mode-unavailable")
@@ -663,6 +687,11 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                 if adapter == "product-admission":
                     row = owner.authenticate_maintenance_product(
                         {"coordinates": coordinates, "freezeDigest": selection["freezeDigest"]}, node, root / "maintenance")
+                    if row.get("runtimeBinding"):
+                        metadata = _json((row["runtimeRoot"] / "runtime-subjects.json").read_bytes())
+                        owner.authenticate_runtime_projection(row,
+                            {"coordinates": metadata["projectionOrigin"],
+                             "cohortDigest": metadata["experimentCohortDigest"]}, root)
                 else:
                     rc_original = owner.authenticate_original(selection["rcOriginal"], root)
                     portable = owner.authenticate_original(selection["portableOriginal"], root)

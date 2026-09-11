@@ -33,6 +33,42 @@ def archive(files):
 
 
 class CrossVersionProductAdmissionTest(unittest.TestCase):
+    def test_prospective_capability_rechecks_exact_native_roster_and_runtime_surface(self):
+        from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
+        plan = fixture_plan()
+        contract = {"contractVersion": plan["nodes"][0]["contractVersion"], "capabilities": []}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            rows, private = {}, {"nodes": {}}
+            for node in plan["nodes"]:
+                role = node["role"]
+                package = root / (role + ".tar.gz")
+                package.write_bytes(role.encode())
+                node.update(artifactDigest=products.file_digest(package), artifactSize=package.stat().st_size)
+                bundle = root / (role + ".app")
+                bundle.write_bytes(b"exact app " + role.encode())
+                app_digest = products.file_digest(bundle)
+                node["appDigests"] = [] if role == "relay-no-apps" else [app_digest]
+                matrix = [] if not node["appDigests"] else [{"appId": "site-publisher", "bundleDigest": app_digest,
+                    "bundleSize": bundle.stat().st_size, "nativeAdmission": "accepted", "contractVerifier": "executed"}]
+                rows[role] = {**node, "path": package, "runtimeRoot": root,
+                    "runtimeBinding": {"contractSemanticDigest": products.digest(contract)},
+                    "requiredAppIds": [app["appId"] for app in matrix], "appMatrix": matrix}
+                private["nodes"][role] = {"archivePath": str(package), "apps": [
+                    {"appId": "site-publisher", "bundlePath": str(bundle), "bundleDigest": app_digest}] if matrix else []}
+            authority = products.AuthenticatedProducts(products._SEAL, products.digest(plan), rows)
+            self.assertTrue(authority.bind(plan, private))
+            self.assertTrue(authority.bind_apps(plan))
+            role = plan["nodes"][0]["role"]
+            self.assertTrue(authority.verify_runtime_contract(role, {"contract": contract}))
+            with self.assertRaisesRegex(products.ProductAdmissionError, "exact-subject-mismatch"):
+                authority.verify_runtime_contract(role, {"contract": {**contract, "capabilities": ["substituted"]}})
+            self.assertFalse(any("runtimeRoot" in row or "path" in row for row in authority.public_identities()))
+            selected = Path(private["nodes"][role]["apps"][0]["bundlePath"])
+            selected.write_bytes(b"changed")
+            with self.assertRaisesRegex(products.ProductAdmissionError, "app-substituted"):
+                authority.bind(plan, private)
+
     def maintenance_fixture(self, mutate=None):
         from cryptad_certification.tests.test_stable_maintenance_workflows import _activation_candidate_freeze
         freeze = _activation_candidate_freeze("2026-09-10T00:00:00Z")

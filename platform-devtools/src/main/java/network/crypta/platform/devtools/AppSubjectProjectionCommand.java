@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import network.crypta.platform.api.PlatformApiAppAdmission;
+import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalogBundleExtractor;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
@@ -88,6 +89,12 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
 
   @Option(names = "--private-root", required = true)
   private Path privateRoot;
+
+  @Option(names = "--contract")
+  private Path contract;
+
+  @Option(names = "--baseline-registry")
+  private Path baselineRegistry;
 
   @Option(names = "--output", required = true)
   private Path output;
@@ -197,7 +204,7 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     PlatformApiAppAdmission.requireCatalogDeclarationMatchesManifest(
         catalogCompatibility, compatibility);
     var result = new LinkedHashMap<String, Object>();
-    result.put("schemaVersion", 1);
+    result.put("schemaVersion", contract == null ? 1 : 2);
     result.put("kind", "signed-app-subject-projection");
     result.put("appId", manifest.appId());
     result.put("appVersion", manifest.appVersion());
@@ -240,6 +247,25 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
         "optionalCapabilities", compatibility.optionalCapabilities().stream().sorted().toList());
     result.put(
         "experimentalCapabilitiesAccepted", compatibility.experimentalCapabilitiesAccepted());
+    if ((contract == null) != (baselineRegistry == null))
+      throw new IOException("target incomplete");
+    if (contract != null) {
+      Path contractSnapshot =
+          snapshot(contract, scratch.resolve("contract.json"), 8L * 1024 * 1024);
+      Path registrySnapshot =
+          snapshot(baselineRegistry, scratch.resolve("registry.json"), 8L * 1024 * 1024);
+      String contractJson = Files.readString(contractSnapshot);
+      var target = PlatformApiContractJson.parse(contractJson);
+      var registry =
+          PlatformApiContractJson.parseBaselineRegistry(Files.readString(registrySnapshot));
+      PlatformApiContractJson.verifyBaselineRegistrySummary(contractJson, registry);
+      PlatformApiAppAdmission.requireCompatibility(
+          compatibility, manifest.permissions(), target, registry);
+      result.put("contractSnapshotDigest", digest(contractSnapshot));
+      result.put("baselineRegistryDigest", digest(registrySnapshot));
+      result.put("nativeAdmission", "accepted");
+      result.put("catalogChannel", entry.productionMetadata().channel().catalogValue());
+    }
     return result;
   }
 

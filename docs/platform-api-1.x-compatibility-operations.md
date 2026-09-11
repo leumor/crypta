@@ -323,3 +323,10 @@ produce operational completion.
 
 PR-297 owns real legacy-plugin migration. PR-300 owns long-duration, cross-version, multi-node
 network soak. The bounded PR-296 runtime observation must never be described as PR-300 completion.
+
+## Prospective exact runtime subjects
+
+See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the prospective
+maintenance v2 private metadata, exact packaged API export, independently selected app sets and
+versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
+narrow admission success does not close missing runtime adapters or operational evidence.

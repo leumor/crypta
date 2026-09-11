@@ -93,6 +93,7 @@ INPUT_FIELDS = {
     "maintenanceCandidate",
     "maintenanceCandidateFreeze",
     "maintenanceCandidateAssets",
+    "maintenanceRuntimeInputs",
     "maintenanceCandidateChecksums",
     "maintenanceCandidateProvenance",
     "maintenanceEvidence",

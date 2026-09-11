@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "maintenance-app-subject-handoff-v1.schema.json",
+  "title": "Original prefreeze maintenance signed app handoff without release or independent-build authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "sourceCommit",
+    "releaseId",
+    "buildVersion",
+    "generatedAt",
+    "cohortPolicy",
+    "producer",
+    "subjects",
+    "members"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "maintenance-app-subject-handoff"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "buildVersion": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cohortPolicy": {
+      "enum": [
+        "historical-seven",
+        "current-eight-experimental-mail"
+      ]
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "workflowPath",
+        "workflowSourceCommit",
+        "runId",
+        "runAttempt",
+        "jobName"
+      ],
+      "properties": {
+        "repository": {
+          "const": "crypta-network/cryptad"
+        },
+        "workflowPath": {
+          "const": ".github/workflows/stable-1.0-maintenance-release.yml"
+        },
+        "workflowSourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runAttempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "jobName": {
+          "const": "Build and authenticate prospective maintenance app products"
+        }
+      }
+    },
+    "subjects": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "appId",
+          "members",
+          "signedProjection"
+        ],
+        "properties": {
+          "appId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "members": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "catalog",
+              "catalogSignature",
+              "bundle"
+            ],
+            "properties": {
+              "catalog": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$"
+              },
+              "catalogSignature": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$"
+              },
+              "bundle": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$"
+              }
+            }
+          },
+          "signedProjection": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "members": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fileName",
+          "digest",
+          "sizeBytes"
+        ],
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 536870912
+          }
+        }
+      }
+    }
+  }
+}

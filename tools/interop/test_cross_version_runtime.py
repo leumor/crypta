@@ -14,6 +14,22 @@ import zipfile
 import cross_version_runtime as runtime
 
 
+class RuntimeSubjectBindingTest(unittest.TestCase):
+    def test_contract_identity_is_checked_before_any_app_install(self):
+        supervisor = runtime.Supervisor.__new__(runtime.Supervisor)
+        supervisor.private = {'nodes': {role: {'apps': []} for role in runtime.ROLES}}
+        supervisor.plan = {'nodes': [{'role': role, 'contractVersion': 25} for role in runtime.ROLES]}
+        supervisor.product_admission = Mock()
+        supervisor.product_admission.verify_runtime_contract.side_effect = ValueError('exact-contract-substituted')
+        payload = {'contract': {'contractVersion': 25, 'capabilities': []}}
+        with patch.object(runtime, 'AppHandle') as handle:
+            handle.return_value.request.return_value = (200, payload)
+            with self.assertRaisesRegex(ValueError, 'exact-contract-substituted'):
+                supervisor.provision_apps()
+        supervisor.product_admission.verify_runtime_contract.assert_called_once_with(runtime.ROLES[0], payload)
+        handle.return_value.request.assert_called_once_with('GET', '/api/v1/platform/contract')
+
+
 class ArchiveTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

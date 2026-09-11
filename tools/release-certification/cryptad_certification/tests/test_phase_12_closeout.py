@@ -21,6 +21,27 @@ AS_OF = "2026-09-11T00:00:00Z"
 
 
 class CloseoutTest(unittest.TestCase):
+    def test_pr304_successor_preserves_mandatory_scope_and_historical_clocks(self):
+        prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr303.json").read_bytes())
+        current, _ = audit.policy()
+        self.assertEqual(1, prior["version"])
+        self.assertEqual(2, current["version"])
+        before = {row["id"]: row for row in prior["requirements"]}
+        after = {row["id"]: row for row in current["requirements"]}
+        self.assertEqual(set(before), set(after))
+        for identity in before:
+            for field in ("assertion", "dimensions", "subjects", "prerequisites", "mandatory", "closure"):
+                self.assertEqual(before[identity][field], after[identity][field], (identity, field))
+            self.assertEqual(set(before[identity]["authority"]), set(after[identity]["authority"]))
+        for historical in prior["history"]:
+            self.assertIn(historical, current["history"])
+        residuals = {row["id"]: row for row in current["residuals"]}
+        for old in prior["residuals"]:
+            self.assertEqual(old["origin"], residuals[old["id"]]["origin"])
+            self.assertEqual(old["reason"], residuals[old["id"]]["reason"])
+        self.assertEqual("partial", after["p12-300-consumers"]["implementation"]["state"])
+        self.assertFalse(self.evaluate()["phaseComplete"])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

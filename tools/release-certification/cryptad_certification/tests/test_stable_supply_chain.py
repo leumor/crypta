@@ -3888,7 +3888,7 @@ class StableSupplyChainTest(unittest.TestCase):
             2,
         )
         self.assertIn('freeze_root / "assets"', producer)
-        self.assertIn("stable-1.0-maintenance-candidate-freeze-v1.schema.json", producer)
+        self.assertIn("stable-1.0-maintenance-candidate-freeze.schema.json", producer)
         self.assertIn(
             'signer="crypta-network/cryptad/.github/workflows/'
             'stable-1.0-maintenance-release.yml"',

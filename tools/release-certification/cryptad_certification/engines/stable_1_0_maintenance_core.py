@@ -82,7 +82,7 @@ GA_AUTHORIZATION_SCHEMA = "stable-1.0-ga-authorization-v1.schema.json"
 GA_PUBLICATION_PLAN_SCHEMA = "stable-1.0-ga-publication-plan-v1.schema.json"
 GA_PUBLICATION_RECEIPT_SCHEMA = "stable-1.0-ga-publication-receipt-v1.schema.json"
 CANDIDATE_INPUT_SCHEMA = "stable-1.0-maintenance-candidate-input-v1.schema.json"
-CANDIDATE_FREEZE_SCHEMA = "stable-1.0-maintenance-candidate-freeze-v1.schema.json"
+CANDIDATE_FREEZE_SCHEMA = "stable-1.0-maintenance-candidate-freeze.schema.json"
 EVIDENCE_SCHEMA = "stable-1.0-maintenance-evidence-v1.schema.json"
 LINEAGE_SCHEMA = "stable-1.0-maintenance-lineage-v1.schema.json"
 COMPARISON_SCHEMA = "stable-1.0-maintenance-comparison-v1.schema.json"
@@ -1757,6 +1757,21 @@ def _candidate_freeze_errors(
 
     value = freeze.value
     errors = validate_schema(value, CANDIDATE_FREEZE_SCHEMA)
+    if value.get("schemaVersion") == 2:
+        try:
+            helper_path = Path(__file__).resolve().parents[2] / "protected" / "maintenance_runtime_metadata.py"
+            # Fixed checked-in validator is offline; it never executes or fetches product inputs.
+            import sys
+            sys.path.insert(0, str(helper_path.parent))
+            from maintenance_runtime_metadata import validate_runtime_metadata
+            runtime_inputs = configured_path(context, "maintenanceRuntimeInputs", directory=True)
+            if runtime_inputs is None:
+                raise ValueError("missing runtime input")
+            product = candidate_value.get("product", {})
+            validate_runtime_metadata(value, runtime_inputs / "runtime",
+                                      package_path=_asset_root(context) / product["fileName"])
+        except (ValueError, KeyError, OSError):
+            errors.append("candidate freeze runtime metadata is missing or does not bind exact inputs")
     source = candidate_value.get("source")
     source = source if isinstance(source, dict) else {}
     toolchain = candidate_value.get("toolchain")
@@ -1780,6 +1795,7 @@ def _candidate_freeze_errors(
     observation = observation if isinstance(observation, dict) else {}
     if isinstance(expected_predecessor_observation, Predecessor):
         expected_predecessor_observation = {
+            "sourceCommit": expected_predecessor_observation.source_commit,
             "releaseId": expected_predecessor_observation.release_id,
             "buildVersion": expected_predecessor_observation.build_version,
             "productDigest": expected_predecessor_observation.product_digest,
@@ -1834,6 +1850,8 @@ def _candidate_freeze_errors(
         != expected_predecessor_observation.get("publicationReceiptDigest")
         or observation.get("latestPublishedPointerDigest")
         != expected_predecessor_observation.get("latestPublishedPointerDigest")
+        or (value.get("schemaVersion") == 2
+            and observation.get("sourceCommit") != expected_predecessor_observation.get("sourceCommit"))
         or observation.get("status") != "latest-published"
     ):
         errors.append("candidate freeze used a stale or substituted predecessor observation")

@@ -1,0 +1,566 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-candidate-freeze-v2.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance candidate freeze v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "frozenAt",
+    "stableMilestone",
+    "releaseId",
+    "buildVersion",
+    "releaseClass",
+    "source",
+    "toolchain",
+    "producer",
+    "predecessorObservation",
+    "stableCatalogVerification",
+    "buildCount",
+    "rebuildPerformed",
+    "checksumsDigest",
+    "assets",
+    "assetSetDigest",
+    "redaction",
+    "runtimeMetadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "kind": {
+      "const": "stable-1.0-maintenance-candidate-freeze"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "frozenAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "releaseId": {
+      "$ref": "#/$defs/releaseId"
+    },
+    "buildVersion": {
+      "$ref": "#/$defs/buildVersion"
+    },
+    "releaseClass": {
+      "$ref": "#/$defs/releaseClass"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "toolchain": {
+      "$ref": "#/$defs/toolchain"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "predecessorObservation": {
+      "$ref": "#/$defs/predecessorObservation"
+    },
+    "stableCatalogVerification": {
+      "$ref": "#/$defs/stableCatalogVerification"
+    },
+    "buildCount": {
+      "const": 1
+    },
+    "rebuildPerformed": {
+      "const": false
+    },
+    "checksumsDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "assetSetDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "#/$defs/redaction"
+    },
+    "runtimeMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileName",
+        "digest",
+        "sizeBytes"
+      ],
+      "properties": {
+        "fileName": {
+          "const": "runtime-subjects.json"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "buildVersion": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40,64}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "releaseClass": {
+      "enum": [
+        "maintenance",
+        "security-hotfix"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branch",
+        "ref",
+        "commit",
+        "baseBranch",
+        "baseCommit",
+        "clean",
+        "treeState",
+        "branchHeadVerified",
+        "immutableRefVerified",
+        "currentPublishedMainBaseVerified",
+        "sourceTreeDigest"
+      ],
+      "properties": {
+        "branch": {
+          "type": "string",
+          "pattern": "^(release|hotfix)/[1-9][0-9]*$"
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^commit:[0-9a-f]{40,64}$"
+        },
+        "commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "baseBranch": {
+          "enum": [
+            "develop",
+            "main"
+          ]
+        },
+        "baseCommit": {
+          "$ref": "#/$defs/commit"
+        },
+        "clean": {
+          "const": true
+        },
+        "treeState": {
+          "const": "clean"
+        },
+        "branchHeadVerified": {
+          "const": true
+        },
+        "immutableRefVerified": {
+          "const": true
+        },
+        "currentPublishedMainBaseVerified": {
+          "type": "boolean"
+        },
+        "sourceTreeDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "javaVersion",
+        "javaMajorVersion",
+        "gradleVersion",
+        "gradleWrapperDigest",
+        "dependencyVerificationDigest",
+        "dependencyVerificationStatus",
+        "buildLogicDigest",
+        "buildTasks",
+        "productionSigning",
+        "testSigning"
+      ],
+      "properties": {
+        "javaVersion": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "javaMajorVersion": {
+          "type": "integer",
+          "minimum": 25
+        },
+        "gradleVersion": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "gradleWrapperDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dependencyVerificationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dependencyVerificationStatus": {
+          "const": "pass"
+        },
+        "buildLogicDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "buildTasks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmpty"
+          }
+        },
+        "productionSigning": {
+          "const": true
+        },
+        "testSigning": {
+          "const": false
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system",
+        "repository",
+        "workflowPath",
+        "workflowCommit",
+        "runId",
+        "runAttempt",
+        "runnerEnvironment",
+        "producerIdentityReceiptDigest",
+        "sourceRefReceiptDigest",
+        "buildReceiptDigest",
+        "authenticationStatus"
+      ],
+      "properties": {
+        "system": {
+          "const": "github-actions"
+        },
+        "repository": {
+          "const": "crypta-network/cryptad"
+        },
+        "workflowPath": {
+          "type": "string",
+          "pattern": "^\\.github/workflows/[A-Za-z0-9._-]+\\.ya?ml$"
+        },
+        "workflowCommit": {
+          "$ref": "#/$defs/commit"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "runAttempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runnerEnvironment": {
+          "const": "github-hosted"
+        },
+        "producerIdentityReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceRefReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "buildReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authenticationStatus": {
+          "const": "pass"
+        }
+      }
+    },
+    "predecessorObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseId",
+        "buildVersion",
+        "sourceCommit",
+        "productDigest",
+        "baselineDigest",
+        "publicationReceiptDigest",
+        "latestPublishedPointerDigest",
+        "observedAt",
+        "status"
+      ],
+      "properties": {
+        "releaseId": {
+          "$ref": "#/$defs/releaseId"
+        },
+        "buildVersion": {
+          "$ref": "#/$defs/buildVersion"
+        },
+        "productDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "baselineDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "publicationReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "latestPublishedPointerDigest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "const": "latest-published"
+        },
+        "sourceCommit": {
+          "$ref": "#/$defs/commit"
+        }
+      }
+    },
+    "stableCatalogVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "catalogDigest",
+        "signatureDigest",
+        "signingKeyId",
+        "trustedKeyRegistryDigest",
+        "signatureAlgorithm",
+        "verifier",
+        "cryptographicVerificationStatus",
+        "redaction"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "stable-1.0-maintenance-catalog-signature-verification"
+        },
+        "catalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "signatureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "signingKeyId": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "trustedKeyRegistryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "signatureAlgorithm": {
+          "const": "Ed25519"
+        },
+        "verifier": {
+          "const": "network.crypta.platform.appcatalog.AppCatalogVerifier"
+        },
+        "cryptographicVerificationStatus": {
+          "const": "pass"
+        },
+        "redaction": {
+          "$ref": "#/$defs/redaction"
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "fileName",
+        "digest",
+        "sizeBytes",
+        "packageKey",
+        "os",
+        "arch",
+        "producerArchitecture",
+        "packageType",
+        "publicAsset",
+        "signingStatus",
+        "signingReceiptDigest",
+        "notarizationStatus",
+        "notarizationReceiptDigest"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "product",
+            "package",
+            "stable-catalog",
+            "stable-catalog-signature"
+          ]
+        },
+        "fileName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "packageKey": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(amd64|arm64)\\.(deb|rpm|dmg|exe|flatpak|snap)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "os": {
+          "oneOf": [
+            {
+              "enum": [
+                "linux",
+                "macos",
+                "windows"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arch": {
+          "oneOf": [
+            {
+              "enum": [
+                "amd64",
+                "arm64"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "producerArchitecture": {
+          "oneOf": [
+            {
+              "enum": [
+                "amd64",
+                "arm64"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "packageType": {
+          "oneOf": [
+            {
+              "enum": [
+                "deb",
+                "rpm",
+                "dmg",
+                "exe",
+                "flatpak",
+                "snap"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publicAsset": {
+          "const": true
+        },
+        "signingStatus": {
+          "const": "pass"
+        },
+        "signingReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "notarizationStatus": {
+          "enum": [
+            "pass",
+            "not-applicable"
+          ]
+        },
+        "notarizationReceiptDigest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "findingCount",
+        "findings"
+      ],
+      "properties": {
+        "status": {
+          "const": "pass"
+        },
+        "findingCount": {
+          "const": 0
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    }
+  }
+}
