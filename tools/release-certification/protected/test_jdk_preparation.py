@@ -76,6 +76,63 @@ class JdkPreparationTest(unittest.TestCase):
             self.assertEqual(projection._public_cohort(cohort), projection._public_cohort(prepared))
             self.assertEqual(prepared, attestation.call_args.args[0])
 
+    def test_preparation_authenticates_separate_tool_revision_and_exact_member(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, expected = self.installed_jdk(root)
+            inputs, cohort, original = self.inputs(root, expected)
+            coordinates = {"sourceFamily": "projection-tools", "sourceCommit": "c" * 40,
+                           "runId": 123, "runAttempt": 2}
+            cohort["toolOriginal"] = coordinates
+            (inputs / "cohort.json").write_text(json.dumps(cohort))
+            proof = [{"verificationResult": {"signature": {"certificate": {
+                "runInvocationURI": "https://github.com/crypta-network/cryptad/actions/runs/123/attempts/2"}}}}]
+            with patch.dict(os.environ, {"GITHUB_SHA": "b" * 40}), \
+                    patch("original_artifact_authentication.authenticate_original", return_value=original) as acquire, \
+                    patch.object(projection, "authenticate_original", return_value=original) as authenticate, \
+                    patch.object(projection, "_environment", return_value={}), \
+                    patch.object(projection, "_gh", return_value=proof) as attestation:
+                metadata.prepare_environment(inputs, root / "prepared.json", source, root / "tools", root / "jdk")
+            prepared = json.loads((root / "prepared.json").read_bytes())
+            self.assertEqual(projection._public_cohort(cohort), projection._public_cohort(prepared))
+            self.assertEqual(coordinates, acquire.call_args.args[0])
+            self.assertEqual(coordinates, authenticate.call_args.args[0])
+            arguments = attestation.call_args.args[0]
+            self.assertEqual("c" * 40, arguments[arguments.index("--source-digest") + 1])
+            self.assertEqual("c" * 40, arguments[arguments.index("--signer-digest") + 1])
+            self.assertEqual(projection.REPOSITORY + "/" + projection.WORKFLOW,
+                             arguments[arguments.index("--signer-workflow") + 1])
+            self.assertEqual(cohort["toolTreeDigest"], projection.tree_digest(root / "tools"))
+
+    def test_separate_tool_revision_still_rejects_wrong_attempt_and_changed_bytes(self):
+        for mismatch in ("attempt", "source", "installed-bytes", "family"):
+            with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                _, expected = self.installed_jdk(root)
+                _, cohort, original = self.inputs(root, expected)
+                cohort["toolOriginal"] = {"sourceFamily": "projection-tools", "sourceCommit": "c" * 40,
+                                           "runId": 123, "runAttempt": 2}
+                tool = root / "tools"
+                (tool / "bin").mkdir(parents=True)
+                (tool / "bin/crypta-app").write_bytes(b"synthetic tool" if mismatch != "installed-bytes" else b"substituted")
+                (tool / "bin/crypta-app").chmod(0o700)
+                if mismatch == "source":
+                    cohort["toolOriginal"]["sourceCommit"] = "d" * 40
+                if mismatch == "family":
+                    cohort["toolOriginal"]["sourceFamily"] = "first-party-release"
+                def verify(arguments, environment):
+                    if arguments[arguments.index("--source-digest") + 1] != "c" * 40:
+                        raise ValueError("synthetic original attestation source mismatch")
+                    attempt = 1 if mismatch == "attempt" else 2
+                    return [{"verificationResult": {"signature": {"certificate": {
+                        "runInvocationURI": f"https://github.com/crypta-network/cryptad/actions/runs/123/attempts/{attempt}"}}}}]
+                with patch.dict(os.environ, {"GITHUB_SHA": "b" * 40}), \
+                        patch.object(projection, "authenticate_original", return_value=original), \
+                        patch.object(projection, "_environment", return_value={}), \
+                        patch.object(projection, "_gh", side_effect=verify):
+                    with self.assertRaises(ValueError):
+                        projection.authenticate_tool_tree(cohort, tool, root)
+
     def test_unapproved_bytes_reject_before_online_authentication_and_remove_stage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

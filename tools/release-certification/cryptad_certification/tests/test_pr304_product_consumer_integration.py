@@ -172,7 +172,7 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
 
     def cohort(self, release, source):
         roots = {key: "sha256:" + "8" * 64 for key in ("maintenanceAppProducts", "thirdPartyPilot")}
-        tool_origin = self.artifact("projection-tools", {"tools.zip": self.tool_bytes})
+        tool_origin = self.artifact("projection-tools", {"tools.zip": self.tool_bytes}, source="c" * 40)
         cohort = {"schemaVersion": 1, "cohortPolicy": "current-eight-experimental-mail", "releaseId": release,
             "sourceCommit": source, "authorityRoots": roots, "toolRoot": str(self.tool), "toolTreeDigest": self.tool_digest,
             "toolOriginal": tool_origin, "toolMember": "tools.zip", "exporterRelativePath": "bin/crypta-app",

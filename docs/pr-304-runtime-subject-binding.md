@@ -213,8 +213,8 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:84e654c7a3b3349ef83dc2f6bd61fed98f9a38ed6c000099d61291a57aff9833` |
-| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:bd0842c1f27cecf1a636046af3292d17283b5335a824ec4f627aaf654fd45d66` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:f7ef7117ba9de189d836ab851767ba9b8ecf1ab8a137084a78331f22697fc5f2` |
+| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ddf43ed72bf32096a63217e319d459ba04e443c6d683729ac7a451fcc1ee74f7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
 Both assessments report `phaseDecision=incomplete`, `phaseComplete=false` and 47 unresolved
@@ -287,3 +287,11 @@ mandatory. Ordinary integration and `freeze-candidate` now share
 `.github/actions/setup-packaged-export-sandbox`, provisioning Bubblewrap and its scoped AppArmor
 profile and testing isolation before any freeze metadata is sealed. The signed integration fixture
 uses the independent Site Publisher version to exercise the actual producer.
+
+Projection tools retain their separately approved `toolOriginal.sourceCommit`. That tool revision
+need not equal the candidate, predecessor, or consuming workflow SHA. Original artifact
+authentication and member attestation verify the pinned tool source/signer and run attempt, then
+both archive and installed-tree digests must match the protected cohort. The develop-only tool
+producer remains unchanged. Preparation tests exercise distinct cohort/consumer/tool revisions
+and reject wrong source proofs, attempts, producer families and installed bytes; the signed
+producer/consumer integration uses a third tool revision distinct from both daemon products.

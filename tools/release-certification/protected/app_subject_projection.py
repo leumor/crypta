@@ -340,7 +340,9 @@ def tool_archive_digest(content: bytes) -> str:
 
 def authenticate_tool_tree(cohort: dict, tool_root: Path, private_root: Path) -> None:
     coordinates = cohort["toolOriginal"]
-    if coordinates.get("sourceFamily") != "projection-tools" or coordinates.get("sourceCommit") != os.environ.get("GITHUB_SHA"):
+    # The protected cohort pins the tool producer independently of the consuming workflow
+    # and daemon candidate. Original authentication and member attestations verify that pin.
+    if coordinates.get("sourceFamily") != "projection-tools":
         raise ProjectionFailure("app-subject-tool-producer-source-mismatch")
     original = authenticate_original(coordinates, private_root)
     content = selected_members(original, {"bundle": cohort["toolMember"]})["bundle"]
