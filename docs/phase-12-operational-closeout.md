@@ -458,3 +458,13 @@ their own temporary roots too. All 171 Phase 12 tests passed with both ordinary 
 temporary directories; this is a portability regression check, not a native macOS CI observation.
 The fresh assessment under `build/phase-12-scratch-review/` at `2026-09-11T04:21:41Z` evaluated
 and recomputed successfully and remains incomplete with 47 unresolved requirements.
+
+The migration cutoff review corrected admission of observations whose original execution
+completed after the assessment time. Original authentication now retains the selected job's
+completion and artifact's last-update timestamps in the private migration capability. Phase 12
+requires timezone-aware upload and completion times in order, with completion no later than
+`asOf`, before crediting runtime, coverage or cleanup. Missing timing retains
+`migration-original-execution-time-unavailable`; caller-selected observation times cannot fill
+that gap. The receipt and public projection formats are unchanged. Isolated original-provider
+tests cover historical cutoffs, equal/later cutoffs, equivalent timezone offsets, missing clocks
+and invalid ordering without collecting live evidence.

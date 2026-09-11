@@ -548,6 +548,16 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
             record = values["observation.json"]
             if not isinstance(authority, owner.AuthenticatedMigration) or not authority.matches(record):
                 raise ValueError("migration-authority-mismatch")
+            # Receipt v2 has no observation clock. Only the original owner capability may
+            # supply the selected job/artifact timing; caller selection clocks cannot fill it.
+            completed, uploaded = authority.execution_times
+            if completed is None or uploaded is None:
+                result["blockers"].append("migration-original-execution-time-unavailable")
+                return result
+            completion, upload, cutoff = (dt.datetime.fromisoformat(stamp) for stamp in (completed, uploaded, as_of))
+            if (any(stamp.tzinfo is None for stamp in (completion, upload, cutoff))
+                    or upload > completion or completion > cutoff):
+                raise ValueError("migration-original-execution-after-cutoff-or-invalid")
             summary = migration.summarize(record, "closeout", authenticated_runtime=authority)
             if summary["runtimeObservation"] == "not-authenticated":
                 raise ValueError("migration-owner-not-admitted")
@@ -713,8 +723,12 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                     raise ValueError("original-supervisor-lineage-budget")
                 authority = _AuthenticatedSupervisor(chain, _ORIGINAL_SUPERVISOR)
             result = verify_authenticated(adapter, payloads, as_of, scratch, authority)
-            result["originalProof"] = {"state": "authenticated", "scope": "original-owner-capability-and-exact-selected-subject",
-                                       "blockers": []}
+            if adapter == "migration-observation" and "migration-original-execution-time-unavailable" in result["blockers"]:
+                result["originalProof"] = {"state": "unverified", "scope": "original-migration-execution-time-unavailable",
+                                          "blockers": ["migration-original-execution-time-unavailable"]}
+            else:
+                result["originalProof"] = {"state": "authenticated", "scope": "original-owner-capability-and-exact-selected-subject",
+                                           "blockers": []}
             return result
     except (ValueError, KeyError, TypeError, OSError, OverflowError, ImportError) as error:
         if str(error) == "original-artifact-leumor-authentication-unavailable":

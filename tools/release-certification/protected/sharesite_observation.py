@@ -24,11 +24,17 @@ WORKFLOW = ".github/workflows/stable-1.0-sharesite-runtime-observation.yml"
 
 class AuthenticatedMigration:
     """Private immutable comparison value from original protected runtime authentication."""
-    __slots__ = ("__canonical",)
-    def __init__(self, observation: dict, authority: object = None):
+    __slots__ = ("__canonical", "__job_completed_at", "__artifact_updated_at")
+    def __init__(self, observation: dict, authority: object = None, *,
+                 job_completed_at: str | None = None, artifact_updated_at: str | None = None):
         if authority is not _VERIFIED:
             raise MigrationFailure("migration-authority-not-verified")
         self.__canonical = json.dumps(observation, sort_keys=True, separators=(",", ":"))
+        self.__job_completed_at = job_completed_at
+        self.__artifact_updated_at = artifact_updated_at
+    @property
+    def execution_times(self) -> tuple[str | None, str | None]:
+        return self.__job_completed_at, self.__artifact_updated_at
     def matches(self, value: dict) -> bool:
         return json.dumps(value, sort_keys=True, separators=(",", ":")) == self.__canonical
 
@@ -404,7 +410,8 @@ def authenticate_observation(coordinates: dict, private_root: Path,
                 "runId": coordinates["runId"], "runAttempt": coordinates["runAttempt"],
                 "environment": "stable-1-0-sharesite-runtime-observation"}):
         raise MigrationFailure("migration-authenticated-subject-mismatch")
-    return observation, AuthenticatedMigration(observation, _VERIFIED)
+    return observation, AuthenticatedMigration(observation, _VERIFIED,
+        job_completed_at=artifact.job_completed_at, artifact_updated_at=artifact.artifact_updated_at)
 
 
 def main() -> int:

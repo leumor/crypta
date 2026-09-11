@@ -89,6 +89,8 @@ class OriginalArtifact:
     """Bytes and original coordinates obtained through the protected authenticator."""
     content: bytes
     coordinates: dict[str, Any]
+    job_completed_at: str | None = None
+    artifact_updated_at: str | None = None
 
 
 def validate_coordinates(value: Any) -> dict[str, Any]:
@@ -202,4 +204,4 @@ def authenticate_original(value: Any, private_root: Path) -> OriginalArtifact:
         raise AuthenticationError("original-artifact-byte-mismatch")
     # The transport ZIP is not an attestation subject. Member signatures/attestations are
     # verified after confined selection; reuploading cannot change the original API ownership.
-    return OriginalArtifact(content, selected)
+    return OriginalArtifact(content, selected, job.get("completed_at"), artifact.get("updated_at"))

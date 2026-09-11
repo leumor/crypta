@@ -2946,7 +2946,7 @@
           },
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:3e8997e2517b95f18922ed3e33e86b74416c58b590ae399b8b0e6f31128d28d7",
+            "digest": "sha256:79f8a978e563bcdb2fddf22501054b707df0eeb721c2199785dabb3215872994",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2979,7 +2979,7 @@
           },
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:0a84dadd2a0dc31a48f5696e725a3131864cf8b7c16da954bf1168d5867c6dee",
+            "digest": "sha256:4e22b83f207c5fba6151dff38d69e7dfa1e71ab55908174c7735d3bd6d0230bc",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_runtime_adapters.py"
           },
           {

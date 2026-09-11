@@ -379,7 +379,8 @@ class Phase12RuntimeAdapterTest(unittest.TestCase):
         for classification in ("upstream-writer-synthetic", "operator-owned-private-observation"):
             record = migration_v2(classification)
             inputs = {"observation.json": raw(record)}
-            authority = owner.AuthenticatedMigration(record, owner._VERIFIED)
+            authority = owner.AuthenticatedMigration(record, owner._VERIFIED,
+                job_completed_at=AS_OF, artifact_updated_at=AS_OF)
             with tempfile.TemporaryDirectory() as temporary:
                 result = runtime.verify_authenticated("migration-observation", inputs, AS_OF, Path(temporary).resolve(strict=True), authority)
             self.assertEqual(classification == "operator-owned-private-observation", "p12-297-private" in result["claims"])
@@ -488,6 +489,93 @@ class Phase12RuntimeAdapterTest(unittest.TestCase):
                 owner, "authenticate_observation", side_effect=AssertionError("must not authenticate substituted member")):
             with self.assertRaises(ValueError):
                 runtime.collect_and_verify("migration-observation", inputs, AS_OF, Path(temporary).resolve(strict=True), proof)
+
+    def collect_migration_at(self, cutoff, completed=AS_OF, uploaded=AS_OF, *, retain_time=True):
+        """Exercise both original owner helpers over an isolated authenticated API transport."""
+        owner = runtime._protected("sharesite_observation")
+        import original_artifact_authentication as original
+        record = migration_v2()
+        inputs = {"observation.json": raw(record)}
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, "w") as archive:
+            archive.writestr("sharesite-runtime-observation.json", inputs["observation.json"])
+        blob = content.getvalue()
+        proof = self.proof("migration-observation")
+        coordinates = proof["coordinates"]
+        coordinates.update(artifactSize=len(blob), artifactDigest="sha256:" + hashlib.sha256(blob).hexdigest())
+        prefix = "repos/crypta-network/cryptad"
+        run_path = prefix + "/actions/runs/1/attempts/1"
+        start = "2026-09-10T10:00:00Z"
+        job = {"id": 1, "name": coordinates["jobName"], "head_sha": "a" * 40,
+               "conclusion": "success", "started_at": start, "completed_at": completed}
+        values = {
+            run_path: {"id": 1, "run_attempt": 1, "head_sha": "a" * 40, "path": owner.WORKFLOW,
+                "event": "workflow_dispatch", "status": "completed", "conclusion": "success",
+                "repository": {"full_name": original.REPOSITORY}, "actor": {"login": "leumor"},
+                "triggering_actor": {"login": "leumor"}},
+            run_path + "/jobs?per_page=100": [{"jobs": [job]}],
+            prefix + "/actions/artifacts/1": {"id": 1, "name": coordinates["artifactName"],
+                "digest": coordinates["artifactDigest"], "size_in_bytes": len(blob), "workflow_run": {"id": 1},
+                "expired": False, "created_at": start, "updated_at": uploaded},
+            prefix + "/deployments": [[{"id": 1, "environment": "stable-1-0-sharesite-runtime-observation",
+                "sha": "a" * 40, "creator": {"login": "github-actions[bot]"}}]],
+            prefix + "/deployments/1/statuses?per_page=100": [[{"state": "success", "created_at": start,
+                "log_url": "https://github.com/crypta-network/cryptad/actions/runs/1/job/1"}]],
+            prefix + "/actions/artifacts/1/zip": blob}
+        authenticate = original.authenticate_original
+        def selected_original(*args):
+            verified = authenticate(*args)
+            return verified if retain_time else original.OriginalArtifact(verified.content, verified.coordinates)
+        def get(args, environment, **kwargs):
+            if args[:2] == ["attestation", "verify"]:
+                return [{"verificationResult": {"signature": {"certificate": {"runInvocationURI":
+                    "https://github.com/crypta-network/cryptad/actions/runs/1/attempts/1"}}}}]
+            return values[next(arg for arg in args if arg.startswith(prefix))]
+        with tempfile.TemporaryDirectory() as temporary, \
+             mock.patch.object(original, "_environment", return_value={}), \
+             mock.patch.object(original, "_gh", side_effect=get), \
+             mock.patch.object(original, "authenticate_original", side_effect=selected_original), \
+             mock.patch("socket.socket", side_effect=AssertionError("isolated provider contacted network")):
+            return runtime.collect_and_verify("migration-observation", inputs, cutoff,
+                                              Path(temporary).resolve(strict=True), proof)
+
+    def test_original_migration_execution_must_precede_cutoff(self):
+        for cutoff in ("2000-01-01T00:00:00Z", "2026-09-10T11:59:59Z"):
+            with self.subTest(cutoff=cutoff), self.assertRaisesRegex(ValueError, "phase12-runtime-original-collection-rejected"):
+                self.collect_migration_at(cutoff)
+        for cutoff in (AS_OF, "2026-09-10T14:00:00+02:00", "2026-09-11T00:00:00Z"):
+            with self.subTest(cutoff=cutoff):
+                result = self.collect_migration_at(cutoff)
+                self.assertEqual("authenticated", result["originalProof"]["state"])
+                for claim in result["claimResults"].values():
+                    self.assertEqual("observed", claim["dimensions"]["runtimeExecution"])
+                    self.assertEqual("complete", claim["dimensions"]["cleanup"])
+
+    def test_collection_retains_missing_original_execution_time_as_gap(self):
+        result = self.collect_migration_at(AS_OF, retain_time=False)
+        self.assertEqual("unverified", result["originalProof"]["state"])
+        self.assertIn("migration-original-execution-time-unavailable", result["originalProof"]["blockers"])
+        self.assertNotIn("claimResults", result)
+
+    def test_migration_capability_without_original_clock_cannot_credit_execution(self):
+        owner = runtime._protected("sharesite_observation")
+        record = migration_v2()
+        for completed, uploaded in ((None, None), (AS_OF, None), (None, AS_OF)):
+            authority = owner.AuthenticatedMigration(record, owner._VERIFIED,
+                job_completed_at=completed, artifact_updated_at=uploaded)
+            with tempfile.TemporaryDirectory() as temporary:
+                result = runtime.verify_authenticated("migration-observation", {"observation.json": raw(record)},
+                    AS_OF, Path(temporary).resolve(strict=True), authority)
+            self.assertIn("migration-original-execution-time-unavailable", result["blockers"])
+            self.assertEqual("unverified", result["dimensions"]["originalProvenance"])
+            self.assertNotIn("claimResults", result)
+        for completed, uploaded in (("invalid", AS_OF), ("2026-09-10T12:00:00", AS_OF),
+                                    (AS_OF, "2026-09-11T00:00:00Z")):
+            authority = owner.AuthenticatedMigration(record, owner._VERIFIED,
+                job_completed_at=completed, artifact_updated_at=uploaded)
+            with tempfile.TemporaryDirectory() as temporary, self.assertRaises(ValueError):
+                runtime.verify_authenticated("migration-observation", {"observation.json": raw(record)},
+                    AS_OF, Path(temporary).resolve(strict=True), authority)
 
     def product_coordinates(self, original, family):
         from original_artifact_authentication import PRODUCERS
