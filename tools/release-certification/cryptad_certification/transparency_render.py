@@ -12,7 +12,7 @@ PAGES = (
     ('keys/index.html', 'Governance keys', ('keys', 'keyset', 'governance-keys')),
     ('advisories/index.html', 'Advisories', ('advisory', 'advisories')),
     ('supply-chain/index.html', 'SBOM and reproducibility', ('sbom', 'supply-chain', 'reproducibility')),
-    ('readiness/index.html', 'Readiness and limitations', ('drill', 'repository', 'maintenance-drill', 'implementation', 'repository-status', 'phase12')),
+    ('readiness/index.html', 'Readiness and limitations', ('drill', 'repository', 'maintenance-drill', 'implementation', 'repository-status', 'phase12', 'phase-assessment')),
     ('verify/index.html', 'Verification and help', ()),
 )
 EMPTY = {

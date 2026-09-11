@@ -19,7 +19,7 @@ MANIFEST = 'site-bundle-manifest.json'
 SOURCE = 'data/source-snapshot.json'
 INDEX = 'data/public-index.json'
 FAMILIES = ('release', 'maintenance', 'catalogs', 'reviews', 'keys', 'advisories',
-            'supply-chain', 'sbom', 'reproducibility', 'lifecycle', 'drill', 'repository-status')
+            'supply-chain', 'sbom', 'reproducibility', 'lifecycle', 'drill', 'repository-status', 'phase-assessment')
 LIMITATIONS = [
     'No source inventory is globally complete. Only selected public sources are represented.',
     'Checksums establish local consistency; they do not authenticate the site or original producers.',

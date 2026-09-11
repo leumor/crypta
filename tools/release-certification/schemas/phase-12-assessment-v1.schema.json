@@ -1,0 +1,313 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "phase-12-assessment"
+    },
+    "auditExecuted": {
+      "const": true
+    },
+    "assessmentIntegrity": {
+      "const": "verified-local-consistency"
+    },
+    "phaseDecision": {
+      "enum": [
+        "incomplete",
+        "blocked",
+        "complete-as-of"
+      ]
+    },
+    "phaseComplete": {
+      "type": "boolean"
+    },
+    "asOf": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 32
+    },
+    "evidenceContext": {
+      "const": "repository-local-assessment"
+    },
+    "policyVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "policyDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "toolDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "binding": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "commit",
+        "tree",
+        "toolDigest",
+        "binding"
+      ]
+    },
+    "selectionDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "pr": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "capability": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "dimensions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "implementation": {
+                "enum": [
+                  "implemented",
+                  "missing",
+                  "partial",
+                  "unknown"
+                ]
+              },
+              "localVerification": {
+                "enum": [
+                  "author-reported",
+                  "executed-fail",
+                  "executed-pass",
+                  "not-run",
+                  "skipped"
+                ]
+              },
+              "originalProvenance": {
+                "enum": [
+                  "authenticated",
+                  "invalid",
+                  "not-supplied",
+                  "unverified"
+                ]
+              },
+              "runtimeExecution": {
+                "enum": [
+                  "failed",
+                  "not-observed",
+                  "observed",
+                  "partial"
+                ]
+              },
+              "publication": {
+                "enum": [
+                  "failed",
+                  "not-observed",
+                  "not-performed",
+                  "partial",
+                  "published"
+                ]
+              },
+              "activation": {
+                "enum": [
+                  "activated",
+                  "failed",
+                  "not-observed",
+                  "not-performed",
+                  "partial"
+                ]
+              },
+              "publicObservation": {
+                "enum": [
+                  "failed",
+                  "not-observed",
+                  "observed",
+                  "partial",
+                  "stale"
+                ]
+              },
+              "independentReview": {
+                "enum": [
+                  "accepted",
+                  "not-observed",
+                  "partial",
+                  "pending",
+                  "rejected"
+                ]
+              },
+              "coverage": {
+                "enum": [
+                  "complete",
+                  "missing",
+                  "partial"
+                ]
+              },
+              "cleanup": {
+                "enum": [
+                  "complete",
+                  "failed",
+                  "not-observed",
+                  "partial"
+                ]
+              },
+              "ci": {
+                "enum": [
+                  "executed-fail",
+                  "executed-pass",
+                  "skipped",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "implementation"
+            ]
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "maxItems": 128
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "maxItems": 64
+          },
+          "verification": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "maxItems": 64
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "maxItems": 96
+          }
+        },
+        "required": [
+          "id",
+          "pr",
+          "capability",
+          "dimensions",
+          "blockers",
+          "evidence",
+          "verification",
+          "prerequisites"
+        ]
+      },
+      "maxItems": 96
+    },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 64
+    },
+    "residuals": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 96
+    },
+    "hostedCi": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 16
+    },
+    "previousAssessmentDigest": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "publication": {
+      "const": "not-performed"
+    },
+    "activation": {
+      "const": "not-performed"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "auditExecuted",
+    "assessmentIntegrity",
+    "phaseDecision",
+    "phaseComplete",
+    "asOf",
+    "evidenceContext",
+    "policyVersion",
+    "policyDigest",
+    "source",
+    "selectionDigest",
+    "requirements",
+    "subjects",
+    "residuals",
+    "hostedCi",
+    "history",
+    "previousAssessmentDigest",
+    "publication",
+    "activation"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase-12-assessment-v1.schema.json",
+  "title": "Private assessment envelope. Verification recomputes the exact record from policy and originals; schema or self digest alone is insufficient."
+}
