@@ -182,7 +182,8 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         for app in sorted(metadata.FIRST_PARTY | {"mail-prototype"}):
             built = workspace / "apps" / app / "build"
             (built / "cryptad-app-bundle").mkdir(parents=True)
-            shutil.copyfile(self.root / (app + ".zip"), built / "cryptad-app-bundle" / (app + "-" + build + ".zip"))
+            app_version = "3.1" if app == "site-publisher" else "1"
+            shutil.copyfile(self.root / (app + ".zip"), built / "cryptad-app-bundle" / (app + "-" + app_version + ".zip"))
             shutil.copytree(self.root / app, built / "cryptad-app" / app)
         product_root = self.work / (release + "-app-products")
         signing = json.loads((self.root / "producer-env.json").read_bytes())
@@ -190,6 +191,9 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
             handoff = app_products.produce_app_products(workspace, product_root, release_id=release,
                 build_version=build, source_commit=source, include_mail=True,
                 artifact_base="https://example.invalid/synthetic-artifacts", exporter=self.tool / "bin/crypta-app", java_home=self.java)
+        site = next(row for row in handoff["subjects"] if row["appId"] == "site-publisher")
+        self.assertEqual("3.1", site["signedProjection"]["appVersion"])
+        self.assertEqual(build, handoff["buildVersion"])
         handoff_digest = products.file_digest(product_root / app_products.HANDOFF_FILE)
         maintenance_origin = self.artifact("maintenance-app-products", {
             path.relative_to(product_root).as_posix(): path.read_bytes() for path in product_root.rglob("*") if path.is_file()}, source)

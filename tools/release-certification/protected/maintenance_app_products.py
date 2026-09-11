@@ -35,6 +35,21 @@ def _invoke(exporter: Path, args: list[str], environment: dict) -> None:
         raise RuntimeMetadataError("maintenance-app-native-production-failed") from None
 
 
+def packaged_bundle(workspace: Path, app: str) -> Path:
+    """Select the sole package output; the signed manifest owns the app version."""
+    directory = workspace / "apps" / app / "build/cryptad-app-bundle"
+    if any(path.is_symlink() for path in (directory, *directory.parents)):
+        raise RuntimeMetadataError("maintenance-app-package-path-invalid")
+    if not directory.is_dir():
+        raise RuntimeMetadataError("maintenance-app-package-missing")
+    # A clean build must have exactly one output, never a guessed newest/stale version.
+    members = list(directory.iterdir())
+    if len(members) != 1 or not re.fullmatch(re.escape(app) + r"-.+\.zip", members[0].name):
+        raise RuntimeMetadataError("maintenance-app-package-output-ambiguous")
+    _regular(members[0], 512 * 1024 * 1024)
+    return members[0]
+
+
 def produce_app_products(workspace: Path, output: Path, *, release_id: str, build_version: str,
                          source_commit: str, include_mail: bool, artifact_base: str,
                          exporter: Path, java_home: Path) -> dict:
@@ -83,7 +98,7 @@ def produce_app_products(workspace: Path, output: Path, *, release_id: str, buil
             (output / "apps").mkdir()
             (output / "catalogs").mkdir()
             for app in ids:
-                bundle = workspace / "apps" / app / "build/cryptad-app-bundle" / f"{app}-{build_version}.zip"
+                bundle = packaged_bundle(workspace, app)
                 stage = workspace / "apps" / app / "build/cryptad-app" / app
                 payload = _regular(bundle, 512 * 1024 * 1024)
                 (output / "apps" / f"{app}.zip").write_bytes(payload)

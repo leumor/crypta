@@ -1865,6 +1865,10 @@ jobs:
           git diff-index --quiet --cached HEAD --
           git diff-files --quiet --
 
+      - name: Prepare bounded export sandbox
+        if: inputs.operation == 'freeze-candidate'
+        uses: ./.github/actions/setup-packaged-export-sandbox
+
       - name: Install exact protected runtime cohort selection
         if: inputs.operation == 'freeze-candidate'
         run: |

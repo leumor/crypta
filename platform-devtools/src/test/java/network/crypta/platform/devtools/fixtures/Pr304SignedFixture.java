@@ -101,7 +101,7 @@ public final class Pr304SignedFixture {
           "--name",
           "Synthetic subject",
           "--version",
-          "1",
+          id.equals("site-publisher") ? "3.1" : "1",
           "--permission",
           "queue.read");
       if (id.equals("mail-prototype")) {

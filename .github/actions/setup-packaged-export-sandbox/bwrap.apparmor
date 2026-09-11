@@ -1,4 +1,4 @@
-# Disposable ordinary CI runner only: allow the system Bubblewrap executable to
+# Disposable hosted CI/freeze runner only: allow the system Bubblewrap executable to
 # create the namespaces used by the packaged exporter. Bubblewrap still applies
 # --unshare-all, drops capabilities for the child, and mounts inputs read-only.
 # Do not disable AppArmor or its system-wide unprivileged-userns restriction.

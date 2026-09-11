@@ -1,0 +1,24 @@
+name: Set up packaged exporter sandbox
+description: Provision and verify unprivileged package export isolation on disposable Ubuntu runners.
+runs:
+  using: composite
+  steps:
+    - name: Install bounded export sandbox
+      shell: bash
+      env:
+        SANDBOX_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y bubblewrap apparmor
+        sudo install -o root -g root -m 0644 "$SANDBOX_ACTION_PATH/bwrap.apparmor" /etc/apparmor.d/cryptad-ci-bwrap
+        sudo apparmor_parser --replace /etc/apparmor.d/cryptad-ci-bwrap
+    - name: Check unprivileged export sandbox
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -x /usr/bin/prlimit
+        /usr/bin/bwrap --version
+        /usr/bin/bwrap --unshare-all --die-with-parent --new-session \
+          --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64 \
+          --proc /proc --dev /dev --size 16777216 --tmpfs /tmp -- /usr/bin/true

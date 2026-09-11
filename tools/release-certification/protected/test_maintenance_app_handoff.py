@@ -109,5 +109,44 @@ class MaintenanceAppHandoffTest(unittest.TestCase):
             projection._strict_json(b'{"schemaVersion":2,"schemaVersion":3}')
 
 
+class PackagedBundleSelectionTest(unittest.TestCase):
+    def test_independent_app_version_selects_exact_package(self):
+        from maintenance_app_products import packaged_bundle
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "apps/site-publisher/build/cryptad-app-bundle/site-publisher-3.1.zip"
+            package.parent.mkdir(parents=True)
+            package.write_bytes(b"synthetic package")
+            self.assertEqual(package, packaged_bundle(root, "site-publisher"))
+
+    def test_missing_ambiguous_or_unexpected_outputs_reject(self):
+        from maintenance_app_products import packaged_bundle
+        from maintenance_runtime_metadata import RuntimeMetadataError
+        for names in ((), ("site-publisher-3.1.zip", "site-publisher-300.zip"), ("other-app-3.1.zip",)):
+            with self.subTest(names=names), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                packages = root / "apps/site-publisher/build/cryptad-app-bundle"
+                packages.mkdir(parents=True)
+                for name in names:
+                    (packages / name).write_bytes(b"synthetic package")
+                with self.assertRaisesRegex(RuntimeMetadataError, "package-output-ambiguous"):
+                    packaged_bundle(root, "site-publisher")
+
+    def test_linked_or_hardlinked_package_rejects(self):
+        import os
+        from maintenance_app_products import packaged_bundle
+        from maintenance_runtime_metadata import RuntimeMetadataError
+        for link in (os.symlink, os.link):
+            with self.subTest(link=link.__name__), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                original = root / "original.zip"
+                original.write_bytes(b"synthetic package")
+                package = root / "apps/site-publisher/build/cryptad-app-bundle/site-publisher-3.1.zip"
+                package.parent.mkdir(parents=True)
+                link(original, package)
+                with self.assertRaises(RuntimeMetadataError):
+                    packaged_bundle(root, "site-publisher")
+
+
 if __name__ == "__main__":
     unittest.main()

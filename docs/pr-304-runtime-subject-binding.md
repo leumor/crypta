@@ -213,8 +213,8 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:303a7c279c6ca6a830ad2281fc3d3c4a86509daaae9ae9cd08eccfc8b6e3b30d` |
-| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ed5ca0e190e45c5e377f10794832e4eefb1290dfe928ab45488a1d02b9194ad7` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:84e654c7a3b3349ef83dc2f6bd61fed98f9a38ed6c000099d61291a57aff9833` |
+| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:bd0842c1f27cecf1a636046af3292d17283b5335a824ec4f627aaf654fd45d66` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
 Both assessments report `phaseDecision=incomplete`, `phaseComplete=false` and 47 unresolved
@@ -266,11 +266,12 @@ rejects. Its build command now requests only `:platform-devtools:installDist`, w
 graph produces the required API JAR. The test prerequisite diagnostic uses the same command.
 
 The hosted Ubuntu runner also denied Bubblewrap's isolated loopback setup (`RTM_NEWADDR`).
-An early no-product sandbox probe reproduces this prerequisite failure directly. Ordinary CI
-now loads a checked-in AppArmor user-namespace permission attached only to `/usr/bin/bwrap`.
+An early no-product sandbox probe reproduces this prerequisite failure directly. The shared disposable-runner setup
+loads a checked-in AppArmor user-namespace permission attached only to `/usr/bin/bwrap`.
 AppArmor and the system-wide user-namespace restriction remain enabled; the exporter retains
 `--unshare-all`, read-only input mounts, bounded temporary storage and execution limits. This
-runner setup is not installed on protected or live systems by this change.
+runner setup now also runs prospectively in the freeze job; no protected workflow or live
+system was operated while implementing it.
 
 A subsequent coverage pass added ten Java regression cases: selected-target admission below the
 app's minimum, incomplete/malformed projection targets, unexpected exporter arguments, missing or
@@ -278,3 +279,11 @@ malformed historical packages, absent historical API classes despite a populated
 and manifest-supplied external classes. The three affected test classes passed 47 tests with no
 failures, errors or skips. Production Java is unchanged. The successor policy refreshes the existing
 exporter integration-test byte pin without changing scope or treating these tests as runtime receipts.
+
+Review follow-up: app-product preparation selects each app's unique packaging output, so the
+Site Publisher `3.1` app version remains independent of the daemon build number. Missing,
+ambiguous and linked package inputs reject; native signed manifest/catalog verification remains
+mandatory. Ordinary integration and `freeze-candidate` now share
+`.github/actions/setup-packaged-export-sandbox`, provisioning Bubblewrap and its scoped AppArmor
+profile and testing isolation before any freeze metadata is sealed. The signed integration fixture
+uses the independent Site Publisher version to exercise the actual producer.
