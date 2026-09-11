@@ -214,7 +214,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
 | Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:9a61b4b20646f1738c0cf0878580b37e1a2eb4f1d16c692144055e484c2f846e` |
-| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:68e6accd770bea03688cd1d417732cd4fab4c3490f82107202199e2994be194b` |
+| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:b7264903947b87f06feab39c0c4fdaf7ca8ea4a2d0ad0c7149fa37c431379d2d` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
 Both assessments report `phaseDecision=incomplete`, `phaseComplete=false` and 47 unresolved
@@ -342,3 +342,9 @@ differ from the separately attested product source. No universal SHA equality is
 The real producer/exporter integration rejects substituted release, build and source identities
 without emitting a frozen artifact or retaining runtime metadata; isolated test authorities do
 not create operational receipts. Existing historical formats keep their original meaning.
+
+Normal maintenance and security-hotfix candidate authentication now includes the authenticated
+predecessor source commit in its default freeze-observation mapping. Explicit follow-up mappings
+remain authoritative. The caller regression fails for both normal release classes without this
+fix; v1 remains compatible and v2 still rejects a substituted predecessor source independently
+of its runtime-metadata gate. No schema, historical input or acceptance scope is changed.

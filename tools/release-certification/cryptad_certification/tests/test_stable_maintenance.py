@@ -1397,6 +1397,39 @@ class StableMaintenanceRegistrationTest(unittest.TestCase):
                 without_dmg, "security-hotfix", incomplete_scope
             )
 
+    def test_candidate_authentication_passes_exact_predecessor_to_freeze_verifier(self) -> None:
+        for release_class in ("maintenance", "security-hotfix"):
+            for follow_up in (False, True):
+                with self.subTest(release_class=release_class, follow_up=follow_up), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory).resolve()
+                    context = _context(root)
+                    context.manifest.policies["releaseClass"] = release_class
+                    candidate = _candidate_input(release_class)
+                    _, predecessor = _ga_and_predecessor()
+                    subject = root / "synthetic-subject"
+                    subject.write_bytes(b"synthetic candidate input")
+                    loaded = LoadedJson("maintenanceCandidate", subject, candidate, file_digest(subject))
+                    expected = {
+                        "sourceCommit": predecessor.source_commit,
+                        "releaseId": predecessor.release_id,
+                        "buildVersion": predecessor.build_version,
+                        "productDigest": predecessor.product_digest,
+                        "baselineDigest": predecessor.baseline_digest,
+                        "publicationReceiptDigest": predecessor.receipt_digest,
+                        "latestPublishedPointerDigest": predecessor.latest_pointer_digest,
+                    }
+                    override = dict(expected, sourceCommit="d" * 40) if follow_up else None
+                    # Isolate original input acquisition and the receiving verifier. Exercise the
+                    # actual authenticate_candidate caller; this is not an eligibility fixture.
+                    with mock.patch.object(core, "load_json_input", return_value=loaded), \
+                            mock.patch.object(core, "configured_path", return_value=subject), \
+                            mock.patch.object(core, "_asset_root", return_value=root), \
+                            mock.patch.object(core, "_asset_path", return_value=subject), \
+                            mock.patch.object(core, "_candidate_freeze_errors", return_value=[]) as verify:
+                        core.authenticate_candidate(context, predecessor, {}, ValidationState(),
+                            freeze_predecessor_observation=override)
+                    self.assertEqual(override if follow_up else expected, verify.call_args.args[3])
+
     def test_candidate_freeze_binds_one_build_assets_and_predecessor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1545,6 +1578,25 @@ class StableMaintenanceRegistrationTest(unittest.TestCase):
 
             self.assertEqual(validate_schema(freeze, CANDIDATE_FREEZE_SCHEMA), [])
             self.assertEqual(errors, [])
+            # v1 has no predecessor source binding. v2 must accept the authenticated SHA and
+            # reject substitution independently of its separate runtime-metadata gate.
+            for source_commit in (predecessor.source_commit, "d" * 40):
+                prospective = copy.deepcopy(freeze)
+                prospective["schemaVersion"] = 2
+                prospective["predecessorObservation"]["sourceCommit"] = source_commit
+                prospective["runtimeMetadata"] = {"fileName": "runtime-subjects.json",
+                    "digest": _digest("8"), "sizeBytes": 2}
+                prospective_path = root / "prospective-freeze.json"
+                write_json(prospective_path, prospective)
+                prospective_candidate = dict(candidate, candidateFreezeDigest=file_digest(prospective_path))
+                prospective_loaded = LoadedJson("maintenanceCandidateFreeze", prospective_path,
+                    prospective, file_digest(prospective_path))
+                prospective_errors = _candidate_freeze_errors(context, prospective_loaded,
+                    prospective_candidate, predecessor, expected_assets, _digest("7"))
+                expected_errors = ["candidate freeze runtime metadata is missing or does not bind exact inputs"]
+                if source_commit != predecessor.source_commit:
+                    expected_errors.append("candidate freeze used a stale or substituted predecessor observation")
+                self.assertEqual(expected_errors, prospective_errors)
             unverified_catalog = copy.deepcopy(freeze)
             unverified_catalog["stableCatalogVerification"][
                 "cryptographicVerificationStatus"

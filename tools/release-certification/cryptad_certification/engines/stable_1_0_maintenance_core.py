@@ -2249,6 +2249,7 @@ def authenticate_candidate(
         ],
     ]
     expected_freeze_predecessor = freeze_predecessor_observation or {
+        "sourceCommit": predecessor.source_commit,
         "releaseId": predecessor.release_id,
         "buildVersion": predecessor.build_version,
         "productDigest": predecessor.product_digest,
