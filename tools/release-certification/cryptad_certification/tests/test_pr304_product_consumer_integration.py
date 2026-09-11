@@ -65,7 +65,7 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         cls.tool = ROOT / "platform-devtools/build/install/crypta-app"
         cls.api_jars = sorted((ROOT / "platform-api/build/libs").glob("platform-api-*.jar"))
         if not (cls.tool / "bin/crypta-app").is_file() or not cls.api_jars or not shutil.which("javac"):
-            raise unittest.SkipTest("requires Java 25 and ./gradlew :platform-devtools:installDist :platform-api:jar")
+            raise unittest.SkipTest("requires Java 25 and ./gradlew :platform-devtools:installDist")
         if not Path("/usr/bin/bwrap").is_file():
             raise unittest.SkipTest("requires the production bubblewrap package-export sandbox")
         cls.temporary = tempfile.TemporaryDirectory(prefix="pr304-synthetic-")

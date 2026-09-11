@@ -210,7 +210,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:65ab7de785ed0f454cc1e56631850e63148a88853891f98f8b0eff0122cf4994` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:b9f3f21c773af3757d7bb90380ad4e6574d7d704cdda466efe9c17743a287c98` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ed5ca0e190e45c5e377f10794832e4eefb1290dfe928ab45488a1d02b9194ad7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
@@ -252,3 +252,12 @@ Both packaged exporters use Java 25 package-private static entry points; the his
 exporter also uses an unnamed catch parameter. Their stdout JSON and the historical exporter's
 fixed stderr failure code remain protocol output with method-scoped S106 suppressions. The actual subprocess export integration passed after this
 cleanup, and file-level SonarLint reported no findings.
+
+The first PR-304 hosted integration attempt failed during JDK setup because its Java version
+selector was not accepted by `setup-java`. The ordinary CI job now uses the supported Java 25
+selector shared by the other CI jobs. The successor policy refreshes only the affected workflow
+and test byte pins; acceptance scope and historical policy bytes are unchanged. Protected release JDK
+selections are outside this correction. Hosted execution must be verified against the new head.
+The same job also requested `:platform-api:jar` explicitly, which the repository build guard
+rejects. Its build command now requests only `:platform-devtools:installDist`, whose dependency
+graph produces the required API JAR. The test prerequisite diagnostic uses the same command.

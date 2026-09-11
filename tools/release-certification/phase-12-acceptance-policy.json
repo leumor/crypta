@@ -2052,7 +2052,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:dd1e42b20c43488b668c8642eccacd18bc73d43ed5eb5012b30a6e869c59274d",
+            "digest": "sha256:65368bddf6f57b6b967bf26e59198bc3a47c78b146769fc5e6ba5d8dbdaf5020",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py"
           },
           {
@@ -2077,7 +2077,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:7dcd4aede7f9f29c2c8d05d7fd129b06bb170f7c21bf23e63902ce689604dece",
+            "digest": "sha256:b8d520b7fc7163960463de0256a1d47edffca8b7dce00f44f9e169481b44d601",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2292,7 +2292,7 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:dd1e42b20c43488b668c8642eccacd18bc73d43ed5eb5012b30a6e869c59274d",
+            "digest": "sha256:65368bddf6f57b6b967bf26e59198bc3a47c78b146769fc5e6ba5d8dbdaf5020",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py"
           },
           {
@@ -3174,7 +3174,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:7dcd4aede7f9f29c2c8d05d7fd129b06bb170f7c21bf23e63902ce689604dece",
+            "digest": "sha256:b8d520b7fc7163960463de0256a1d47edffca8b7dce00f44f9e169481b44d601",
             "path": ".github/workflows/ci.yml"
           },
           {
