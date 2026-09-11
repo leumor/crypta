@@ -435,4 +435,3 @@ class StableMaintenanceCandidateFreezeTest(unittest.TestCase):
                     _digest("7"),
                 )
             )
-
