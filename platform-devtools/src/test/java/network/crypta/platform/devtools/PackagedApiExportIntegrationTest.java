@@ -6,8 +6,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 import javax.tools.ToolProvider;
 import network.crypta.platform.api.PackagedApiExport;
 import network.crypta.platform.api.PlatformApiContract;
@@ -51,6 +53,89 @@ class PackagedApiExportIntegrationTest {
       }
     }
     assertEquals(original, execute(historical, true));
+  }
+
+  @Test
+  void export_whenUnexpectedArgumentProvided_expectNoSnapshot() throws Exception {
+    Path jar = packageJar(false);
+
+    ExportResult result = invoke(jar, false, "unexpected");
+
+    assertNotEquals(0, result.exitCode());
+    assertEquals("", result.stdout());
+    assertTrue(result.stderr().contains("packaged_api_export_arguments_rejected"));
+  }
+
+  @Test
+  void historicalExport_whenNoArgumentProvided_expectBoundedFailure() throws Exception {
+    Path jar = packageJar(false);
+
+    ExportResult result = invoke(jar, true);
+
+    assertHistoricalFailure(result);
+  }
+
+  @Test
+  void historicalExport_whenExtraArgumentProvided_expectBoundedFailure() throws Exception {
+    Path jar = packageJar(false);
+
+    ExportResult result = invoke(jar, true, jar.toString(), "unexpected");
+
+    assertHistoricalFailure(result);
+  }
+
+  @Test
+  void historicalExport_whenPackageMissing_expectNoPrivatePathInFailure() throws Exception {
+    Path missing = temporary.resolve("private-original-package.jar");
+
+    ExportResult result = invoke(missing, true, missing.toString());
+
+    assertHistoricalFailure(result);
+  }
+
+  @Test
+  void historicalExport_whenArchiveMalformed_expectBoundedFailure() throws Exception {
+    Path jar = temporary.resolve("malformed.jar");
+    Files.writeString(jar, "private archive data");
+
+    ExportResult result = invoke(jar, true, jar.toString());
+
+    assertHistoricalFailure(result);
+  }
+
+  @Test
+  void historicalExport_whenApiClassesAbsent_expectNoFallbackToHelperClasspath() throws Exception {
+    Path jar = temporary.resolve("empty.jar");
+    try (var output = new JarOutputStream(Files.newOutputStream(jar))) {
+      output.finish();
+    }
+
+    ExportResult result = invoke(jar, true, jar.toString());
+
+    assertHistoricalFailure(result);
+  }
+
+  @Test
+  void historicalExport_whenManifestSelectsExternalClasses_expectBoundedFailure() throws Exception {
+    Path dependency = packageJar(false);
+    Path jar = temporary.resolve("external-classpath.jar");
+    var manifest = new Manifest();
+    manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+    manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, dependency.toUri().toString());
+    try (var output = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
+      output.finish();
+    }
+
+    ExportResult result = invoke(jar, true, jar.toString());
+
+    assertHistoricalFailure(result);
+  }
+
+  private static void assertHistoricalFailure(ExportResult result) {
+    assertEquals(1, result.exitCode());
+    assertEquals("", result.stdout());
+    assertEquals(
+        "historical_package_export_abi_unsupported" + System.lineSeparator(), result.stderr());
   }
 
   private Path packageJar(boolean changed) throws Exception {
@@ -120,6 +205,15 @@ class PackagedApiExportIntegrationTest {
   }
 
   private String execute(Path jar, boolean historical) throws Exception {
+    ExportResult result =
+        invoke(jar, historical, historical ? new String[] {jar.toString()} : new String[0]);
+    assertEquals(0, result.exitCode(), result.stderr());
+    return result.stdout();
+  }
+
+  private record ExportResult(int exitCode, String stdout, String stderr) {}
+
+  private ExportResult invoke(Path jar, boolean historical, String... arguments) throws Exception {
     var command =
         new ArrayList<>(
             List.of(Path.of(System.getProperty("java.home"), "bin/java").toString(), "-cp"));
@@ -142,11 +236,11 @@ class PackagedApiExportIntegrationTest {
               .toString();
       command.add(helper + File.pathSeparator + api);
       command.add(HistoricalPackagedApiExport.class.getName());
-      command.add(jar.toString());
     } else {
       command.add(jar.toString());
       command.add(PackagedApiExport.class.getName());
     }
+    command.addAll(List.of(arguments));
     Path stdout = Files.createTempFile(temporary, "export-", ".json");
     Path stderr = Files.createTempFile(temporary, "export-", ".error");
     var builder =
@@ -155,9 +249,10 @@ class PackagedApiExportIntegrationTest {
     Process process = builder.start();
     try {
       assertTrue(process.waitFor(30, TimeUnit.SECONDS));
-      assertEquals(0, process.exitValue(), Files.readString(stderr));
       assertTrue(Files.size(stdout) < 8 * 1024 * 1024);
-      return Files.readString(stdout);
+      assertTrue(Files.size(stderr) < 8 * 1024 * 1024);
+      return new ExportResult(
+          process.exitValue(), Files.readString(stdout), Files.readString(stderr));
     } finally {
       process.destroyForcibly();
     }

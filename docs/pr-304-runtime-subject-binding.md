@@ -47,6 +47,9 @@ receipt. Stable seven and experimental Mail remain separately cataloged.
 
 The two app operations are `produce-app-products` (Stable seven) and
 `produce-experimental-app-products` (Stable seven plus separately cataloged experimental Mail).
+Both app-product operations omit `expected_predecessor_pointer_digest` and reject a supplied
+value: no daemon predecessor is authenticated by app-product preparation. Freeze, authorization
+and publication operations still require an exact SHA-256 predecessor pointer digest.
 They use the existing protected maintenance evidence environment. Set
 `CRYPTAD_MAINTENANCE_APP_ARTIFACT_BASE` to the owner-approved artifact URL base and retain the
 existing app-signing and `STABLE_CATALOG_SIGNING_*` environment secrets only in the producing job.
@@ -210,7 +213,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:f1e270f2196d516ed1acc13196d699d01360ef8688626e344bb90afa05a86695` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:303a7c279c6ca6a830ad2281fc3d3c4a86509daaae9ae9cd08eccfc8b6e3b30d` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ed5ca0e190e45c5e377f10794832e4eefb1290dfe928ab45488a1d02b9194ad7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
@@ -268,3 +271,10 @@ now loads a checked-in AppArmor user-namespace permission attached only to `/usr
 AppArmor and the system-wide user-namespace restriction remain enabled; the exporter retains
 `--unshare-all`, read-only input mounts, bounded temporary storage and execution limits. This
 runner setup is not installed on protected or live systems by this change.
+
+A subsequent coverage pass added ten Java regression cases: selected-target admission below the
+app's minimum, incomplete/malformed projection targets, unexpected exporter arguments, missing or
+malformed historical packages, absent historical API classes despite a populated helper classpath,
+and manifest-supplied external classes. The three affected test classes passed 47 tests with no
+failures, errors or skips. Production Java is unchanged. The successor policy refreshes the existing
+exporter integration-test byte pin without changing scope or treating these tests as runtime receipts.

@@ -2034,7 +2034,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:f25f63aeaca975596a9384bf5d4adcfde27eeb578b980dc2b634cdd7b3587533",
+            "digest": "sha256:3ef5970a12e6e0c9e4213175a5b484c179403e780a9b64ec7ab6ed21ea17aba7",
             "path": ".github/workflows/stable-1.0-maintenance-release.yml"
           },
           {
@@ -2072,7 +2072,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:b65e8ca36bade354aa28b0c2360ea7667c63b4194577336be95bcd2db252415a",
+            "digest": "sha256:3240ded93f57bb6c3d720ee90dd2e7b7f752dc821cf9d484d30b8f4e89042bd7",
             "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/PackagedApiExportIntegrationTest.java"
           },
           {

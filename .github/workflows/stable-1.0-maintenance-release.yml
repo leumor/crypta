@@ -25,8 +25,9 @@ on:
         required: true
         type: string
       expected_predecessor_pointer_digest:
-        description: SHA-256 of the latest-published pointer observed when authorization was prepared.
-        required: true
+        description: Required for freeze, authorization and publish; omit for app-product preparation.
+        required: false
+        default: ''
         type: string
       protected_inputs_run_id:
         description: Protected phase input run, or final PR-290 verification run on a post-publication publish retry.
@@ -225,7 +226,12 @@ jobs:
             echo "::error::candidate_commit must be an exact lowercase commit."
             exit 1
           fi
-          if [[ ! "$INPUT_POINTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          if [[ "$INPUT_OPERATION" == produce-app-products || "$INPUT_OPERATION" == produce-experimental-app-products ]]; then
+            if [[ -n "$INPUT_POINTER_DIGEST" ]]; then
+              echo "::error::App product preparation does not accept a predecessor pointer digest."
+              exit 1
+            fi
+          elif [[ ! "$INPUT_POINTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::The authorized predecessor pointer digest is malformed."
             exit 1
           fi

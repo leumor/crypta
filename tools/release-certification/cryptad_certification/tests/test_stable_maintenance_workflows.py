@@ -305,6 +305,84 @@ def _activation_candidate_freeze(frozen_at: str) -> dict[str, object]:
 
 
 class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
+    def _run_dispatch_identity(self, operation, pointer, release_class="maintenance"):
+        workflow = RELEASE.read_text(encoding="utf-8")
+        step = workflow.split("      - name: Validate integer build, class, branch, commit, and clean source\n", 1)[1]
+        step = step.split("\n      - name:", 1)[0]
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        environment = {name: "" for name in re.findall(r"\bINPUT_[A-Z0-9_]+\b", step)}
+        digest = "sha256:" + "b" * 64
+        branch = ("release" if release_class == "maintenance" else "hotfix") + "/300"
+        environment.update(INPUT_OPERATION=operation, INPUT_POINTER_DIGEST=pointer,
+            INPUT_RELEASE_ID="synthetic-300", INPUT_BUILD_VERSION="300",
+            INPUT_RELEASE_CLASS=release_class, INPUT_CANDIDATE_COMMIT="a" * 40,
+            GITHUB_REF="refs/heads/" + branch, GITHUB_REPOSITORY="synthetic/repository")
+        def artifact(prefix, name="synthetic-artifact"):
+            environment.update({prefix + "_RUN_ID": "1", prefix + "_ARTIFACT_NAME": name,
+                                prefix + "_ARTIFACT_DIGEST": digest})
+        if operation not in ("produce-app-products", "produce-experimental-app-products"):
+            artifact("INPUT_LIFECYCLE_BACKEND", "stable-1.0-support-lifecycle-publication-backend")
+            if operation != "publish":
+                artifact("INPUT_PROTECTED")
+            if operation == "freeze-candidate":
+                artifact("INPUT_WINDOWS")
+                environment["INPUT_WINDOWS_EXE_SHA256"] = digest
+            elif operation == "prepare-authorization":
+                artifact("INPUT_FROZEN")
+            elif operation == "validate-authorization":
+                artifact("INPUT_PREPARED")
+            elif operation == "publish":
+                artifact("INPUT_VALIDATED")
+                artifact("INPUT_BACKEND")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            commands = {
+                "git": '#!/bin/bash\ncase "$1" in rev-parse) echo "$INPUT_CANDIDATE_COMMIT";; status) exit 0;; *) exit 99;; esac\n',
+                "gh": '#!/bin/bash\necho "$INPUT_CANDIDATE_COMMIT"\n',
+                "gradlew": '#!/bin/bash\necho 300\n',
+            }
+            for name, content in commands.items():
+                path = root / name
+                path.write_text(content)
+                path.chmod(0o700)
+            output = root / "output"
+            completed = subprocess.run(["bash", "-c", script], cwd=root,
+                env={**environment, "PATH": str(root) + os.pathsep + os.defpath,
+                     "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, timeout=10)
+            return completed, output.read_text() if output.exists() else ""
+
+    def test_app_product_dispatch_omits_predecessor_pointer(self):
+        declaration = RELEASE.read_text().split("      expected_predecessor_pointer_digest:\n", 1)[1].split("      protected_inputs_run_id:", 1)[0]
+        self.assertIn("required: false", declaration)
+        for operation in ("produce-app-products", "produce-experimental-app-products"):
+            for release_class in ("maintenance", "security-hotfix"):
+                with self.subTest(operation=operation, release_class=release_class):
+                    result, output = self._run_dispatch_identity(operation, "", release_class)
+                    self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                    branch = "release" if release_class == "maintenance" else "hotfix"
+                    self.assertEqual(f"expected_branch={branch}/300\n", output)
+
+    def test_app_product_dispatch_rejects_unconsumed_predecessor_pointer(self):
+        for operation in ("produce-app-products", "produce-experimental-app-products"):
+            with self.subTest(operation=operation):
+                result, output = self._run_dispatch_identity(operation, "sha256:" + "b" * 64)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("does not accept a predecessor pointer digest", result.stdout)
+                self.assertEqual("", output)
+
+    def test_later_dispatch_operations_still_require_exact_predecessor_pointer(self):
+        for operation in ("freeze-candidate", "prepare-authorization", "validate-authorization", "publish"):
+            for pointer in ("", "malformed", "sha256:" + "b" * 64):
+                with self.subTest(operation=operation, pointer=pointer):
+                    result, output = self._run_dispatch_identity(operation, pointer)
+                    if pointer == "sha256:" + "b" * 64:
+                        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                        self.assertEqual("expected_branch=release/300\n", output)
+                    else:
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertIn("predecessor pointer digest is malformed", result.stdout)
+                        self.assertEqual("", output)
+
     def test_supply_chain_handoff_activation_is_prospective_and_fail_closed(
         self,
     ) -> None:

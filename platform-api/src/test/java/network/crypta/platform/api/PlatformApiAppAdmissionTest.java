@@ -17,6 +17,36 @@ class PlatformApiAppAdmissionTest {
   private static final List<String> QUEUE_READ_PERMISSIONS = List.of("queue.read");
 
   @Test
+  void requireCompatibility_whenSelectedTargetBelowMinimum_expectNoCurrentContractFallback() {
+    var current = PlatformApiContract.current();
+    var selected =
+        new PlatformApiContract(
+            current.apiVersion(),
+            25,
+            current.generatedBy(),
+            current.stabilityPolicy(),
+            current.capabilities(),
+            current.endpoints());
+    var registry = PlatformApiBaselineRegistry.current();
+    var metadata =
+        new AppApiCompatibilityMetadata(
+            26, 26, List.of(), TargetStability.EXPERIMENTAL, true, false, false);
+    List<String> permissions = List.of();
+
+    assertDoesNotThrow(
+        () -> PlatformApiAppAdmission.requireCurrentCompatibility(metadata, permissions));
+    var exception =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                PlatformApiAppAdmission.requireCompatibility(
+                    metadata, permissions, selected, registry));
+
+    assertEquals(ERROR_INCOMPATIBLE_CONTRACT, exception.errorCode());
+    assertEquals(409, exception.statusCode());
+  }
+
+  @Test
   void requireCompatibility_whenTestedMaximumExceeded_expectOrdinaryRuntimeWarningAllowed() {
     var metadata =
         new AppApiCompatibilityMetadata(
