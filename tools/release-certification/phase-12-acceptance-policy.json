@@ -2047,7 +2047,7 @@
         "testEvidence": [
           {
             "assertion": "Tests derive required cases/directions and one qualifying epoch, rejecting duplicates, time/coverage substitutions and unauthenticated original claims. This is audited test source, not an executed test claim.",
-            "digest": "sha256:048d84e0cc8b7f991d0783074bae4e4ae0eb7834d73e4d5158e915231202d75a",
+            "digest": "sha256:badcaa15d3dd857ab18468b34bc46106f7858357b04eba8e89a9ea0be659573e",
             "path": "tools/release-certification/cryptad_certification/tests/test_cross_version_product_admission.py"
           },
           {

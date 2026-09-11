@@ -213,7 +213,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
-| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:52e8bb83ea32ff185b849c6591c9ea007ea5ab5aca026a60d94b6be0b18394f4` |
+| Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:4faa20a8cf51c03a87b4a5ecc6f6941d468ea9a3504e49c336fe953f5db654ac` |
 | Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:ddf43ed72bf32096a63217e319d459ba04e443c6d683729ac7a451fcc1ee74f7` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
@@ -302,3 +302,9 @@ failures (missing method, throwing factory, initialization error and wrong seria
 type). Both production exporter classes are unchanged. All 16 tests in the owning exporter
 integration class passed locally with no skips; the symlink case is scoped to Linux/macOS.
 These are local tests, not protected release receipts or a measured coverage percentage.
+
+The macOS CI fixture correction resolves the temporary root before constructing authenticated
+product paths. A symlinked temporary root reproduced the original package-substitution rejection
+on Linux; after correction all 23 product-admission tests passed under the same setup. Production
+symlink rejection remains unchanged. The successor policy refreshes only that test's existing
+source digest; requirement scope and historical inputs are unchanged.

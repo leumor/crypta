@@ -38,7 +38,9 @@ class CrossVersionProductAdmissionTest(unittest.TestCase):
         plan = fixture_plan()
         contract = {"contractVersion": plan["nodes"][0]["contractVersion"], "capabilities": []}
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            # macOS temporary roots can traverse /var -> /private/var. Select the canonical
+            # fixture path; production admission must continue rejecting symlinked parents.
+            root = Path(temporary).resolve()
             rows, private = {}, {"nodes": {}}
             for node in plan["nodes"]:
                 role = node["role"]
