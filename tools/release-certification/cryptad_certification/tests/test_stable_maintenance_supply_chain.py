@@ -1087,6 +1087,7 @@ class StableMaintenanceSupplyChainTest(unittest.TestCase):
             selftest.SUITE_MODULES["stable-maintenance"],
             [
                 "cryptad_certification.tests.test_stable_maintenance",
+                "cryptad_certification.tests.test_stable_maintenance_freeze",
                 "cryptad_certification.tests.test_stable_maintenance_supply_chain",
                 "cryptad_certification.tests.test_stable_maintenance_authorization_compatibility",
                 "cryptad_certification.tests.test_stable_maintenance_publication",

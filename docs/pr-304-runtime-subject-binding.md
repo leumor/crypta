@@ -214,7 +214,7 @@ This is a reviewable implementation delta, not permission to close missing opera
 | Identity | Prior PR-303 | PR-304 successor |
 | --- | --- | --- |
 | Policy byte digest | `sha256:2217b58c2ff3f316f0105d1f93bba8122921ff35d42c836910bf9ec37d11ca3e` | `sha256:9a61b4b20646f1738c0cf0878580b37e1a2eb4f1d16c692144055e484c2f846e` |
-| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:b7264903947b87f06feab39c0c4fdaf7ca8ea4a2d0ad0c7149fa37c431379d2d` |
+| Effective evaluator tool digest | `sha256:7e8b217a90b16e67bba111f5eabcee294c787322b356e044846b8d98e0b1966e` | `sha256:a572d9792af335933824782c169e44ddcabed55a60ae5b8a1be5499996249bea` |
 
 The evaluation and verification used `2026-09-11T05:13:26Z` in separate fresh private roots.
 Both assessments report `phaseDecision=incomplete`, `phaseComplete=false` and 47 unresolved
@@ -348,3 +348,9 @@ predecessor source commit in its default freeze-observation mapping. Explicit fo
 remain authoritative. The caller regression fails for both normal release classes without this
 fix; v1 remains compatible and v2 still rejects a substituted predecessor source independently
 of its runtime-metadata gate. No schema, historical input or acceptance scope is changed.
+
+Candidate-freeze regression tests live in `test_stable_maintenance_freeze.py`, registered in the
+Stable maintenance self-test suite and discovered by the aggregate certification suite. This
+keeps the original maintenance test module below the repository's 5,000-line limit while retaining
+both predecessor source-binding regressions and all 247 maintenance tests. The size limit is
+unchanged; the split changes test organization only.
