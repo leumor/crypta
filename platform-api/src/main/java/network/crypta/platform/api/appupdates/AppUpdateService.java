@@ -31,6 +31,7 @@ import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.CatalogPublisherAuthorizationException;
 import network.crypta.platform.appcatalog.CatalogScopeRevocation;
 import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
@@ -102,6 +103,7 @@ public final class AppUpdateService {
   private static final String ERROR_ROLLBACK_RESTART_FAILED = "rollback_restart_failed";
   private static final String ERROR_HEALTH_CHECK_FAILED = "health_check_failed";
   private static final String ERROR_UPDATE_FAILED = "update_failed";
+  private static final String ERROR_PUBLISHER_SCOPE_REJECTED = "catalog_publisher_scope_rejected";
   private static final String ERROR_STAGE_FAILED = "stage_failed";
   private static final String ERROR_APP_DATA_MIGRATION_MISSING =
       AppUpdateMigrationPlanner.ERROR_MISSING_MIGRATION;
@@ -2236,6 +2238,9 @@ public final class AppUpdateService {
     } catch (AppCatalogException exception) {
       recordStageFailure(appId, candidate, exception.errorCode());
       throw catalogFailure(exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      recordStageFailure(appId, candidate, ERROR_PUBLISHER_SCOPE_REJECTED);
+      throw publisherScopeConflict();
     } catch (IOException _) {
       recordStageFailure(appId, candidate, ERROR_STAGE_FAILED);
       throw lifecycleFailure(500, ERROR_STAGE_FAILED, MESSAGE_STAGE_FAILED);
@@ -2248,6 +2253,9 @@ public final class AppUpdateService {
     } catch (AppCatalogException exception) {
       recordStageFailure(appId, candidate, exception.errorCode());
       throw catalogFailure(exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      recordStageFailure(appId, candidate, ERROR_PUBLISHER_SCOPE_REJECTED);
+      throw publisherScopeConflict();
     } catch (IOException _) {
       recordStageFailure(appId, candidate, ERROR_STAGE_FAILED);
       throw lifecycleFailure(500, ERROR_STAGE_FAILED, MESSAGE_STAGE_FAILED);
@@ -2659,6 +2667,8 @@ public final class AppUpdateService {
           candidate, installed, plan.entry(), targetManifest, migrationPlan);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      throw publisherScopeConflict();
     } catch (IOException _) {
       throw lifecycleFailure(
           400, ERROR_INVALID_APP_BUNDLE, "Candidate app bundle manifest is invalid.");
@@ -2686,6 +2696,13 @@ public final class AppUpdateService {
       return candidate;
     }
     return candidates.computeIfAbsent(appId, _ -> detectCandidate(appId, installed, false));
+  }
+
+  private static PlatformApiException publisherScopeConflict() {
+    return lifecycleFailure(
+        409,
+        ERROR_PUBLISHER_SCOPE_REJECTED,
+        "Current local publisher scope does not authorize this catalog operation.");
   }
 
   private void recordStageFailure(String appId, AppUpdateCandidate candidate, String errorCode) {

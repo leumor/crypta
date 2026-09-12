@@ -1071,7 +1071,7 @@
           },
           {
             "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
-            "digest": "sha256:50e231f12cefdc86737e091047bcb71a274249bf806f038f2af4fddffb6d20b9",
+            "digest": "sha256:52b5ec54d79936bde12c032a35c546d798ca22fda2baa24def17f559f9b7e60a",
             "path": "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
           }
         ],
@@ -1119,7 +1119,7 @@
           },
           {
             "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
-            "digest": "sha256:ac78c958e62c67eb614c23771723ff4fbb66178f0699072c4052d6318ede54bb",
+            "digest": "sha256:61b06edc079049df57d11253d7460a6a82ac79b9079d8af72d2a79ca4e20f452",
             "path": "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
           }
         ]
@@ -2478,7 +2478,7 @@
           },
           {
             "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
-            "digest": "sha256:50e231f12cefdc86737e091047bcb71a274249bf806f038f2af4fddffb6d20b9",
+            "digest": "sha256:52b5ec54d79936bde12c032a35c546d798ca22fda2baa24def17f559f9b7e60a",
             "path": "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
           },
           {
@@ -2581,7 +2581,7 @@
           },
           {
             "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
-            "digest": "sha256:ac78c958e62c67eb614c23771723ff4fbb66178f0699072c4052d6318ede54bb",
+            "digest": "sha256:61b06edc079049df57d11253d7460a6a82ac79b9079d8af72d2a79ca4e20f452",
             "path": "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
           },
           {
