@@ -53,6 +53,7 @@ import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
 import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
 import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.CatalogPublisherAuthorizationException;
 import network.crypta.platform.appcatalog.CatalogPublisherBinding;
 import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.FederatedCatalogConflictEngine;
@@ -70,6 +71,7 @@ import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeys;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -93,6 +95,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.invocation.Invocation;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -4075,6 +4078,29 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void rollback_whenRetainedBundleVerificationFails_expectTypedConflictWithoutPrivateDetails()
+      throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.rollbackRequiresCatalogAuthorization(APP_ID)).thenReturn(true);
+    when(appHost.rollback(eq(APP_ID), any(AppHost.CatalogRollbackAuthorization.class)))
+        .thenThrow(
+            new AppBundleVerificationException(
+                "private-verification-canary /private/operator/bundle"));
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, false));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("rollback_bundle_verification_failed", exception.errorCode());
+    assertEquals("Retained app bundle verification blocks rollback.", exception.getMessage());
+    verify(appHost).rollback(eq(APP_ID), any(AppHost.CatalogRollbackAuthorization.class));
+    verify(appHost, never()).rollback(APP_ID);
+    verify(appHost, never()).stop(APP_ID);
+    verify(appHost, never()).start(APP_ID);
+  }
+
+  @Test
   void rollback_whenFederatedOriginIsNoLongerAuthorized_expectTrustConflict() throws Exception {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.rollbackRequiresCatalogAuthorization(APP_ID)).thenReturn(true);
@@ -4822,6 +4848,49 @@ class AppUpdateServiceTest {
     assertFalse(Files.exists(plan.scratchDirectory()));
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void apply_whenPublisherScopeRevoked_expectConflictWithoutInstalling(boolean afterDryRun)
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    modes.clear();
+    if (afterDryRun) {
+      doNothing()
+          .doThrow(new CatalogPublisherAuthorizationException())
+          .when(catalogManager)
+          .verifyInstallPlan(plan);
+    } else {
+      doThrow(new CatalogPublisherAuthorizationException())
+          .when(catalogManager)
+          .verifyInstallPlan(plan);
+    }
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("catalog_publisher_scope_rejected", exception.errorCode());
+    assertEquals(afterDryRun ? List.of(AppDataMigrationRunner.Mode.DRY_RUN) : List.of(), modes);
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
   @Test
   void apply_whenMigrationDryRunMutatesStagedBundle_expectReverifiedBeforeInstall()
       throws Exception {
@@ -4885,6 +4954,51 @@ class AppUpdateServiceTest {
     assertTrue(modes.isEmpty());
     verify(appHost, never()).updateFromDirectory(any(), any());
     assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"prepare", "verify", "consent"})
+  void update_whenPublisherScopeRevoked_expectPolicyConflictBeforeMigration(String phase)
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    lenient().when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    service.check(APP_ID, false);
+    AppCatalogInstallPlan plan = null;
+    if (phase.equals("verify")) {
+      plan = planWithAppDataMigration(entry, true, true);
+      when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+      doThrow(new CatalogPublisherAuthorizationException())
+          .when(catalogManager)
+          .verifyInstallPlan(plan);
+    } else {
+      when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+          .thenThrow(new CatalogPublisherAuthorizationException());
+    }
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            phase.equals("consent")
+                ? () -> service.previewForConsent(APP_ID, false)
+                : () -> service.stage(APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("catalog_publisher_scope_rejected", exception.errorCode());
+    assertTrue(modes.isEmpty());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+    if (plan != null) {
+      assertFalse(Files.exists(plan.scratchDirectory()));
+    }
   }
 
   @Test

@@ -65,6 +65,48 @@ public final class FileCatalogPublisherBindingStore {
     mutationFence.withWriteLock(() -> putUnderFence(binding));
   }
 
+  /**
+   * Revokes one exact existing scope while respecting all retained authorization leases.
+   *
+   * @param request exact host-operator request; no new authority fields are accepted
+   * @return persisted terminal record
+   * @throws IOException if current policy cannot be read or atomically persisted
+   */
+  public CatalogPublisherBinding revoke(CatalogScopeRevocation request) throws IOException {
+    java.util.Objects.requireNonNull(request, "request");
+    return mutationFence.withWriteLock(
+        () -> {
+          CatalogPublisherBinding prior =
+              find(request.scopeId()).orElseThrow(CatalogScopeRevocation::rejected);
+          request.requireCurrent(prior.catalogId(), prior.selfDigest(), prior.updatedAt());
+          if (prior.status() != CatalogPublisherBinding.Status.ACTIVE
+              && prior.status() != CatalogPublisherBinding.Status.SUSPENDED) {
+            throw CatalogScopeRevocation.rejected();
+          }
+          CatalogPublisherBinding revoked =
+              CatalogPublisherBinding.create(
+                  prior.bindingId(),
+                  prior.catalogId(),
+                  prior.appId(),
+                  prior.publisherKeyId(),
+                  prior.publisherKeyFingerprintSha256(),
+                  CatalogPublisherBinding.Status.REVOKED,
+                  prior.validFrom(),
+                  prior.validUntil(),
+                  prior.predecessorKeyId().orElse(null),
+                  prior.successorKeyId().orElse(null),
+                  prior.allowedChannels(),
+                  prior.approvalSource(),
+                  prior.approvalDigestSha256(),
+                  prior.createdAt(),
+                  request.changedAt(),
+                  request.reason(),
+                  request.operatorId());
+          putUnderFence(revoked);
+          return revoked;
+        });
+  }
+
   /** Validates and persists one publisher binding while the mutation fence is exclusive. */
   private synchronized void putUnderFence(CatalogPublisherBinding binding) throws IOException {
     CatalogPublisherBinding checked = java.util.Objects.requireNonNull(binding, "binding");

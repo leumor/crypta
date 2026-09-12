@@ -7,24 +7,39 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPairGenerator;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.UnaryOperator;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogSigner;
 import network.crypta.platform.appcatalog.AppSubmissionMaintainer;
 import network.crypta.platform.appcatalog.AppSubmissionPackageWriter;
 import network.crypta.platform.appcatalog.AppSubmissionSourceReference;
 import network.crypta.platform.appcatalog.AppSubmissionType;
+import network.crypta.platform.appcatalog.CatalogPublisherBinding;
+import network.crypta.platform.appcatalog.CatalogReviewerScope;
+import network.crypta.platform.appcatalog.FederatedCatalogTrustBinding;
+import network.crypta.platform.appcatalog.FileCatalogPublisherBindingStore;
+import network.crypta.platform.appcatalog.FileCatalogReviewerScopeStore;
+import network.crypta.platform.appcatalog.FileFederatedCatalogTrustStore;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.PublicKeyFingerprint;
+import network.crypta.platform.appdist.TrustedAppKeys;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -340,6 +355,583 @@ class AppSubjectProjectionCommandTest {
     assertTrue(Files.readString(output).contains("\"targetBaseline\":\"1.0\""));
   }
 
+  @Test
+  void federation_whenExactScopedReviewedSelection_expectNativeV3Projection() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertEquals(0, invocation.exitCode(), invocation.diagnostics());
+    String result = Files.readString(output);
+    assertTrue(result.contains("\"schemaVersion\":3"));
+    assertTrue(result.contains("\"federationSelection\":{"));
+    assertTrue(result.contains("\"generation\":7"));
+    assertTrue(
+        result.contains(
+            "\"catalogRevisionDigest\":\""
+                + fixture.context().get("catalogRevisionDigest")
+                + "\""));
+    var publisherStore =
+        new FileCatalogPublisherBindingStore(temporary.resolve("publisher-bindings"));
+    String selectedBindingDigest = publisherStore.list().getFirst().selfDigest();
+    assertTrue(
+        result.contains("\"publisherBindingDigest\":\"sha256:" + selectedBindingDigest + "\""));
+    assertNotEquals(selectedBindingDigest, publisherStore.policyDigest("synthetic"));
+
+    assertEquals(
+        PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(output));
+    assertFalse(result.contains(temporary.toString()));
+  }
+
+  @Test
+  void federation_whenSameAppFromTwoCatalogs_expectCompleteCandidateSetPreserved()
+      throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    addCompetingCatalog(fixture, false);
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertEquals(0, invocation.exitCode(), invocation.diagnostics());
+    assertTrue(Files.readString(output).contains("\"conflictSetDigest\":\"sha256:"));
+    assertEquals(2, ((List<?>) fixture.context().get("candidates")).size());
+  }
+
+  @Test
+  void federation_whenSameVersionHasDifferentSignedBytes_expectHardConflict() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    addCompetingCatalog(fixture, true);
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  private void addCompetingCatalog(FederationFixture fixture, boolean changedBundle)
+      throws Exception {
+    Path secondBundle = fixture.base().bundle();
+    Path descriptor = temporary.resolve("entry.properties");
+    Path receipt = temporary.resolve("review.properties");
+    if (changedBundle) {
+      Path app = temporary.resolve("app");
+      Files.writeString(app.resolve("extra.txt"), "different signed content, same app and version");
+      AppBundleSigner.sign(app, "publisher", fixture.base().publisherKey().getPrivate());
+      secondBundle = temporary.resolve("second.zip");
+      AppBundlePackager.packageBundle(app, secondBundle);
+      descriptor = temporary.resolve("second-entry.properties");
+      Files.writeString(
+          descriptor,
+          "artifact.path="
+              + secondBundle
+              + "\nbundle.uri="
+              + secondBundle.toUri()
+              + "\nsummary=Synthetic subject\n");
+      receipt = temporary.resolve("second-review.properties");
+      assertEquals(
+          0,
+          cli(
+              "review",
+              "sign",
+              "--catalog-entry",
+              descriptor.toString(),
+              "--receipt-file",
+              receipt.toString(),
+              "--reviewer-key-id",
+              "reviewer",
+              "--reviewer-private-key-file",
+              temporary.resolve("reviewer.der").toString(),
+              "--policy-id",
+              "synthetic-review-v1",
+              "--policy-version",
+              "1",
+              "--status",
+              "reviewed",
+              "--reviewed-at",
+              "2026-05-01T00:00:00Z"));
+    }
+    Path directory = Files.createDirectory(temporary.resolve("second-catalog"));
+    Path secondCatalog = directory.resolve("catalog.properties");
+    assertEquals(
+        0,
+        cli(
+            "catalog",
+            "create",
+            "--catalog-file",
+            secondCatalog.toString(),
+            "--catalog-id",
+            "synthetic-b",
+            "--name",
+            "Synthetic B",
+            "--entry",
+            descriptor.toString(),
+            "--review-receipt",
+            receipt.toString()));
+    var secondSigner = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    AppCatalogSigner.sign(secondCatalog, "catalog-b", secondSigner.getPrivate());
+    Files.writeString(
+        fixture.base().catalogKeys(),
+        Files.readString(fixture.base().catalogKeys())
+            + "key.1.id=catalog-b\nkey.1.algorithm=Ed25519\nkey.1.public.key.base64="
+            + Base64.getEncoder().encodeToString(secondSigner.getPublic().getEncoded())
+            + "\n");
+    var publisherStore =
+        new FileCatalogPublisherBindingStore(temporary.resolve("publisher-bindings"));
+    var publisher = publisherStore.list().getFirst();
+    publisherStore.put(
+        CatalogPublisherBinding.create(
+            "publisher-b",
+            "synthetic-b",
+            publisher.appId(),
+            publisher.publisherKeyId(),
+            publisher.publisherKeyFingerprintSha256(),
+            publisher.status(),
+            publisher.validFrom(),
+            publisher.validUntil(),
+            null,
+            null,
+            publisher.allowedChannels(),
+            publisher.approvalSource(),
+            publisher.approvalDigestSha256(),
+            publisher.createdAt(),
+            publisher.updatedAt(),
+            "synthetic",
+            "operator"));
+    var reviewerStore = new FileCatalogReviewerScopeStore(temporary.resolve("reviewer-scopes"));
+    var reviewer = reviewerStore.list().getFirst();
+    reviewerStore.put(
+        CatalogReviewerScope.create(
+            "reviewer-b",
+            "synthetic-b",
+            "sample-app",
+            reviewer.reviewerFingerprints(),
+            reviewer.acceptedReviewerSetDigestSha256(),
+            reviewer.status(),
+            reviewer.createdAt(),
+            reviewer.updatedAt(),
+            "synthetic",
+            "operator"));
+    var catalogStore = new FileFederatedCatalogTrustStore(temporary.resolve("catalog-bindings"));
+    var catalog = catalogStore.list().getFirst();
+    catalogStore.put(
+        FederatedCatalogTrustBinding.create(
+            "catalog-b",
+            "synthetic-b",
+            Map.of("catalog-b", PublicKeyFingerprint.sha256(secondSigner.getPublic())),
+            catalog.status(),
+            catalog.allowedChannels(),
+            2,
+            "3".repeat(64),
+            reviewerStore.policyDigest("synthetic-b"),
+            publisherStore.policyDigest("synthetic-b"),
+            catalog.createdAt(),
+            catalog.updatedAt(),
+            "synthetic",
+            "operator"));
+    for (var pair :
+        List.of(
+            List.of("catalogBindings", "catalog-bindings/catalog-b.properties"),
+            List.of("publisherBindings", "publisher-bindings/publisher-b.properties"),
+            List.of("reviewerScopes", "reviewer-scopes/reviewer-b.properties"))) {
+      var entries = new ArrayList<Object>((List<?>) fixture.context().get(pair.getFirst()));
+      entries.add(reference(temporary.resolve(pair.get(1))));
+      fixture.context().put(pair.getFirst(), entries);
+    }
+    var candidates = new ArrayList<Object>((List<?>) fixture.context().get("candidates"));
+    candidates.add(
+        Map.of(
+            "catalog",
+            reference(secondCatalog),
+            "signature",
+            reference(directory.resolve("cryptad-app-catalog.signature")),
+            "bundle",
+            reference(secondBundle)));
+    fixture.context().put("candidates", candidates);
+    Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(fixture.context()));
+  }
+
+  @Test
+  void federation_whenGenuineCatalogSignatureHasWrongLocalSignerBinding_expectDenied()
+      throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    var store = new FileFederatedCatalogTrustStore(temporary.resolve("catalog-bindings"));
+    var binding = store.list().getFirst();
+    var other = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    store.put(
+        FederatedCatalogTrustBinding.create(
+            binding.bindingId(),
+            binding.catalogId(),
+            Map.of("catalog", PublicKeyFingerprint.sha256(other.getPublic())),
+            binding.status(),
+            binding.allowedChannels(),
+            binding.localPriority(),
+            binding.discoveryProvenanceDigest().orElseThrow(),
+            binding.reviewerPolicyDigest().orElseThrow(),
+            binding.publisherPolicyDigest().orElseThrow(),
+            binding.createdAt(),
+            binding.updatedAt(),
+            "synthetic",
+            "operator"));
+    fixture
+        .context()
+        .put(
+            "catalogBindings",
+            List.of(reference(temporary.resolve("catalog-bindings/catalog-binding.properties"))));
+    Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(fixture.context()));
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenInvalidScopedMetadataHasUpdatedBytePin_expectNoGlobalFallback()
+      throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    Path bindingRecord = temporary.resolve("publisher-bindings/publisher-binding.properties");
+    Files.writeString(
+        bindingRecord, Files.readString(bindingRecord) + "unrecognizedScope=allow-all\n");
+    fixture.context().put("publisherBindings", List.of(reference(bindingRecord)));
+    Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(fixture.context()));
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenGenerationExceedsExactJsonIntegerRange_expectNoProjection() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    fixture.context().put("generation", 9_007_199_254_740_992L);
+    Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(fixture.context()));
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "9007199254740992");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenGenerationStale_expectNoGlobalFallback() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "6");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenPublisherOutsideAppScope_expectNoGlobalFallback() throws Exception {
+    var fixture = federationFixture("other-app", CatalogReviewerScope.Status.ACTIVE);
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenReviewerScopeRevoked_expectNoGlobalFallback() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.REVOKED);
+    Path output = temporary.resolve("federation-output.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenSelectedIdentitySubstituted_expectEveryFieldRejected() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    String original = Files.readString(fixture.selection());
+    for (String field :
+        List.of(
+            "catalogId",
+            "appId",
+            "channel",
+            "catalogDigest",
+            "catalogSignatureDigest",
+            "catalogRevisionDigest",
+            "catalogSignerFingerprint",
+            "bundleDigest",
+            "signedContentDigest",
+            "publisherFingerprint",
+            "reviewDigest")) {
+      var changed = new LinkedHashMap<>(fixture.context());
+      changed.put(
+          field,
+          field.endsWith("Digest") || field.endsWith("Fingerprint")
+              ? "sha256:" + "0".repeat(64)
+              : "other");
+      Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(changed));
+      Path output = temporary.resolve("rejected-" + field + ".json");
+
+      var invocation = federationProject(fixture, output, "7");
+
+      assertRejectedProjection(fixture.base(), output, invocation);
+    }
+    Files.writeString(fixture.selection(), original);
+  }
+
+  @Test
+  void federation_whenContextIncompleteOrUnknown_expectNoProjection() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    var changed = new LinkedHashMap<>(fixture.context());
+    changed.put("verified", "true");
+    Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(changed));
+    Path output = temporary.resolve("invalid.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenScopeReferenceEscapesOrTraversesSymlink_expectNoProjection()
+      throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    var changed = new LinkedHashMap<>(fixture.context());
+    changed.put(
+        "publisherBindings",
+        List.of(Map.of("path", "../outside.properties", "digest", "sha256:" + "0".repeat(64))));
+    Files.writeString(fixture.selection(), PlatformApiJsonWriter.write(changed));
+    Path output = temporary.resolve("invalid.json");
+
+    var invocation = federationProject(fixture, output, "7");
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  @Test
+  void federation_whenContractOrGenerationMissing_expectNoProjection() throws Exception {
+    var fixture = federationFixture("sample-app", CatalogReviewerScope.Status.ACTIVE);
+    Path output = temporary.resolve("invalid.json");
+
+    var invocation =
+        projectInvocation(
+            fixture.base(), output, "--federation-selection", fixture.selection().toString());
+
+    assertRejectedProjection(fixture.base(), output, invocation);
+  }
+
+  private FederationFixture federationFixture(
+      String publisherAppId, CatalogReviewerScope.Status reviewerStatus) throws Exception {
+    Fixture base = prepare();
+    var reviewer = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = temporary.resolve("reviewer.der");
+    Files.write(privateKey, reviewer.getPrivate().getEncoded());
+    Path reviewerKeys = temporary.resolve("reviewer-keys.properties");
+    Files.writeString(
+        reviewerKeys,
+        "trusted.reviewers.version=1\n"
+            + "reviewer.1.id=reviewer\n"
+            + "reviewer.1.algorithm=Ed25519\n"
+            + "reviewer.1.public.key.base64="
+            + Base64.getEncoder().encodeToString(reviewer.getPublic().getEncoded())
+            + "\n"
+            + "reviewer.1.display.name=Synthetic Review\n"
+            + "reviewer.1.policy.id=synthetic-review-v1\n");
+    Path receipt = temporary.resolve("review.properties");
+    assertEquals(
+        0,
+        cli(
+            "review",
+            "sign",
+            "--catalog-entry",
+            temporary.resolve("entry.properties").toString(),
+            "--receipt-file",
+            receipt.toString(),
+            "--reviewer-key-id",
+            "reviewer",
+            "--reviewer-private-key-file",
+            privateKey.toString(),
+            "--policy-id",
+            "synthetic-review-v1",
+            "--policy-version",
+            "1",
+            "--status",
+            "reviewed",
+            "--reviewed-at",
+            "2026-05-01T00:00:00Z"));
+    Files.delete(base.catalog());
+    Files.delete(temporary.resolve("cryptad-app-catalog.signature"));
+    assertEquals(
+        0,
+        cli(
+            "catalog",
+            "create",
+            "--catalog-file",
+            base.catalog().toString(),
+            "--catalog-id",
+            "synthetic",
+            "--name",
+            "Synthetic",
+            "--entry",
+            temporary.resolve("entry.properties").toString(),
+            "--review-receipt",
+            receipt.toString()));
+    AppCatalogSigner.sign(base.catalog(), "catalog", base.catalogKey().getPrivate());
+    var catalogRegistry = TrustedAppKeys.load(base.catalogKeys());
+    var publisherRegistry = TrustedAppKeys.load(base.publisherKeys());
+    String publisherFingerprint =
+        PublicKeyFingerprint.sha256(
+            publisherRegistry.findPolicy("publisher").orElseThrow().key().publicKey());
+    String catalogFingerprint =
+        PublicKeyFingerprint.sha256(
+            catalogRegistry.findPolicy("catalog").orElseThrow().key().publicKey());
+    Instant at = Instant.parse("2026-05-01T00:00:00Z");
+    Path publisherRoot = temporary.resolve("publisher-bindings");
+    var publisherStore = new FileCatalogPublisherBindingStore(publisherRoot);
+    publisherStore.put(
+        CatalogPublisherBinding.create(
+            "publisher-binding",
+            "synthetic",
+            publisherAppId,
+            "publisher",
+            publisherFingerprint,
+            CatalogPublisherBinding.Status.ACTIVE,
+            at,
+            Instant.parse("2099-01-01T00:00:00Z"),
+            null,
+            null,
+            Set.of(AppCatalogChannel.STABLE),
+            "synthetic",
+            "1".repeat(64),
+            at,
+            at,
+            "synthetic",
+            "operator"));
+    Path reviewerRoot = temporary.resolve("reviewer-scopes");
+    var reviewerStore = new FileCatalogReviewerScopeStore(reviewerRoot);
+    reviewerStore.put(
+        CatalogReviewerScope.create(
+            "reviewer-scope",
+            "synthetic",
+            "sample-app",
+            Map.of("reviewer", PublicKeyFingerprint.sha256(reviewer.getPublic())),
+            "2".repeat(64),
+            reviewerStatus,
+            at,
+            at,
+            "synthetic",
+            "operator"));
+    Path catalogRoot = temporary.resolve("catalog-bindings");
+    var catalogStore = new FileFederatedCatalogTrustStore(catalogRoot);
+    catalogStore.put(
+        FederatedCatalogTrustBinding.create(
+            "catalog-binding",
+            "synthetic",
+            Map.of("catalog", catalogFingerprint),
+            FederatedCatalogTrustBinding.Status.ACTIVE,
+            Set.of(AppCatalogChannel.STABLE),
+            1,
+            "3".repeat(64),
+            reviewerStore.policyDigest("synthetic"),
+            publisherStore.policyDigest("synthetic"),
+            at,
+            at,
+            "synthetic",
+            "operator"));
+    Path contract = temporary.resolve("federation-contract.json");
+    Path registry = temporary.resolve("federation-registry.json");
+    var baseline = network.crypta.platform.api.PlatformApiBaselineRegistry.current();
+    Files.writeString(
+        contract,
+        network.crypta.platform.api.PlatformApiContractJson.writeEnvelope(
+            network.crypta.platform.api.PlatformApiContract.current(), baseline));
+    Files.writeString(
+        registry,
+        network.crypta.platform.api.PlatformApiContractJson.writeBaselineRegistry(baseline));
+    Path originalProjection = temporary.resolve("original-projection.json");
+    assertEquals(0, project(base, originalProjection, "--reviewer-keys", reviewerKeys.toString()));
+    @SuppressWarnings("unchecked")
+    var original =
+        (Map<String, Object>) FederationSelectionJson.parse(Files.readString(originalProjection));
+    var context = new LinkedHashMap<String, Object>();
+    context.put("schemaVersion", 1);
+    context.put("kind", "federated-app-selection");
+    context.put("generation", 7);
+    context.put("validFrom", at.toString());
+    context.put("validUntil", "2099-01-01T00:00:00Z");
+    for (String field :
+        List.of(
+            "catalogId",
+            "appId",
+            "catalogDigest",
+            "catalogSignatureDigest",
+            "bundleDigest",
+            "bundleSize",
+            "signedContentDigest",
+            "publisherFingerprint",
+            "reviewDigest")) context.put(field, original.get(field));
+    context.put("channel", "stable");
+    context.put("catalogSignerFingerprint", "sha256:" + catalogFingerprint);
+    var revision = java.security.MessageDigest.getInstance("SHA-256");
+    for (Path file : List.of(base.catalog(), temporary.resolve("cryptad-app-catalog.signature"))) {
+      byte[] bytes = Files.readAllBytes(file);
+      revision.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
+      revision.update(bytes);
+    }
+    context.put(
+        "catalogRevisionDigest", "sha256:" + java.util.HexFormat.of().formatHex(revision.digest()));
+    context.put(
+        "catalogBindings", List.of(reference(catalogRoot.resolve("catalog-binding.properties"))));
+    context.put(
+        "publisherBindings",
+        List.of(reference(publisherRoot.resolve("publisher-binding.properties"))));
+    context.put(
+        "reviewerScopes", List.of(reference(reviewerRoot.resolve("reviewer-scope.properties"))));
+    context.put(
+        "candidates",
+        List.of(
+            Map.of(
+                "catalog",
+                reference(base.catalog()),
+                "signature",
+                reference(temporary.resolve("cryptad-app-catalog.signature")),
+                "bundle",
+                reference(base.bundle()))));
+    Path selection = temporary.resolve("selection.json");
+    Files.writeString(selection, PlatformApiJsonWriter.write(context));
+    return new FederationFixture(base, selection, contract, registry, reviewerKeys, context);
+  }
+
+  private Map<String, Object> reference(Path path) throws Exception {
+    return Map.of(
+        "path",
+        temporary.relativize(path).toString(),
+        "digest",
+        AppSubjectProjectionCommand.digest(path));
+  }
+
+  private Invocation federationProject(FederationFixture fixture, Path output, String generation) {
+    return projectInvocation(
+        fixture.base(),
+        output,
+        "--reviewer-keys",
+        fixture.reviewerKeys().toString(),
+        "--contract",
+        fixture.contract().toString(),
+        "--baseline-registry",
+        fixture.registry().toString(),
+        "--federation-selection",
+        fixture.selection().toString(),
+        "--federation-generation",
+        generation);
+  }
+
+  private record FederationFixture(
+      Fixture base,
+      Path selection,
+      Path contract,
+      Path registry,
+      Path reviewerKeys,
+      Map<String, Object> context) {}
+
   private void assertRejectedProjection(Fixture fixture, Path output, Invocation result)
       throws Exception {
     assertEquals(1, result.exitCode());
@@ -408,7 +1000,8 @@ class AppSubjectProjectionCommandTest {
         Files.createDirectory(
             temporary.resolve("private"),
             PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-    return new Fixture(catalog, catalogKeys, publisherKeys, bundle, privateRoot);
+    return new Fixture(
+        catalog, catalogKeys, publisherKeys, bundle, privateRoot, catalogKey, publisher);
   }
 
   private Path registry(String id, byte[] key) throws Exception {
@@ -473,5 +1066,11 @@ class AppSubjectProjectionCommandTest {
   private record Invocation(int exitCode, String diagnostics) {}
 
   private record Fixture(
-      Path catalog, Path catalogKeys, Path publisherKeys, Path bundle, Path privateRoot) {}
+      Path catalog,
+      Path catalogKeys,
+      Path publisherKeys,
+      Path bundle,
+      Path privateRoot,
+      java.security.KeyPair catalogKey,
+      java.security.KeyPair publisherKey) {}
 }

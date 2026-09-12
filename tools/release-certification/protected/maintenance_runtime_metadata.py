@@ -161,6 +161,8 @@ def _validate_runtime_metadata(freeze: dict, root: Path, package_path: Path | No
     inventory = read_json(contents["inventory"])
     if validate_schema(inventory, inventory_schema(inventory.get("schemaVersion"))):
         raise RuntimeMetadataError("runtime-metadata-inventory-schema-invalid")
+    from app_subject_projection import validate_federation_inventory, content_declaration
+    validate_federation_inventory(inventory)
     if (inventory["releaseId"] != value["releaseId"] or inventory["sourceCommit"] != value["sourceCommit"]
             or value["projectionInventoryDigest"] != digest_bytes(contents["inventory"])
             or value["experimentCohortDigest"] != inventory["cohortDigest"]
@@ -184,10 +186,11 @@ def _validate_runtime_metadata(freeze: dict, root: Path, package_path: Path | No
     for row in declarations:
         validate_declaration(row)
         original = subjects[row["appId"]]
-        projection = {key: entry for key, entry in row.items() if key not in
-                      {"contractSnapshotDigest", "baselineRegistryDigest", "nativeAdmission", "catalogChannel"}}
-        projection["schemaVersion"] = 1
-        if (row["schemaVersion"] != 2 or projection != original
+        projection = content_declaration(row)
+        selected = [item for item in inventory.get("selectedFederation", []) if item["appId"] == row["appId"]]
+        if selected and (row["schemaVersion"] != 3 or row["federationSelection"] != selected[0]["nativeProjection"]["federationSelection"]):
+            raise RuntimeMetadataError("runtime-metadata-federation-selection-substituted")
+        if (row["schemaVersion"] != (3 if selected else 2) or projection != original
                 or row["contractSnapshotDigest"] != value["contractSnapshotDigest"]
                 or row["baselineRegistryDigest"] != value["baselineRegistryDigest"]
                 or value["contractVersion"] > row["maximumTestedContractVersion"]):
@@ -298,10 +301,16 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
     import app_subject_projection as projection
     from original_artifact_authentication import authenticate_original
     cohort = projection._cohort()
+    # The maintenance workflow uploads this directory as ordinary artifact members.
+    # Selected federation requires encrypted companions, which this format cannot carry.
+    if cohort["schemaVersion"] == 2:
+        raise RuntimeMetadataError("runtime-metadata-private-companion-unsupported")
     cohort_digest = projection._canonical_digest(projection._public_cohort(cohort))
     original_projection = projection.authenticate_inventory(projection_origin, private_root,
                                                             expected_cohort_digest=cohort_digest)
     inventory = original_projection.inventory()
+    if inventory["schemaVersion"] == 4:
+        raise RuntimeMetadataError("runtime-metadata-private-companion-unsupported")
     if (cohort["releaseId"] != freeze["releaseId"] or cohort["sourceCommit"] != freeze["source"]["commit"]):
         raise RuntimeMetadataError("runtime-metadata-cohort-release-mismatch")
     if any(source["original"]["sourceFamily"] != "maintenance-app-products"
@@ -324,14 +333,7 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
         (output / MEMBER_NAMES["snapshot"]).write_bytes(snapshot)
         (output / MEMBER_NAMES["registry"]).write_bytes(registry)
         # Recover exact authenticated inventory bytes, not a reserialized substitute.
-        original = authenticate_original(projection_origin, private_root)
-        with zipfile.ZipFile(io.BytesIO(original.content)) as archive:
-            if archive.namelist() != ["platform-api-1.x-app-subject-inventory.json"]:
-                raise RuntimeMetadataError("runtime-metadata-original-inventory-members-invalid")
-            entry = archive.infolist()[0]
-            if entry.file_size > 1024 * 1024 or stat.S_ISLNK(entry.external_attr >> 16):
-                raise RuntimeMetadataError("runtime-metadata-original-inventory-member-invalid")
-            raw_inventory = archive.read(entry)
+        raw_inventory = original_projection.original_bytes()
         if digest_bytes(raw_inventory) != original_projection.digest:
             raise RuntimeMetadataError("runtime-metadata-original-inventory-changed")
         (output / MEMBER_NAMES["inventory"]).write_bytes(raw_inventory)
@@ -343,6 +345,7 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
             artifact = authenticate_original(source["original"], private_root)
             catalog = (authenticate_original(source["catalogOriginal"], private_root)
                        if source["catalogOriginal"] is not None else None)
+            scoped, _ = projection.selected_federation(cohort, source["appId"], private_root)
             result = projection.produce(artifact, source["members"], exporter=exporter,
                 exporter_digest=digest_bytes(_regular(exporter)), app_id=source["appId"],
                 catalog_key_id=source["catalogKeyId"], catalog_keys=Path(source["catalogKeys"]),
@@ -350,7 +353,7 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
                 reviewer_keys=Path(source["reviewerKeys"]) if source["reviewerKeys"] else None,
                 private_root=private_root, java_home=java_home, catalog_artifact=catalog,
                 contract_path=output / MEMBER_NAMES["snapshot"],
-                baseline_registry_path=output / MEMBER_NAMES["registry"])
+                baseline_registry_path=output / MEMBER_NAMES["registry"], source=source, **scoped)
             declaration = result["declaration"]
             projection.verify_upstream_subject(source, declaration, artifact, private_root,
                 expected_release=expected_release)
@@ -607,6 +610,12 @@ def _prepare_environment(inputs: Path, prepared_cohort: Path, java_home: Path, t
                         if digest_bytes(_regular(selected)) != source[key + "Digest"]:
                             raise RuntimeMetadataError("runtime-metadata-scoped-registry-missing")
                         source[key] = str(selected.resolve())
+            if cohort.get("schemaVersion") == 2:
+                for field, basename in (("snapshot", "contract.json"), ("registry", "registry.json")):
+                    selected = inputs / "admission" / basename
+                    if digest_bytes(_regular(selected)) != cohort["admissionContract"][field + "Digest"]:
+                        raise RuntimeMetadataError("runtime-metadata-selected-contract-missing")
+                    cohort["admissionContract"][field + "Path"] = str(selected.resolve())
             if projection._canonical_digest(projection._public_cohort(cohort)) != previous_identity:
                 raise RuntimeMetadataError("runtime-metadata-cohort-remapping-changed-authority")
             projection.authenticate_tool_tree(cohort, tool_root, private)

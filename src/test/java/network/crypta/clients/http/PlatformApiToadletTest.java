@@ -1257,6 +1257,8 @@ End
         "http://localhost/api/v1/operator/catalog-federation/alpha/suspend",
         "http://localhost/api/v1/operator/catalog-federation/alpha/revoke",
         "http://localhost/api/v1/operator/catalog-federation/alpha/remove",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/publisher-scope-revoke",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/reviewer-scope-revoke",
         "http://localhost/api/v1/operator/catalog-federation/discovery",
         "http://localhost/api/v1/operator/catalog-federation/discovery/descriptor-alpha/discard",
       })

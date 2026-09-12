@@ -7,7 +7,7 @@ on:
         type: choice
         required: true
         default: build-tools
-        options: [build-tools, produce]
+        options: [build-tools, produce-selection, produce]
 permissions: {}
 concurrency:
   group: stable-app-subject-projection
@@ -93,18 +93,30 @@ jobs:
           public_root="$(mktemp -d "$RUNNER_TEMP/app-subject-public.XXXXXX")"
           echo "PROJECTION_PRIVATE_ROOT=$private_root" >> "$GITHUB_ENV"
           echo "PROJECTION_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
+          export PROJECTION_PUBLIC_ROOT="$public_root"
           python3 tools/release-certification/protected/app_subject_projection.py produce \
             --private-root "$private_root" \
             --output "$public_root/platform-api-1.x-app-subject-inventory.json"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ['PROJECTION_PUBLIC_ROOT'])
+          allowed = {'platform-api-1.x-app-subject-inventory.json', 'platform-api-1.x-app-subject-inventory.cms'}
+          members = list(root.iterdir())
+          if len(members) != 1 or members[0].name not in allowed or members[0].is_symlink():
+              raise SystemExit('projection_output_roster_rejected')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('PROJECTION_ARTIFACT_PATH=' + str(members[0]) + '\n')
+          PY
       - name: Attest exact derived declaration inventory
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: ${{ env.PROJECTION_PUBLIC_ROOT }}/platform-api-1.x-app-subject-inventory.json
+          subject-path: ${{ env.PROJECTION_ARTIFACT_PATH }}
       - name: Upload only the attested declaration inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: app-subject-projection-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.PROJECTION_PUBLIC_ROOT }}/platform-api-1.x-app-subject-inventory.json
+          path: ${{ env.PROJECTION_ARTIFACT_PATH }}
           if-no-files-found: error
           include-hidden-files: false
           overwrite: false
@@ -127,5 +139,69 @@ jobs:
               path = Path(selected)
               if path.is_symlink() or path.parent.resolve() != runner or not path.name.startswith(prefix):
                   raise SystemExit('projection_cleanup_ownership_mismatch')
+              shutil.rmtree(path)
+          PY
+  produce-federation-selection:
+    name: produce-federation-selection
+    if: inputs.operation == 'produce-selection' && github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor'
+    runs-on: [self-hosted, linux, cryptad-app-subject-projection]
+    timeout-minutes: 30
+    environment: stable-1-0-app-subject-projection
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out exact pre-runtime selection producer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Authenticate original inputs and encrypt private selected scopes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          private_root="$(mktemp -d "$RUNNER_TEMP/federation-selection-private.XXXXXX")"
+          output_root="$(mktemp -d "$RUNNER_TEMP/federation-selection-encrypted.XXXXXX")"
+          echo "SELECTION_PRIVATE_ROOT=$private_root" >> "$GITHUB_ENV"
+          echo "SELECTION_ENCRYPTED_ROOT=$output_root" >> "$GITHUB_ENV"
+          python3 tools/release-certification/protected/app_subject_projection.py produce-selection \
+            --private-root "$private_root" --output "$output_root/federation-selection.cms"
+      - name: Attest only randomized encrypted selection bytes
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.SELECTION_ENCRYPTED_ROOT }}/federation-selection.cms
+      - name: Upload only immutable encrypted handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: federation-selection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SELECTION_ENCRYPTED_ROOT }}/federation-selection.cms
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 7
+      - name: Remove only owned private and encrypted scratch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import shutil
+          runner = Path(os.environ['RUNNER_TEMP']).resolve()
+          for variable, prefix in [('SELECTION_PRIVATE_ROOT', 'federation-selection-private.'),
+                                   ('SELECTION_ENCRYPTED_ROOT', 'federation-selection-encrypted.')]:
+              value = os.environ.get(variable)
+              if not value:
+                  continue
+              path = Path(value)
+              if path.is_symlink() or path.parent.resolve() != runner or not path.name.startswith(prefix):
+                  raise SystemExit('federation_selection_cleanup_rejected')
               shutil.rmtree(path)
           PY

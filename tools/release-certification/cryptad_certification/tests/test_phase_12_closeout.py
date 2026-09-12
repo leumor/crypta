@@ -23,7 +23,7 @@ AS_OF = "2026-09-11T00:00:00Z"
 class CloseoutTest(unittest.TestCase):
     def test_pr304_successor_preserves_mandatory_scope_and_historical_clocks(self):
         prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr303.json").read_bytes())
-        current, _ = audit.policy()
+        current = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr304.json").read_bytes())
         self.assertEqual(1, prior["version"])
         self.assertEqual(2, current["version"])
         before = {row["id"]: row for row in prior["requirements"]}
@@ -40,6 +40,33 @@ class CloseoutTest(unittest.TestCase):
             self.assertEqual(old["origin"], residuals[old["id"]]["origin"])
             self.assertEqual(old["reason"], residuals[old["id"]]["reason"])
         self.assertEqual("partial", after["p12-300-consumers"]["implementation"]["state"])
+        self.assertFalse(self.evaluate()["phaseComplete"])
+
+    def test_pr305_successor_preserves_scope_and_only_advances_selected_implementation(self):
+        prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr304.json").read_bytes())
+        current, _ = audit.policy()
+        self.assertEqual(3, current["version"])
+        before = {row["id"]: row for row in prior["requirements"]}
+        after = {row["id"]: row for row in current["requirements"]}
+        self.assertEqual(set(before), set(after))
+        for identity, old in before.items():
+            for field in ("assertion", "dimensions", "subjects", "prerequisites", "mandatory",
+                          "closure", "operatingClass", "applicability", "limitations"):
+                self.assertEqual(old[field], after[identity][field], (identity, field))
+            old_owner = {key: value for key, value in old["authority"].items() if key != "policyDigest"}
+            new_owner = {key: value for key, value in after[identity]["authority"].items() if key != "policyDigest"}
+            if identity == "p12-296-federation":
+                old_owner["adapter"] = "api-subjects-v4"
+            self.assertEqual(old_owner, new_owner)
+        for historical in prior["history"]:
+            self.assertIn(historical, current["history"])
+        residuals = {row["id"]: row for row in current["residuals"]}
+        for old in prior["residuals"]:
+            for field in ("origin", "reason", "status", "category", "closure", "dependencies"):
+                self.assertEqual(old[field], residuals[old["id"]][field])
+        self.assertEqual("implemented", after["p12-296-federation"]["implementation"]["state"])
+        for identity in ("p12-300-adapters", "p12-300-consumers"):
+            self.assertEqual("partial", after[identity]["implementation"]["state"])
         self.assertFalse(self.evaluate()["phaseComplete"])
 
     def setUp(self):

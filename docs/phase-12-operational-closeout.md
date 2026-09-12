@@ -475,3 +475,7 @@ See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the 
 maintenance v2 private metadata, exact packaged API export, independently selected app sets and
 versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
 narrow admission success does not close missing runtime adapters or operational evidence.
+
+## PR-305 selected-federation implementation disposition
+
+The [focused PR-305 runbook](pr-305-federated-app-projection-and-catalog-origin.md) records the actual PR-304 squash integration, private selected-context versions and executable catalog-origin lifecycle. Baseline and successor evaluations use the same fixed `2026-09-11T17:20:00Z` cutoff and disjoint output roots. Native/local process results remain separate from original protected runtime, independent review and long-duration evidence. No historical approved repository-status file is replaced, no mandatory requirement is removed, and unrelated maintenance rows retain their existing blockers.

@@ -100,6 +100,43 @@ public final class FileCatalogReviewerScopeStore {
     }
   }
 
+  /**
+   * Revokes one exact existing scope while respecting all retained authorization leases.
+   *
+   * @param request exact host-operator request; no new reviewer or subject fields are accepted
+   * @return persisted terminal record
+   * @throws IOException if current policy cannot be read or atomically persisted
+   */
+  public CatalogReviewerScope revoke(CatalogScopeRevocation request) throws IOException {
+    java.util.Objects.requireNonNull(request, "request");
+    mutationFence.acquireUninterruptibly(MUTATION_PERMITS);
+    try {
+      CatalogReviewerScope prior =
+          find(request.scopeId()).orElseThrow(CatalogScopeRevocation::rejected);
+      request.requireCurrent(prior.catalogId(), prior.selfDigest(), prior.updatedAt());
+      if (prior.status() != CatalogReviewerScope.Status.ACTIVE
+          && prior.status() != CatalogReviewerScope.Status.SUSPENDED) {
+        throw CatalogScopeRevocation.rejected();
+      }
+      CatalogReviewerScope revoked =
+          CatalogReviewerScope.create(
+              prior.scopeId(),
+              prior.catalogId(),
+              prior.appId().orElse(null),
+              prior.reviewerFingerprints(),
+              prior.acceptedReviewerSetDigestSha256(),
+              CatalogReviewerScope.Status.REVOKED,
+              prior.createdAt(),
+              request.changedAt(),
+              request.reason(),
+              request.operatorId());
+      putUnderFence(revoked);
+      return revoked;
+    } finally {
+      mutationFence.release(MUTATION_PERMITS);
+    }
+  }
+
   /** Validates and persists one reviewer scope while the mutation fence is exclusive. */
   private synchronized void putUnderFence(CatalogReviewerScope scope) throws IOException {
     CatalogReviewerScope checked = java.util.Objects.requireNonNull(scope, "scope");

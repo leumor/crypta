@@ -28,6 +28,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager.PendingCatalogDiscov
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppSubmissionIntakeRecord;
 import network.crypta.platform.appcatalog.AppSubmissionIntakeSummary;
+import network.crypta.platform.appcatalog.CatalogScopeRevocation;
 import network.crypta.platform.appcatalog.FederatedCatalogConflictEngine;
 import network.crypta.platform.appcatalog.FederatedCatalogTrustBinding;
 import network.crypta.platform.appcatalog.FileAppSubmissionIntakeStore;
@@ -58,6 +59,8 @@ import network.crypta.runtime.spi.RuntimePorts;
  * without granting app-origin callers any new privileges.
  */
 final class PlatformApiOperatorRoutes {
+  private static final String HOST_OPERATOR = "host-operator";
+
   /** HTTP method accepted by read-only operator dashboard resources. */
   private static final String METHOD_GET = "GET";
 
@@ -400,6 +403,39 @@ final class PlatformApiOperatorRoutes {
     return routeAppDataRestore(segments, request);
   }
 
+  private PlatformApiResponse revokeCatalogScope(
+      String catalogId, String action, PlatformApiRequest request) {
+    if (appUpdateService == null) {
+      throw new PlatformApiException(
+          503, "catalog_federation_unavailable", "Catalog federation is unavailable.");
+    }
+    String scopeId = requiredSingleParameter(request, "scopeId", 128);
+    String expectedDigest = requiredSingleParameter(request, "expectedDigestSha256", 64);
+    if (!scopeId.matches("[a-z0-9][a-z0-9._-]{0,127}") || !expectedDigest.matches("[0-9a-f]{64}")) {
+      throw new PlatformApiException(
+          400, "invalid_request", "Scope identity or expected digest is invalid.");
+    }
+    try {
+      CatalogScopeRevocation revocation =
+          new CatalogScopeRevocation(
+              catalogId,
+              scopeId,
+              expectedDigest,
+              Instant.now(),
+              requiredSingleParameter(request, PARAMETER_REASON, 512),
+              HOST_OPERATOR);
+      return PlatformApiResponse.ok(
+          appUpdateService.revokeCatalogScope(
+              "publisher-scope-revoke".equals(action) ? "publisher" : "reviewer", revocation));
+    } catch (AppCatalogException _) {
+      throw new PlatformApiException(
+          409, "catalog_scope_changed", "The selected local scope is unavailable or changed.");
+    } catch (IOException _) {
+      throw new PlatformApiException(
+          500, "catalog_scope_write_failed", "Local scope state could not be updated.");
+    }
+  }
+
   private PlatformApiResponse routeCatalogFederationMutation(
       String catalogId, String action, PlatformApiRequest request) {
     if (!METHOD_POST.equals(request.method())) {
@@ -408,6 +444,9 @@ final class PlatformApiOperatorRoutes {
     if (appCatalogManager == null || !appCatalogManager.federationEnabled()) {
       throw new PlatformApiException(
           503, "catalog_federation_unavailable", "Catalog federation is unavailable.");
+    }
+    if ("publisher-scope-revoke".equals(action) || "reviewer-scope-revoke".equals(action)) {
+      return revokeCatalogScope(catalogId, action, request);
     }
     if ("trust".equals(action)) {
       return PlatformApiResponse.ok(approveCatalogTrust(catalogId, request));
@@ -423,7 +462,7 @@ final class PlatformApiOperatorRoutes {
     try {
       FederatedCatalogTrustBinding binding =
           appCatalogManager.transitionFederatedTrustBinding(
-              catalogId, status, reason, "host-operator", Instant.now());
+              catalogId, status, reason, HOST_OPERATOR, Instant.now());
       return PlatformApiResponse.ok(catalogTrustSummary(binding));
     } catch (AppCatalogException exception) {
       throw new PlatformApiException(409, exception.errorCode(), exception.getMessage());
@@ -528,7 +567,7 @@ final class PlatformApiOperatorRoutes {
               createdAt,
               now,
               reason,
-              "host-operator");
+              HOST_OPERATOR);
       appCatalogManager.putFederatedTrustBinding(binding);
       return catalogTrustSummary(binding);
     } catch (AppCatalogException exception) {

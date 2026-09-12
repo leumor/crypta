@@ -2030,14 +2030,17 @@ def _app_subject_inventory_errors(
 ) -> list[str]:
     errors: list[str] = []
     projected = False
-    if inventory.get("schemaVersion") == 2:
+    if inventory.get("schemaVersion") == 4 and inventory.get("baseInventoryVersion") != 2:
+        return ["runtime-only app inventory does not establish independent API release authority"]
+    if inventory.get("schemaVersion") in {2, 4}:
         # Only the protected wrapper can inject bytes it just fetched and authenticated.
         # No JSON property or local self digest substitutes for this producer boundary.
         try:
-            from app_subject_projection import AuthenticatedProjection, validate_declaration
+            from app_subject_projection import AuthenticatedProjection, validate_declaration, validate_federation_inventory
+            validate_federation_inventory(inventory)
             projected = (isinstance(authenticated_projection, AuthenticatedProjection)
                          and authenticated_projection.matches(inventory))
-        except ImportError:
+        except (ImportError, ValueError, KeyError, TypeError):
             projected = False
         if not projected:
             errors.append("version-2 app inventory lacks original protected projection authentication")
@@ -3157,7 +3160,9 @@ def run(
         app_subject_inventory, app_subject_inventory_errors = _optional_bound_json(
             resolved_evidence,
             contract["evidence"]["appSubjectInventory"],
-            ("platform-api-1.x-app-subject-inventory-v2.schema.json"
+            ("platform-api-1.x-app-subject-inventory-v4.schema.json" if authenticated_projection is not None
+             and authenticated_projection.inventory().get("schemaVersion") == 4 else
+             "platform-api-1.x-app-subject-inventory-v2.schema.json"
              if authenticated_projection is not None else APP_SUBJECT_INVENTORY_SCHEMA),
             "app subject inventory",
         )

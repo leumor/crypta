@@ -78,3 +78,5 @@ authentication; never feed its synthetic summary into production maintenance evi
 For prospective exact runtime subjects, follow `docs/pr-304-runtime-subject-binding.md`.
 Keep maintenance freeze v1 historical semantics, v2 internal runtime members outside public assets,
 and native package-derived API/app admission separate from measured scenario eligibility.
+
+PR-305 adds a finite catalog-origin local driver and private selected-federation inventory companion. Follow `docs/pr-305-federated-app-projection-and-catalog-origin.md`; require actual daemon catalog/signature traffic for fallback and exact bundle plus origin for rollback. Original protected observer authentication, complete maintenance cohorts and observation windows remain separate from synthetic packaged integration.

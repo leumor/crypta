@@ -55,6 +55,7 @@ import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
 import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
+import network.crypta.platform.appcatalog.CatalogPublisherAuthorizationException;
 import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
@@ -1960,6 +1961,51 @@ class AppCatalogsApiHandlerTest {
     assertEquals(
         List.of("Vault grant cleanup failed and requires operator review."),
         summary.get("warnings"));
+  }
+
+  @Test
+  void update_whenLocalPublisherScopeRevokedAfterPreview_expectTypedConflictWithoutMutation()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(richCatalogEntry());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(catalogManager.prepareInstallPlan("core", APP_ID))
+        .thenThrow(new CatalogPublisherAuthorizationException());
+    Map<String, List<String>> consent =
+        Map.of(SOURCE_SWITCH_CONSENT_PARAMETER, List.of("a".repeat(64)));
+
+    PlatformApiException failure =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID, consent));
+
+    assertEquals(409, failure.statusCode());
+    assertEquals("catalog_publisher_scope_rejected", failure.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void sourceSwitchPreview_whenScopeRejectedOrStorageFails_expectDistinctConflictAndIoFailure()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.prepareInstallPlan("core", APP_ID))
+        .thenThrow(
+            new CatalogPublisherAuthorizationException(),
+            new IOException("private-storage-canary"));
+
+    PlatformApiException rejected =
+        assertThrows(PlatformApiException.class, () -> handler.sourceSwitchPreview("core", APP_ID));
+    PlatformApiException storage =
+        assertThrows(PlatformApiException.class, () -> handler.sourceSwitchPreview("core", APP_ID));
+
+    assertEquals(409, rejected.statusCode());
+    assertEquals("catalog_publisher_scope_rejected", rejected.errorCode());
+    assertEquals(500, storage.statusCode());
+    assertFalse(storage.getMessage().contains("private-storage-canary"));
   }
 
   @Test

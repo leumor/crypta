@@ -43,7 +43,9 @@ REQUIRED_INPUTS = {
     "rc-product-admission": ("selection.json", "rc.zip", "portable.zip"),
     "api-compatibility": ("execution-contract.json", "evidence.zip"),
     "api-subjects-v2": ("execution-contract.json", "app-subject-inventory.json"),
+    "api-subjects-v4": ("execution-contract.json", "app-subject-inventory.json"),
     "migration-observation": ("observation.json",),
+    "catalog-origin-observation": ("plan.json", "observation.json"),
     "profile-review": ("review.json", "registry.json", "javascript-results.json")
                       + tuple(Path(row["resultFile"]).name for row in _policy()["suites"]),
     "measured-soak": ("plan.json", "events.json", "checkpoint.json"),
@@ -55,7 +57,8 @@ REQUIRED_INPUTS = {
 
 def _protected(name):
     if name not in {"app_subject_projection", "sharesite_observation", "maintenance_runtime_projection",
-                    "cross_version_supervisor_authority", "cross_version_product_admission"}:
+                    "cross_version_supervisor_authority", "cross_version_product_admission",
+                    "federated_catalog_runtime_observer"}:
         raise ValueError("phase12-runtime-adapter-unknown")
     # Fixed installed modules only, never an evidence-supplied import or script.
     sys.path.insert(0, str(PROTECTED))
@@ -100,15 +103,62 @@ def _result(*, claims=(), blockers=(), required=(), observed=(), evidence_class=
             "evidenceClass": evidence_class}
 
 
-def _api_subjects(values, payloads, now):
+def _catalog_origin(values, payloads, now):
+    owner = _protected("federated_catalog_runtime_observer")
+    plan, observation = values["plan.json"], values["observation.json"]
+    plan_digest = "sha256:" + hashlib.sha256(payloads["plan.json"]).hexdigest()
+    if (set(plan) != owner.PLAN_FIELDS or type(plan["schemaVersion"]) is not int or plan["schemaVersion"] != 2
+            or plan["kind"] != "protected-synthetic-catalog-origin-plan"
+            or type(plan["maximumSeconds"]) is not int or not 30 <= plan["maximumSeconds"] <= 1800):
+        raise ValueError("catalog-origin-plan-invalid")
+    observed = owner.validate_observation(observation, plan_digest, now=now)
+    bindings = {"sourceCommit": "sourceCommit", "executionId": "executionId",
+                "selectionOriginal": "selectionOriginal", "projectionOriginal": "projectionOriginal",
+                "daemonDigest": "packageDigest", "toolTreeDigest": "toolTreeDigest",
+                "daemonExecutableDigest": "daemonExecutableDigest",
+                "projectionInventoryDigest": "projectionInventoryDigest",
+                "javaTreeDigest": "javaTreeDigest", "fixtureTreeDigest": "fixtureTreeDigest",
+                "implementationDigest": "implementationDigest", "contexts": "nativeProjections"}
+    if (any(observation[key] != plan[target] for key, target in bindings.items())
+            or set(plan["contexts"]) != set(owner.LABELS)
+            or any(set(pin) != {"id", "digest", "generation"}
+                   or type(pin["generation"]) is not int or not 1 <= pin["generation"] <= 2**53-1
+                   or not re.fullmatch(r"[a-z][a-z0-9-]{1,63}", str(pin["id"]))
+                   or pin["digest"] != observation["contexts"][label]["federationSelection"]["selectionDigest"]
+                   or pin["generation"] != observation["contexts"][label]["federationSelection"]["generation"]
+                   for label, pin in plan["contexts"].items())
+            or (dt.datetime.fromisoformat(observation["completedAt"])
+                - dt.datetime.fromisoformat(observation["startedAt"])).total_seconds() > plan["maximumSeconds"]):
+        raise ValueError("catalog-origin-plan-substitution")
+    producer = observation["producer"]
+    if (set(producer) != {"repository", "workflowPath", "sourceCommit", "runId", "runAttempt", "environment"}
+            or producer["repository"] != owner.REPOSITORY or producer["workflowPath"] != owner.WORKFLOW
+            or producer["environment"] != owner.ENVIRONMENT or producer["sourceCommit"] != plan["sourceCommit"]
+            or any(type(producer[field]) is not int or producer[field] < 1 for field in ("runId", "runAttempt"))):
+        raise ValueError("catalog-origin-producer-substitution")
+    result = _result(claims=("p12-296-federation", "p12-300-adapters", "p12-300-consumers"),
+        blockers=("original-catalog-observer-required", "synthetic-local-cannot-close-parent-requirement",
+                  "protected-live-federation-scope-not-observed", "unrelated-maintenance-adapters-missing"),
+        required=observed, observed=observed, evidence_class="synthetic-local")
+    result["dimensions"].update(runtimeExecution="partial", coverage="partial", cleanup="complete")
+    result["subjectBindings"] = {"commit": plan["sourceCommit"], "digest": plan["packageDigest"]}
+    result["components"] = {"catalogOriginLifecycle": "local-consistency", "originalAuthentication": "unverified"}
+    result["observedAt"] = observation["completedAt"]
+    result["producerCoordinates"] = {"repository": producer["repository"], "runId": producer["runId"],
+                                     "runAttempt": producer["runAttempt"], "job": owner.JOB}
+    return result
+
+
+def _api_subjects(values, payloads, now, *, version=2):
     contract, inventory = values["execution-contract.json"], values["app-subject-inventory.json"]
     if (validate_schema(contract, api.EXECUTION_SCHEMA)
-            or validate_schema(inventory, "platform-api-1.x-app-subject-inventory-v2.schema.json")):
+            or validate_schema(inventory, f"platform-api-1.x-app-subject-inventory-v{version}.schema.json")):
         raise ValueError("phase12-runtime-api-schema")
     policy, policy_digest = api._policy(ROOT)
     if contract["policyDigest"] != policy_digest or dt.datetime.fromisoformat(contract["evaluationTime"]) > now:
         raise ValueError("phase12-runtime-api-policy-or-time")
     projection = _protected("app_subject_projection")
+    projection.validate_federation_inventory(inventory)
     from original_artifact_authentication import validate_coordinates
     binding = contract["evidence"]["appSubjectInventory"]
     raw = payloads["app-subject-inventory.json"]
@@ -156,6 +206,11 @@ def _api_subjects(values, payloads, now):
                    observed=("first-party-cohort", "external-app") +
                             (("current-experimental-mail",) if "mail-prototype" in first_party else ()),
                    evidence_class="signed-declaration-local-consistency")
+    if version == 4:
+        result["claims"].append("p12-296-federation")
+        result["coverage"]["required"].append("native-selected-federation-context")
+        result["coverage"]["observed"].append("selected-federation-declaration-consistency")
+        result["blockers"].append("catalog-origin-runtime-cohort-not-established")
     result["subjectBindings"] = {"commit": inventory["sourceCommit"],
                                  "build": str(contract["release"]["buildVersion"])}
     return result
@@ -442,8 +497,10 @@ def verify(adapter: str, payloads: dict[str, bytes], as_of: str, scratch: Path) 
             result = _product(adapter, values, payloads, scratch, now)
         elif adapter == "api-compatibility":
             result = _api_compatibility(values, payloads, scratch, now)
-        elif adapter == "api-subjects-v2":
-            result = _api_subjects(values, payloads, now)
+        elif adapter in {"api-subjects-v2", "api-subjects-v4"}:
+            result = _api_subjects(values, payloads, now, version=4 if adapter.endswith("v4") else 2)
+        elif adapter == "catalog-origin-observation":
+            result = _catalog_origin(values, payloads, now)
         elif adapter == "migration-observation":
             result = _migration(values)
         elif adapter == "profile-review":
@@ -544,7 +601,16 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
     try:
         values = {name: _json(raw) for name, raw in payloads.items() if name.endswith(".json")}
         claim_results = {}
-        if adapter == "api-subjects-v2":
+        if adapter == "catalog-origin-observation":
+            owner = _protected("federated_catalog_runtime_observer")
+            if (type(authority) is not owner.AuthenticatedCatalogObservation
+                    or not authority.matches(values["observation.json"])
+                    or authority.digest != "sha256:" + hashlib.sha256(payloads["observation.json"]).hexdigest()):
+                raise ValueError("catalog-observer-authority-mismatch")
+            result["blockers"].remove("original-catalog-observer-required")
+            result["dimensions"].update(originalProvenance="authenticated", runtimeExecution="partial", coverage="partial")
+            result["components"] = {"catalogOriginLifecycle": "observed-synthetic-local", "originalAuthentication": "authenticated"}
+        elif adapter in {"api-subjects-v2", "api-subjects-v4"}:
             owner = _protected("app_subject_projection")
             inventory = values["app-subject-inventory.json"]
             if (not isinstance(authority, owner.AuthenticatedProjection) or not authority.matches(inventory)
@@ -553,6 +619,8 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                                                         api._policy(ROOT)[0], authority)):
                 raise ValueError("projection-authority-mismatch")
             result["blockers"].remove("original-protected-projection-required")
+            if adapter == "api-subjects-v4":
+                result["coverage"]["observed"].append("native-selected-federation-context")
             result["dimensions"].update(originalProvenance="authenticated", runtimeExecution="observed",
                                          coverage="complete" if not result["blockers"] else "partial")
             result["coverage"]["observed"] = result["coverage"]["required"] if not result["blockers"] else result["coverage"]["observed"]
@@ -628,9 +696,11 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
 
 
 ORIGINAL_MEMBERS = {
+    "catalog-origin-observation": {"observation.json": "catalog-origin-observation.cms"},
     "product-admission": {"product.zip": "original-maintenance-archive"},
     "rc-product-admission": {"rc.zip": "original-rc-archive", "portable.zip": "original-portable-archive"},
     "api-subjects-v2": {"app-subject-inventory.json": "platform-api-1.x-app-subject-inventory.json"},
+    "api-subjects-v4": {"app-subject-inventory.json": "platform-api-1.x-app-subject-inventory.cms"},
     "migration-observation": {"observation.json": "sharesite-runtime-observation.json"},
     "measured-soak": {"supervisor-report": "cross-version-supervisor.json"},
     "mail-runtime": {"supervisor-report": "cross-version-supervisor.json"},
@@ -650,7 +720,7 @@ def validate_proof(adapter, proof, payloads):
         _protected("app_subject_projection")
         from original_artifact_authentication import validate_coordinates, PRODUCERS
         coordinates = validate_coordinates(proof["coordinates"])
-        family = {"api-subjects-v2": "app-subject-projection", "migration-observation": "sharesite-runtime",
+        family = {"catalog-origin-observation": "catalog-origin-observation", "api-subjects-v2": "app-subject-projection", "api-subjects-v4": "app-subject-projection", "migration-observation": "sharesite-runtime",
                   "product-admission": "stable-maintenance-freeze", "rc-product-admission": "stable-rc-product"}.get(
             adapter, "cross-version-supervisor")
         if (coordinates["sourceFamily"] != family or coordinates["jobName"] != PRODUCERS[family][2]
@@ -710,7 +780,11 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                 local["originalProof"] = {"state": "authenticated", "scope": "original-product-owner-verification",
                                           "blockers": []}
                 return local
-            elif adapter == "api-subjects-v2":
+            elif adapter == "catalog-origin-observation":
+                owner = _protected("federated_catalog_runtime_observer")
+                authority = owner.authenticate_observation(coordinates, root,
+                    "sha256:" + hashlib.sha256(payloads["plan.json"]).hexdigest())
+            elif adapter in {"api-subjects-v2", "api-subjects-v4"}:
                 owner = _protected("app_subject_projection")
                 # The original member is authenticated, and the existing consumer independently
                 # fixes the mandatory first-party/external cohort. This expected exact digest is

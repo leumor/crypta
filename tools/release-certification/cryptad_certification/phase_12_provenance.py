@@ -19,6 +19,8 @@ FAMILIES = {
     "pilot-review": {"third-party-pilot", "third-party-inventory"},
     "federation-trust": {"federated-catalog"},
     "api-subjects-v2": {"app-subject-projection"},
+    "api-subjects-v4": {"app-subject-projection"},
+    "catalog-origin-observation": {"catalog-origin-observation"},
     "migration-observation": {"sharesite-runtime"},
     "measured-soak": {"cross-version-supervisor"},
     "maintenance-measurements": {"cross-version-supervisor"},

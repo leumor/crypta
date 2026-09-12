@@ -20,6 +20,7 @@ import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogOriginContext;
 import network.crypta.platform.appcatalog.CatalogPublisherBinding;
+import network.crypta.platform.appcatalog.CatalogScopeRevocation;
 import network.crypta.platform.appcatalog.FederatedCatalogConflictEngine;
 import network.crypta.platform.appcatalog.FederatedCatalogTrustBinding;
 import network.crypta.platform.appcatalog.FileCatalogPublisherBindingStore;
@@ -176,6 +177,18 @@ public final class AppUpdateFederationAuthority {
    */
   private static String rollbackStatus(boolean rollbackAvailable) {
     return rollbackAvailable ? "available" : "none";
+  }
+
+  /**
+   * Revokes an exact publisher scope in the existing host-owned authorization store.
+   *
+   * @param request expected-current host-operator request
+   * @return persisted terminal publisher binding
+   * @throws IOException if current policy cannot be safely persisted
+   */
+  public CatalogPublisherBinding revokePublisherScope(CatalogScopeRevocation request)
+      throws IOException {
+    return publisherBindingStore.revoke(request);
   }
 
   /**

@@ -19,6 +19,16 @@ REPOSITORY = "crypta-network/cryptad"
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 # These are existing upstream authorities, never caller-selected workflows or environments.
 PRODUCERS = {
+    "catalog-origin-observation": (
+        ".github/workflows/stable-1.0-federated-catalog-runtime.yml",
+        "stable-1-0-federated-catalog-runtime-observation",
+        "Observe authenticated synthetic catalog-origin cohort",
+    ),
+    "federation-selection": (
+        ".github/workflows/stable-1.0-app-subject-projection.yml",
+        "stable-1-0-app-subject-projection",
+        "produce-federation-selection",
+    ),
     "maintenance-app-products": (
         ".github/workflows/stable-1.0-maintenance-release.yml",
         "stable-1.0-maintenance-evidence",

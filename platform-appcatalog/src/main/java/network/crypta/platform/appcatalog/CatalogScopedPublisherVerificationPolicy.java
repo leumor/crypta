@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleVerification;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.PublicKeyFingerprint;
@@ -14,10 +15,11 @@ import network.crypta.platform.appdist.TrustedAppKeys;
 /**
  * Verifies catalog bundles against explicit catalog/app-scoped publisher bindings.
  *
- * <p>The policy first verifies the bundle signature through the existing trusted app-key registry,
- * then requires exactly one active local publisher binding for the authenticated catalog, app,
- * channel, key ID, and key fingerprint. It also compares the binding-store aggregate digest with
- * the digest accepted by the catalog trust binding.
+ * <p>The policy parses the signature metadata and rejects known inactive publisher keys as scope
+ * conflicts before generic bundle verification. It then verifies the bundle signature through the
+ * existing trusted app-key registry and requires exactly one active local publisher binding for the
+ * authenticated catalog, app, channel, key ID, and key fingerprint. It also compares the
+ * binding-store aggregate digest with the digest accepted by the catalog trust binding.
  *
  * <p>Publisher, catalog signer, and reviewer registries remain role-separated. A narrowly labeled
  * legacy mode permits the catalog and publisher registry objects to be shared, but it does not
@@ -144,13 +146,19 @@ public final class CatalogScopedPublisherVerificationPolicy
       throw new IOException("catalog federation role separation failed", exception);
     }
 
+    Instant now = clock.instant();
+    AppBundleSignature signature =
+        AppBundleVerifier.read(stagedRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME));
+    if (appKeys.findPolicy(signature.keyId()).isPresent()
+        && appKeys.findActiveForVerification(signature.keyId(), now).isEmpty()) {
+      throw new CatalogPublisherAuthorizationException();
+    }
     AppBundleVerification verification =
         AppBundleVerifier.requireSigned(appKeys).verify(stagedRoot);
-    Instant now = clock.instant();
     TrustedAppKey publisherKey =
         appKeys
             .findActiveForVerification(verification.keyId(), now)
-            .orElseThrow(() -> new IOException("publisher key is not active for new bundles"));
+            .orElseThrow(CatalogPublisherAuthorizationException::new);
     String fingerprint = PublicKeyFingerprint.sha256(publisherKey.publicKey());
     CatalogPublisherBinding binding =
         bindingStore
@@ -161,10 +169,7 @@ public final class CatalogScopedPublisherVerificationPolicy
                 fingerprint,
                 checkedContext.entry().productionMetadata().channel(),
                 now)
-            .orElseThrow(
-                () ->
-                    new IOException(
-                        "no active local publisher binding authorizes this catalog app"));
+            .orElseThrow(CatalogPublisherAuthorizationException::new);
     requireCatalogPolicyDigest(checkedContext.catalogId());
     return new AppCatalogBundleVerificationResult(
         verification.keyId(),
@@ -201,12 +206,12 @@ public final class CatalogScopedPublisherVerificationPolicy
     FederatedCatalogTrustBinding catalogBinding =
         catalogTrustBindings
             .findByCatalogId(catalogId)
-            .orElseThrow(() -> new IOException("catalog trust binding is unavailable"));
+            .orElseThrow(CatalogPublisherAuthorizationException::new);
     if (catalogBinding
         .publisherPolicyDigest()
         .filter(bindingStore.policyDigest(catalogId)::equals)
         .isEmpty()) {
-      throw new IOException("catalog trust binding publisher-policy digest does not match");
+      throw new CatalogPublisherAuthorizationException();
     }
   }
 }

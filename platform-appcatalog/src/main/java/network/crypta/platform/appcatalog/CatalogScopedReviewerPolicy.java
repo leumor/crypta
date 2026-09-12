@@ -65,6 +65,17 @@ public final class CatalogScopedReviewerPolicy {
   }
 
   /**
+   * Narrows an existing host-owned scope through the same store used for commit authorization.
+   *
+   * @param request exact host-operator revocation request
+   * @return persisted terminal scope
+   * @throws IOException if native policy persistence fails
+   */
+  public CatalogReviewerScope revoke(CatalogScopeRevocation request) throws IOException {
+    return scopeStore.revoke(request);
+  }
+
+  /**
    * Evaluates existing reviewer trust and then requires an exact active local federation scope.
    *
    * <p>The reviewer registry remains authoritative for public keys, lifecycle, policy constraints,

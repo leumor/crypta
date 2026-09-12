@@ -306,7 +306,9 @@ jobs:
       - name: Prepare bounded export sandbox
         uses: ./.github/actions/setup-packaged-export-sandbox
       - name: Build fixed native test tools
-        run: ./gradlew :platform-devtools:installDist
+        run: ./gradlew :platform-devtools:installDist assembleCryptadDist
+      - name: Verify private selection envelope prerequisite
+        run: test -x /usr/bin/openssl
       - name: Exercise synthetic producer and original consumer semantics
         env:
           PYTHONPATH: tools/release-certification
@@ -315,6 +317,19 @@ jobs:
           import unittest
           suite = unittest.defaultTestLoader.loadTestsFromName(
               "cryptad_certification.tests.test_pr304_product_consumer_integration")
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName(
+              "cryptad_certification.tests.test_pr305_product_consumer_integration"))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
+              raise SystemExit(1)
+          PY
+      - name: Exercise real catalog-origin packaged lifecycle
+        env:
+          PYTHONPATH: tools/interop:tools/release-certification:tools/release-certification/protected
+        run: |
+          python3 - <<'PY'
+          import unittest
+          suite = unittest.defaultTestLoader.loadTestsFromName("test_catalog_origin_packaged")
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
               raise SystemExit(1)

@@ -6,6 +6,7 @@ import unittest
 import zipfile
 import copy
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -21,6 +22,18 @@ from cryptad_certification.engines import stable_legacy_plugin_migration as migr
 
 
 class ProjectionBoundaryTest(unittest.TestCase):
+    def test_selected_cohort_rejects_world_readable_policy_before_using_private_roster(self):
+        import app_subject_projection as projection
+        for version, mode, expected in ((2, 0o100644, "private-cohort-unavailable"),
+                                        (2, 0o100640, "protected-cohort-invalid"),
+                                        (1, 0o100644, "protected-cohort-invalid")):
+            with self.subTest(version=version, mode=mode):
+                policy = unittest.mock.Mock()
+                policy.lstat.return_value = SimpleNamespace(st_mode=mode, st_uid=0, st_size=20)
+                policy.read_bytes.return_value = ('{"schemaVersion":' + str(version) + '}').encode()
+                with patch.object(projection, "COHORT_FILE", policy), self.assertRaisesRegex(ProjectionFailure, expected):
+                    projection._cohort()
+
     def inventory(self):
         roots = {key: "sha256:" + "a" * 64 for key in api1x.AUTHORITY_SCHEMAS}
         contract = {"release": {"releaseId": "synthetic-release"},

@@ -330,3 +330,7 @@ See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the 
 maintenance v2 private metadata, exact packaged API export, independently selected app sets and
 versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
 narrow admission success does not close missing runtime adapters or operational evidence.
+
+## Private selected-federation declaration admission
+
+[PR-305](pr-305-federated-app-projection-and-catalog-origin.md) adds native declaration v3 and private inventory v4. The companion keeps app build/source authority separate from the authenticated local selection and retains an explicit base inventory version. Base v2 can enter original API matrix admission; base v3 remains prospective runtime-only and cannot establish independent API release authority. Complete selected context, generation, conflict set and packaged contract/registry bindings are required. Removing scoped context cannot convert an approved federation selection into global-key admission.

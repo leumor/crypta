@@ -796,16 +796,18 @@ public record CoreHttpShellRuntimeSupport(
     return new AppCatalogBundleVerificationPolicy() {
       @Override
       public void verify(Path stagedBundleDirectory) throws IOException {
-        checkedInstallPolicy.verify(stagedBundleDirectory);
         checkedScopedPolicy.verify(stagedBundleDirectory);
+        checkedInstallPolicy.verify(stagedBundleDirectory);
       }
 
       @Override
       public AppCatalogBundleVerificationResult verify(
           AppCatalogBundleVerificationContext context, Path stagedBundleDirectory)
           throws IOException {
+        AppCatalogBundleVerificationResult result =
+            checkedScopedPolicy.verify(context, stagedBundleDirectory);
         checkedInstallPolicy.verify(context, stagedBundleDirectory);
-        return checkedScopedPolicy.verify(context, stagedBundleDirectory);
+        return result;
       }
     };
   }

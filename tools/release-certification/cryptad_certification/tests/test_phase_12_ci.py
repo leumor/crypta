@@ -148,6 +148,14 @@ class Phase12HostedCITests(unittest.TestCase):
         with patch.object(ci, "_GitHub", return_value=self.api), patch.object(ci, "_source_clean", return_value=clean):
             return ci.verify(encoded(self.api.selection), SOURCE, AS_OF, collect_original=True)
 
+    def test_catalog_origin_integration_cannot_be_skipped_under_a_successful_job(self):
+        self.api.complete_reports()
+        jobs = self.api.responses["actions/runs/1/attempts/2/jobs?per_page=100"]["jobs"]
+        job = next(row for row in jobs if row["name"] == "Exact packaged runtime subject integration")
+        step = next(row for row in job["steps"] if row["name"] == "Exercise real catalog-origin packaged lifecycle")
+        step["conclusion"] = "skipped"
+        self.assertEqual("skipped", self.verify()["ci"])
+
     def test_actual_original_job_admission_preserves_missing_test_and_nonblocking_reports(self):
         result = self.verify()
         self.assertEqual("authenticated", result["originalProvenance"])

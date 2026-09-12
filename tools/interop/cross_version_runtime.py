@@ -513,6 +513,9 @@ class AppHandle:
         if principal == "host" and getattr(self.supervisor, "catalog_prepared", None) is not None:
             if self.supervisor.catalog_route_allowed(self.role, self.app_id, method, path) is True:
                 exact.add(path)
+        if principal == "app" and getattr(self.supervisor, "catalog_principal_probe_allowed", None) is not None:
+            if self.supervisor.catalog_principal_probe_allowed(self.role, self.app_id, method, path) is True:
+                exact.add(path)
         prefixes = ("/api/v1/app-data/",)
         allowed_app = {"/api/v1/apps/" + self.app_id + suffix for suffix in ("", "/start", "/stop", "/runtime", "/logs", "/audit")}
         bootstrap = "/apps/" + self.app_id + "/.well-known/cryptad-bootstrap.json"
@@ -541,7 +544,14 @@ class AppHandle:
             raise RuntimeFailure("app-request-budget-exceeded")
         if data:
             headers["Content-Type"] = "application/x-www-form-urlencoded"
-        request = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
+        query = ""
+        if method == "GET" and values:
+            if (principal != "host" or path not in {"/api/v1/consent/install-preview",
+                                                    "/api/v1/consent/catalog-update-preview"}
+                    or set(values) != {"appId", "catalogId"} or values["appId"] != self.app_id):
+                raise RuntimeFailure("app-query-not-approved")
+            query = "?" + urllib.parse.urlencode(values)
+        request = urllib.request.Request(self.base + path + query, data=data, headers=headers, method=method)
         try:
             with absolute_deadline(self.supervisor.remaining(30)):
                 try:
@@ -2122,6 +2132,10 @@ def runner_identity():
              "tools/interop/cross_version_app_scenarios.py",
              "tools/interop/cross_version_recovery.py",
              "tools/interop/cross_version_catalog.py",
+             "tools/interop/catalog_origin_lifecycle.py",
+             "tools/interop/catalog_origin_fixture_server.py",
+             "tools/interop/federated_catalog_runtime.py",
+             "tools/interop/cryptad-federated-catalog-runtime",
              "tools/interop/cross_version_budget.py",
              "tools/interop/cross_version_budget_driver.cjs",
              "tools/release-certification/protected/sharesite_observation.py",

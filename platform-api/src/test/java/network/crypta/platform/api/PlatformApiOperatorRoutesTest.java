@@ -34,6 +34,7 @@ import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogManager.PendingCatalogDiscoveryEvidence;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.CatalogScopeRevocation;
 import network.crypta.platform.appcatalog.FederatedCatalogConflictEngine;
 import network.crypta.platform.appcatalog.FederatedCatalogTrustBinding;
 import network.crypta.platform.appcatalog.PendingCatalogDiscoveryRecommendation;
@@ -498,6 +499,66 @@ class PlatformApiOperatorRoutesTest {
 
     assertEquals(503, response.statusCode());
     assertTrue(response.body().contains("\"code\":\"catalog_federation_unavailable\""));
+  }
+
+  @Test
+  void route_whenOperatorRevokesExactScope_expectBoundedRequestAndAppPrincipalDenied()
+      throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    AppUpdateService updates = mock(AppUpdateService.class);
+    when(updates.revokeCatalogScope(eq("publisher"), any()))
+        .thenReturn(Map.of("status", "revoked"));
+    PlatformApiRouter router = routerWithUpdateService(mock(AppHost.class), manager, updates);
+    List<String> path =
+        List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "publisher-scope-revoke");
+    Map<String, List<String>> params =
+        Map.of(
+            "scopeId",
+            List.of("s".repeat(128)),
+            "expectedDigestSha256",
+            List.of("a".repeat(64)),
+            "reason",
+            List.of("operator revocation"));
+
+    PlatformApiResponse accepted = router.route(request("POST", path, params));
+    PlatformApiResponse denied =
+        router.route(
+            request("POST", path, params, PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(200, accepted.statusCode());
+    assertEquals(403, denied.statusCode());
+    ArgumentCaptor<CatalogScopeRevocation> captured =
+        ArgumentCaptor.forClass(CatalogScopeRevocation.class);
+    verify(updates).revokeCatalogScope(eq("publisher"), captured.capture());
+    assertEquals("community", captured.getValue().catalogId());
+    assertEquals("s".repeat(128), captured.getValue().scopeId());
+    assertEquals("a".repeat(64), captured.getValue().expectedDigestSha256());
+    assertEquals("host-operator", captured.getValue().operatorId());
+  }
+
+  @Test
+  void route_whenScopeDigestInvalidOrFederationDisabled_expectNoMutation() throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    AppUpdateService updates = mock(AppUpdateService.class);
+    PlatformApiRouter router = routerWithUpdateService(mock(AppHost.class), manager, updates);
+    List<String> path =
+        List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "reviewer-scope-revoke");
+    Map<String, List<String>> params =
+        Map.of(
+            "scopeId",
+            List.of("scope-community"),
+            "expectedDigestSha256",
+            List.of("private-canary"),
+            "reason",
+            List.of("operator revocation"));
+
+    assertEquals(503, router.route(request("POST", path, params)).statusCode());
+    when(manager.federationEnabled()).thenReturn(true);
+    PlatformApiResponse invalid = router.route(request("POST", path, params));
+    assertEquals(400, invalid.statusCode());
+    assertFalse(invalid.body().contains("private-canary"));
+    verify(updates, never()).revokeCatalogScope(any(), any());
   }
 
   @Test

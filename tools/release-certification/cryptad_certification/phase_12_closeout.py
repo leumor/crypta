@@ -51,6 +51,8 @@ ADAPTER_KINDS = {
     "product-admission": {"current-product", "historical-product"},
     "rc-product-admission": {"current-product", "historical-product"},
     "api-subjects-v2": {"subject-projection"},
+    "api-subjects-v4": {"subject-projection"},
+    "catalog-origin-observation": {"runtime"},
     "measured-soak": {"runtime"}, "mail-runtime": {"runtime"},
     "maintenance-measurements": {"runtime"}, "migration-observation": {"runtime"},
     "maintenance-drill": {"audit-tool"}, "profile-review": {"audit-tool"},
@@ -66,7 +68,7 @@ MAX_INPUT_TOTAL = 1536 * 1024 * 1024
 # This pin covers the reviewed acceptance scope, independently of implementation byte pins.
 # Updating code/test evidence cannot shrink a cohort or weaken a mandatory dimension. A scope
 # revision requires an explicit reviewed code change as well as a new inventory version.
-ACCEPTANCE_SCOPE_DIGEST = "sha256:85cd2aa0a8de0440b8a47e901edf6338f4dbea458549a0a1dd7aa160754296c5"
+ACCEPTANCE_SCOPE_DIGEST = "sha256:3e97e611adcebfc3c7b58de29465572812f99aac3cd609ff2e154bda4bf453ef"
 
 
 def fail(code):
