@@ -183,8 +183,8 @@ class CoreHttpShellRuntimeSupportTest {
         new CatalogScopedPublisherVerificationPolicy(
             new FileCatalogPublisherBindingStore(tempDir.resolve("scopes")),
             () -> keys,
-            () -> TrustedAppKeys.of(),
-            () -> TrustedReviewerKeys.of(),
+            TrustedAppKeys::of,
+            TrustedReviewerKeys::of,
             Clock.systemUTC(),
             null,
             CatalogScopedPublisherVerificationPolicy.CatalogSignerTrustMode.ROLE_SEPARATED);
