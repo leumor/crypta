@@ -4942,10 +4942,11 @@ class AppUpdateServiceTest {
     }
 
     PlatformApiException exception =
-        phase.equals("consent")
-            ? assertThrows(
-                PlatformApiException.class, () -> service.previewForConsent(APP_ID, false))
-            : assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+        assertThrows(
+            PlatformApiException.class,
+            phase.equals("consent")
+                ? () -> service.previewForConsent(APP_ID, false)
+                : () -> service.stage(APP_ID));
 
     assertEquals(409, exception.statusCode());
     assertEquals("catalog_publisher_scope_rejected", exception.errorCode());
