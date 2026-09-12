@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
@@ -48,7 +49,18 @@ import network.crypta.platform.appcatalog.AppCatalogBundleVerificationContext;
 import network.crypta.platform.appcatalog.AppCatalogBundleVerificationPolicy;
 import network.crypta.platform.appcatalog.AppCatalogBundleVerificationResult;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.CatalogPublisherAuthorizationException;
+import network.crypta.platform.appcatalog.CatalogScopedPublisherVerificationPolicy;
+import network.crypta.platform.appcatalog.FileCatalogPublisherBindingStore;
+import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.AppDistributionException;
+import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeyLifecycle;
+import network.crypta.platform.appdist.TrustedAppKeyPolicy;
+import network.crypta.platform.appdist.TrustedAppKeys;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
@@ -69,6 +81,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -109,7 +122,7 @@ class CoreHttpShellRuntimeSupportTest {
   }
 
   @Test
-  void composeCatalogBundlePolicies_whenInstallPolicyRejects_expectScopedPolicyNotReached()
+  void composeCatalogBundlePolicies_whenInstallPolicyRejects_expectRejectedAfterScopedCheck()
       throws Exception {
     AppCatalogBundleVerificationPolicy installPolicy =
         mock(AppCatalogBundleVerificationPolicy.class);
@@ -128,7 +141,7 @@ class CoreHttpShellRuntimeSupportTest {
         assertThrows(IOException.class, () -> composed.verify(context, stagedBundle));
 
     assertEquals("pilot approval rejected", exception.getMessage());
-    verifyNoInteractions(scopedPolicy);
+    verify(scopedPolicy).verify(context, stagedBundle);
   }
 
   @Test
@@ -152,6 +165,40 @@ class CoreHttpShellRuntimeSupportTest {
     assertSame(scopedResult, result);
     verify(installPolicy).verify(context, stagedBundle);
     verify(scopedPolicy).verify(context, stagedBundle);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = TrustedAppKeyLifecycle.class,
+      names = {"RETIRING", "RETIRED", "REVOKED"})
+  void composeCatalogBundlePolicies_whenPublisherInactive_expectTypedDenialBeforeBaseVerifier(
+      TrustedAppKeyLifecycle lifecycle, @TempDir Path tempDir) throws Exception {
+    KeyPair publisher = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path bundle = stageSignedApp(tempDir.resolve("bundle"), publisher);
+    TrustedAppKey key = new TrustedAppKey(TRUSTED_KEY_ID, "Ed25519", publisher.getPublic());
+    TrustedAppKeys keys =
+        TrustedAppKeys.ofPolicies(
+            new TrustedAppKeyPolicy(key, lifecycle, Instant.MIN, Instant.MAX));
+    CatalogScopedPublisherVerificationPolicy scoped =
+        new CatalogScopedPublisherVerificationPolicy(
+            new FileCatalogPublisherBindingStore(tempDir.resolve("scopes")),
+            () -> keys,
+            () -> TrustedAppKeys.of(),
+            () -> TrustedReviewerKeys.of(),
+            Clock.systemUTC(),
+            null,
+            CatalogScopedPublisherVerificationPolicy.CatalogSignerTrustMode.ROLE_SEPARATED);
+    AppCatalogBundleVerificationPolicy base =
+        root -> AppBundleVerifier.requireSigned(keys).verify(root);
+    AppCatalogBundleVerificationPolicy composed =
+        CoreHttpShellRuntimeSupport.composeCatalogBundleVerificationPolicies(base, scoped);
+    AppCatalogBundleVerificationContext context = mock(AppCatalogBundleVerificationContext.class);
+
+    assertThrows(
+        CatalogPublisherAuthorizationException.class, () -> composed.verify(context, bundle));
+
+    Files.writeString(bundle.resolve(AppBundleSignature.SIGNATURE_FILE_NAME), "malformed");
+    assertThrows(AppDistributionException.class, () -> composed.verify(context, bundle));
   }
 
   @Test
