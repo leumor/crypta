@@ -78,10 +78,12 @@ public final class FederatedCatalogScopeBootstrap {
    * <p>Existing destinations and symlink ancestors fail before mutation. All inputs are bounded and
    * copied once into a private snapshot before parsing. Failed preparation removes only its own
    * temporary directories. Installation of the prepared root never replaces an existing root.
-   * Callers must keep the parent directory and input tree under exclusive ownership during this
-   * operation; this method does not coordinate a running daemon or concurrent filesystem writers.
-   * On POSIX filesystems temporary roots are created with owner-only permissions. Other filesystems
-   * use their inherited access controls, which the caller must restrict appropriately.
+   * Snapshot cleanup completes before installation so its failure cannot report a committed import
+   * as rejected. Callers must keep the parent directory and input tree under exclusive ownership
+   * during this operation; this method does not coordinate a running daemon or concurrent
+   * filesystem writers. On POSIX filesystems temporary roots are created with owner-only
+   * permissions. Other filesystems use their inherited access controls, which the caller must
+   * restrict appropriately.
    *
    * @param appsRoot absent app-platform root beneath an existing host-owned directory
    * @param input exact handoff directory with bootstrap.properties, publishers, and reviewers
@@ -145,13 +147,21 @@ public final class FederatedCatalogScopeBootstrap {
                 reviewerStore.policyDigest(catalogId)));
       }
       Files.writeString(prepared.resolve("catalog-scope-bootstrap.sha256"), expectedDigest + "\n");
+      List<CatalogPolicy> policies = List.copyOf(result);
+      deleteOwnedDirectory(snapshot);
+      snapshot = null;
       Files.move(prepared, target);
       prepared = null;
-      return List.copyOf(result);
+      return policies;
     } finally {
-      deleteOwnedDirectory(snapshot);
-      if (prepared != null) {
-        deleteOwnedDirectory(prepared);
+      try {
+        if (snapshot != null) {
+          deleteOwnedDirectory(snapshot);
+        }
+      } finally {
+        if (prepared != null) {
+          deleteOwnedDirectory(prepared);
+        }
       }
     }
   }

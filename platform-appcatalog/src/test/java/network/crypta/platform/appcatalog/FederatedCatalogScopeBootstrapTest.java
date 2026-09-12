@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,8 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
 
 class FederatedCatalogScopeBootstrapTest {
+  private static final String MANIFEST = "bootstrap.properties";
+  private static final String PUBLISHER_BINDINGS_DIRECTORY = "catalog-publisher-bindings";
   private static final String HASH = "a".repeat(64);
   private static final Instant NOW = Instant.parse("2026-09-11T00:00:00Z");
   @TempDir Path temporary;
@@ -30,7 +36,7 @@ class FederatedCatalogScopeBootstrapTest {
     assertEquals(1, result.size());
     assertEquals("fixture-catalog", result.getFirst().catalogId());
     var publishers =
-        new FileCatalogPublisherBindingStore(target.resolve("catalog-publisher-bindings"));
+        new FileCatalogPublisherBindingStore(target.resolve(PUBLISHER_BINDINGS_DIRECTORY));
     var reviewers = new FileCatalogReviewerScopeStore(target.resolve("catalog-reviewer-scopes"));
     assertTrue(
         publishers
@@ -124,7 +130,43 @@ class FederatedCatalogScopeBootstrapTest {
         () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
 
     assertEquals("preserved", Files.readString(original));
-    assertFalse(Files.exists(target.resolve("catalog-publisher-bindings")));
+    assertFalse(Files.exists(target.resolve(PUBLISHER_BINDINGS_DIRECTORY)));
+  }
+
+  @Test
+  void bootstrap_whenSnapshotCleanupFails_expectAbsentDestinationAndSafeRetry() throws Exception {
+    Path input = handoff("fixture-app");
+    Path target = temporary.resolve("apps");
+    String expectedManifestDigest = manifestDigest(input);
+    AtomicBoolean failed = new AtomicBoolean();
+
+    try (var files = mockStatic(Files.class, CALLS_REAL_METHODS)) {
+      files
+          .when(() -> Files.delete(any(Path.class)))
+          .thenAnswer(
+              invocation -> {
+                Path path = invocation.getArgument(0);
+                if (path.getFileName().toString().equals(MANIFEST)
+                    && path.getParent().getFileName().toString().startsWith(".catalog-scope-input-")
+                    && failed.compareAndSet(false, true)) {
+                  throw new IOException("injected snapshot cleanup failure");
+                }
+                return invocation.callRealMethod();
+              });
+
+      assertThrows(
+          IOException.class,
+          () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
+    }
+
+    assertTrue(failed.get());
+    assertFalse(Files.exists(target));
+    assertNoScratchDirectories();
+    var result = FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest);
+    assertEquals(1, result.size());
+    assertEquals("fixture-catalog", result.getFirst().catalogId());
+    assertTrue(Files.isDirectory(target.resolve(PUBLISHER_BINDINGS_DIRECTORY)));
+    assertNoScratchDirectories();
   }
 
   private Path handoff(String reviewerApp) throws Exception {
@@ -163,7 +205,7 @@ class FederatedCatalogScopeBootstrapTest {
     new FileCatalogPublisherBindingStore(input.resolve("publishers")).put(publisher);
     new FileCatalogReviewerScopeStore(input.resolve("reviewers")).put(reviewer);
     Files.writeString(
-        input.resolve("bootstrap.properties"),
+        input.resolve(MANIFEST),
         "schemaVersion=1\npublisher.count=1\nreviewer.count=1\n"
             + "publisher.0.file=publisher.properties\npublisher.0.sha256="
             + FederatedPolicyRecordSupport.digest(publisher.canonicalText())
@@ -174,8 +216,7 @@ class FederatedCatalogScopeBootstrapTest {
   }
 
   private static String manifestDigest(Path input) throws IOException {
-    return FederatedPolicyRecordSupport.digest(
-        Files.readString(input.resolve("bootstrap.properties")));
+    return FederatedPolicyRecordSupport.digest(Files.readString(input.resolve(MANIFEST)));
   }
 
   private void assertNoScratchDirectories() throws IOException {

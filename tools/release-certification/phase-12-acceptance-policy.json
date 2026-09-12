@@ -1016,7 +1016,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5ea007ba6ab6cb1ee28a5c1c3357979a69033322dd5e6565157f7a38d03361f4",
+            "digest": "sha256:030c74acb0e480236f77a779d122772973e2f3b2425d8a3cf63917ebc8759472",
             "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java"
           },
           {
@@ -1084,7 +1084,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:dd83e01946864d0c2437f677ce0099b4b295746aff881f8534eeb1964a4a2434",
+            "digest": "sha256:e963edd5ded28654ca11a41c98eef0b09d51d5e0a9cbeaeb515d30130f297133",
             "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java"
           },
           {
@@ -2423,7 +2423,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5ea007ba6ab6cb1ee28a5c1c3357979a69033322dd5e6565157f7a38d03361f4",
+            "digest": "sha256:030c74acb0e480236f77a779d122772973e2f3b2425d8a3cf63917ebc8759472",
             "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java"
           },
           {
@@ -2541,7 +2541,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:dd83e01946864d0c2437f677ce0099b4b295746aff881f8534eeb1964a4a2434",
+            "digest": "sha256:e963edd5ded28654ca11a41c98eef0b09d51d5e0a9cbeaeb515d30130f297133",
             "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java"
           },
           {
@@ -2732,7 +2732,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5ea007ba6ab6cb1ee28a5c1c3357979a69033322dd5e6565157f7a38d03361f4",
+            "digest": "sha256:030c74acb0e480236f77a779d122772973e2f3b2425d8a3cf63917ebc8759472",
             "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java"
           },
           {
@@ -2795,7 +2795,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:dd83e01946864d0c2437f677ce0099b4b295746aff881f8534eeb1964a4a2434",
+            "digest": "sha256:e963edd5ded28654ca11a41c98eef0b09d51d5e0a9cbeaeb515d30130f297133",
             "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java"
           },
           {

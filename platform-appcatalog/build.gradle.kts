@@ -19,6 +19,7 @@ dependencies {
   testImplementation(project(":platform-apphost"))
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
+  testImplementation(libs.mockitoCore)
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }
