@@ -58,4 +58,18 @@ public interface AppNetworkBudgetStore {
    * @throws IOException when the store root cannot be listed safely
    */
   List<AppNetworkBudgetUsage> listAll() throws IOException;
+
+  /**
+   * Lists a bounded, complete set for evidence without silently dropping unreadable records.
+   *
+   * <p>Legacy stores may leave this unsupported; the default fails closed. This does not change the
+   * tolerant historical {@link #listAll()} contract.
+   *
+   * @param maximumEntries maximum inspected entries, not only successful records
+   * @return complete bounded usage, including an empty list only for a known empty store
+   * @throws IOException when unsupported, truncated, malformed or unreadable
+   */
+  default List<AppNetworkBudgetUsage> observe(int maximumEntries) throws IOException {
+    throw new IOException("Budget observation unavailable");
+  }
 }

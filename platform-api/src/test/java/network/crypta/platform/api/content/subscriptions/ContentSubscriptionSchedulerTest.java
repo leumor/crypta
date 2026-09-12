@@ -15,8 +15,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
+import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppPaths;
@@ -24,14 +26,18 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
+import network.crypta.runtime.spi.ContentFetchObservation;
 import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.QueueSupportPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"java:S100"})
@@ -220,6 +226,223 @@ class ContentSubscriptionSchedulerTest {
     assertEquals(ContentSubscriptionStatus.RUNNING, overlapping.status());
     assertEquals(ContentSubscriptionStatus.SUCCESS, firstResult.get().status());
     assertEquals(1, fetchPort.calls);
+  }
+
+  @Test
+  void tick_whenPressureAndRateExhaustionCoincide_expectNoBudgetEntryOrFetch() throws IOException {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    var config = config(Duration.ZERO, 2, 2);
+    var budget = subscriptionBudget();
+    budget.acquire(APP_ID, AppNetworkBudgetOperation.SUBSCRIPTION_POLL).lease().close();
+    var service = service(fetchPort, config, budget);
+    service.create(APP_ID, createParams(SOURCE, "Feed"));
+    var queue = mock(QueueSupportPort.class);
+    when(queue.isQueueBackendEnabled()).thenReturn(false);
+    var scheduler =
+        new ContentSubscriptionScheduler(
+            appHost(installed(SUBSCRIPTION_CAPABILITIES)),
+            service,
+            config,
+            new ContentSubscriptionPressureGate(queue, null),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new Random(0));
+    long before = budget.observation().snapshot().lastSequence();
+    var usageBefore = budget.snapshots();
+
+    scheduler.tick(NOW);
+    var kinds =
+        budget.observation().snapshot().events().stream()
+            .filter(event -> event.sequence() > before)
+            .map(RuntimeWorkObservation.Event::kind)
+            .toList();
+
+    assertTrue(kinds.contains(RuntimeWorkObservation.Kind.DUE));
+    assertTrue(kinds.contains(RuntimeWorkObservation.Kind.PRESSURE_SKIP));
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.BUDGET_RESERVE));
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.BUDGET_COMMITTED));
+    assertEquals(usageBefore, budget.snapshots());
+    assertEquals(0, fetchPort.calls);
+  }
+
+  @Test
+  void tick_whenPressureClears_expectBackoffRespectedThenOrderedUsefulRecovery()
+      throws IOException {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    var config = config(Duration.ZERO, 2, 2);
+    var budget = subscriptionBudget();
+    var service = service(fetchPort, config, budget);
+    service.create(APP_ID, createParams(SOURCE, "Feed"));
+    var queue = mock(QueueSupportPort.class);
+    when(queue.isQueueBackendEnabled()).thenReturn(false);
+    var scheduler =
+        new ContentSubscriptionScheduler(
+            appHost(installed(SUBSCRIPTION_CAPABILITIES)),
+            service,
+            config,
+            new ContentSubscriptionPressureGate(queue, null),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new Random(0));
+    scheduler.tick(NOW);
+    when(queue.isQueueBackendEnabled()).thenReturn(true);
+    scheduler.tick(NOW.plusSeconds(4));
+    assertEquals(0, fetchPort.calls);
+    fetchPort.enqueue("feed", "USK@example/feed/7/feed.json");
+    long before = budget.observation().snapshot().lastSequence();
+
+    scheduler.tick(NOW.plusSeconds(5));
+    var kinds =
+        budget.observation().snapshot().events().stream()
+            .filter(event -> event.sequence() > before)
+            .map(RuntimeWorkObservation.Event::kind)
+            .toList();
+
+    assertEquals(1, fetchPort.calls);
+    assertTrue(
+        kinds.indexOf(RuntimeWorkObservation.Kind.BUDGET_RESERVED)
+            < kinds.indexOf(RuntimeWorkObservation.Kind.BUDGET_COMMITTED));
+    assertTrue(
+        kinds.indexOf(RuntimeWorkObservation.Kind.BUDGET_COMMITTED)
+            < kinds.indexOf(RuntimeWorkObservation.Kind.FETCH_INVOKED));
+    assertTrue(
+        kinds.indexOf(RuntimeWorkObservation.Kind.FETCH_SUCCEEDED)
+            < kinds.indexOf(RuntimeWorkObservation.Kind.BUDGET_RELEASED));
+    assertEquals(0, budget.diagnostics().activeFamilyLeases());
+    assertEquals(0, budget.diagnostics().reservedFamilyRates());
+  }
+
+  @Test
+  void executor_whenCancelledDuringFetch_expectBudgetReleasedAndNoOverlappingRestart()
+      throws Exception {
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch cancelled = new CountDownLatch(1);
+    ContentFetchPort fetch =
+        _ -> {
+          entered.countDown();
+          try {
+            new CountDownLatch(1).await();
+            throw new AssertionError("Unreachable");
+          } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            cancelled.countDown();
+            throw new IllegalStateException("Owned fetch cancelled");
+          }
+        };
+    var config = config(Duration.ZERO, 2, 2);
+    var budget = subscriptionBudget();
+    var service = service(fetch, config, budget);
+    service.create(APP_ID, createParams(SOURCE, "Feed"));
+    var scheduler = scheduler(appHost(installed(SUBSCRIPTION_CAPABILITIES)), service, config);
+
+    try {
+      scheduler.start();
+      scheduler.start();
+      assertTrue(entered.await(5, TimeUnit.SECONDS));
+      scheduler.close();
+      assertTrue(cancelled.await(5, TimeUnit.SECONDS));
+      // Taking the service lock waits for the interrupted fetch and its reservation cleanup.
+      service.list(APP_ID);
+      assertEquals(0, budget.diagnostics().activeFamilyLeases());
+      assertEquals(0, budget.diagnostics().reservedFamilyRates());
+      assertEquals(
+          1,
+          budget.observation().snapshot().events().stream()
+              .filter(event -> event.kind() == RuntimeWorkObservation.Kind.FETCH_INVOKED)
+              .count());
+      scheduler.start();
+      scheduler.close();
+      assertEquals(0, budget.diagnostics().activeFamilyLeases());
+    } finally {
+      scheduler.close();
+    }
+  }
+
+  @Test
+  void tick_whenContentionAndBudgetExhaustionCoincide_expectExactOwnerSampleBeforeSkip()
+      throws IOException {
+    var fetch = new RecordingFetchPort();
+    var config = config(Duration.ZERO, 2, 2);
+    var budget = subscriptionBudget();
+    budget.acquire(APP_ID, AppNetworkBudgetOperation.SUBSCRIPTION_POLL).lease().close();
+    var service = service(fetch, config, budget);
+    service.create(APP_ID, createParams(SOURCE, "Feed"));
+    var owner = mock(ContentFetchPort.class);
+    String epoch = "a3816c21-7d7d-4d6c-bad8-e47991bb78d5";
+    when(owner.observation())
+        .thenReturn(new ContentFetchObservation(true, epoch, 17, 123456789, 1, 10, 3, 2, 0, false));
+    var scheduler =
+        new ContentSubscriptionScheduler(
+            appHost(installed(SUBSCRIPTION_CAPABILITIES)),
+            service,
+            config,
+            new ContentSubscriptionPressureGate(null, null, owner, 1, 0),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new Random(0));
+    long before = budget.observation().snapshot().lastSequence();
+
+    scheduler.tick(NOW);
+
+    var events =
+        budget.observation().snapshot().events().stream()
+            .filter(event -> event.sequence() > before)
+            .toList();
+    var assessment =
+        events.stream()
+            .filter(event -> epoch.equals(event.sourceEpoch()))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(RuntimeWorkObservation.Kind.PRESSURE_CONTENTION_BLOCKED, assessment.kind());
+    assertEquals(17, assessment.sourceSequence());
+    assertEquals(123456789, assessment.sourceSampledAtEpochMillis());
+    assertEquals(1, assessment.value());
+    assertTrue(
+        assessment.sequence()
+            < events.stream()
+                .filter(event -> event.kind() == RuntimeWorkObservation.Kind.PRESSURE_SKIP)
+                .findFirst()
+                .orElseThrow()
+                .sequence());
+    assertFalse(
+        events.stream()
+            .anyMatch(event -> event.kind() == RuntimeWorkObservation.Kind.BUDGET_RESERVE));
+    assertEquals(0, fetch.calls);
+  }
+
+  @Test
+  void tick_whenMultipleSubscriptionsDue_expectOneOwnerAssessmentForWholeTick() throws IOException {
+    var fetch = new RecordingFetchPort();
+    var config = config(Duration.ZERO, 2, 2);
+    var service = service(fetch, config);
+    service.create(APP_ID, createParams(SOURCE, "First"));
+    service.create(APP_ID, createParams("USK@example/second/7/feed.json", "Second"));
+    fetch.enqueue("first", "USK@example/feed/7/feed.json");
+    fetch.enqueue("second", "USK@example/second/7/feed.json");
+    var owner = mock(ContentFetchPort.class);
+    when(owner.observation())
+        .thenReturn(
+            new ContentFetchObservation(
+                true,
+                "a3816c21-7d7d-4d6c-bad8-e47991bb78d5",
+                1,
+                System.currentTimeMillis(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                false));
+    var scheduler =
+        new ContentSubscriptionScheduler(
+            appHost(installed(SUBSCRIPTION_CAPABILITIES)),
+            service,
+            config,
+            new ContentSubscriptionPressureGate(null, null, owner, 1, 0),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new Random(0));
+
+    scheduler.tick(NOW);
+
+    verify(owner, times(1)).observation();
+    assertEquals(2, fetch.calls);
   }
 
   private ContentSubscriptionScheduler scheduler(

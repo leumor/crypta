@@ -178,3 +178,19 @@ full-window follow-up obligation without changing the published bytes.
 
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Prospective scheduler and resource observations
+
+[PR-306's bounded runtime path](pr-306-scheduler-pressure-and-runtime-resource-baselines.md) observes
+the existing content-subscription executor and shared network budgets. The optional admission
+policy counts active bounded content-fetch port calls with explicit high/low-water thresholds;
+it is disabled by default. It does not measure native pending keys or establish strict foreground
+priority. Availability denial, budget exhaustion, active-operation contention and OS/JVM resource
+measurements remain distinct.
+
+The operator-only observation route records actual pressure-source epochs and correlated
+reservation/family-charge/fetch/release events. Its strict bounded budget read distinguishes
+unavailable storage from zero usage without changing the legacy tolerant `snapshots()` API.
+The measured journal can derive narrow scheduler/accounting/recovery components. The existing
+network-scale policy still requires its full Trust Graph/subscription cohort, original evidence
+and duration; a passing narrow component does not complete `app-budgets` or the RC soak summary.

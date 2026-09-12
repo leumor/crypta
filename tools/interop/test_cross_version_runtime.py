@@ -241,6 +241,34 @@ class HttpAdapterTest(unittest.TestCase):
                 with self.assertRaises((runtime.RuntimeFailure, runtime.mail_demo.DemoFailure)):
                     self.handle.refresh_session()
 
+    def test_isolated_bootstrap_uses_scoped_launch_nonce_without_following_redirect(self):
+        launch = io.BytesIO(b'')
+        launch.status = 302
+        launch.headers = {'Location': 'http://127.0.0.1:9001/static/#cryptadBootstrapNonce=' + 'n' * 32}
+        response = io.BytesIO(json.dumps({'uiOrigin': 'http://127.0.0.1:9001',
+                                         'browserSessionToken': 'fresh-private-session'}).encode())
+        response.status = 200
+        with patch.object(self.handle.opener, 'open', side_effect=[launch, response]) as opened:
+            value = self.handle.isolated_bootstrap()
+        self.assertEqual('fresh-private-session', value['browserSessionToken'])
+        selected = opened.call_args_list[1].args[0]
+        self.assertEqual('http://127.0.0.1:9001/.well-known/cryptad-bootstrap.json', selected.full_url)
+        self.assertEqual('n' * 32, selected.get_header('X-crypta-app-bootstrap-nonce'))
+        self.assertNotIn('formPassword', str(selected.headers))
+        self.assertIsNone(selected.data)
+
+    def test_isolated_bootstrap_rejects_remote_or_shared_redirect_before_nonce_request(self):
+        for location in ('http://example.org:9001/', self.handle.base + '/',
+                         'http://127.0.0.1:9001/arbitrary/'):
+            with self.subTest(location=location):
+                launch = io.BytesIO(b'')
+                launch.status = 302
+                launch.headers = {'Location': location + '#cryptadBootstrapNonce=' + 'n' * 32}
+                with patch.object(self.handle.opener, 'open', return_value=launch) as opened:
+                    with self.assertRaises(runtime.RuntimeFailure):
+                        self.handle.isolated_bootstrap()
+                    self.assertEqual(1, opened.call_count)
+
     def test_real_sandbox_required_even_with_running_status(self):
         response = {"runtime": {"running": True, "pid": os.getpid(), "sandbox": {"provider": "best-effort", "active": True}}}
         with patch.object(self.handle, "request", return_value=(200, response)):
@@ -771,6 +799,91 @@ class BudgetIntegrationTest(unittest.TestCase):
             self.assertEqual({"memoryBytes": 1024, "threads": 2}, supervisor.emit.call_args.kwargs["counters"])
             self.assertEqual("partial", supervisor.emit.call_args.kwargs["outcome"])
 
+
+
+class PackagedJvmAncestryTest(unittest.TestCase):
+    def test_jvm_in_separate_process_group_still_requires_selected_parent_ancestry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            for pid, parent in ((10, 1), (11, 10), (12, 11), (99, 1)):
+                path = proc / str(pid)
+                path.mkdir()
+                fields = ['0'] * 30
+                fields[1] = str(parent)
+                (path / 'stat').write_text(str(pid) + ' (selected process) ' + ' '.join(fields))
+            identities = {pid: {'pid': pid, 'startTicks': pid * 100, 'bootId': 'boot',
+                'executableDigest': 'java' if pid in (12, 99) else 'wrapper'} for pid in (10, 11, 12, 99)}
+            with patch.object(runtime, 'process_identity', side_effect=lambda pid: dict(identities[pid])):
+                self.assertEqual([identities[12]], runtime.owned_jvm_descendants(10, 'java', proc))
+
+    def test_supervisor_epoch_change_during_descendant_scan_is_not_admitted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            values = [{'pid': 10, 'startTicks': value} for value in (100, 101)]
+            with patch.object(runtime, 'process_identity', side_effect=values), self.assertRaisesRegex(
+                    runtime.RuntimeFailure, 'supervisor-epoch-changed'):
+                runtime.owned_jvm_descendants(10, 'java', Path(temporary))
+
+
+class SchedulerSelectionTest(unittest.TestCase):
+    def fixture(self, root):
+        executable = root / 'node'
+        executable.write_bytes(b'selected node executable')
+        settings = {'CRYPTAD_CONTENT_SUBSCRIPTIONS_PRESSURE_MAX_IN_FLIGHT': '1'}
+        selection = {'role': 'candidate-sender', 'profile': 'bounded-contention-v1',
+            'nodeExecutable': str(executable), 'nodeDigest': runtime.digest_file(executable),
+            'configurationDigest': runtime.canonical_digest(settings)}
+        binding = runtime.canonical_digest({'schemaVersion': 1, **{key: selection[key] for key in
+            ('role', 'profile', 'nodeDigest', 'configurationDigest')}})
+        plan = {'workloadInputs': {'scheduler': binding}}
+        private = {'scheduler': selection, 'nodes': {'candidate-sender': {'apps': [{'appId': 'feed-reader'}]}}}
+        authority = {'schedulerInputsDigest': binding, 'syntheticContent': True}
+        return plan, private, authority, settings, binding
+
+    def test_selected_profile_requires_exact_portable_authority_and_executable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            plan, private, authority, settings, binding = self.fixture(Path(temporary))
+            helper = Mock(ENVIRONMENT=settings)
+            with patch.object(runtime, 'fixed_helper', return_value=helper):
+                self.assertEqual(binding, runtime.validate_scheduler_selection(plan, private, authority))
+                Path(private['scheduler']['nodeExecutable']).write_bytes(b'substituted executable')
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'node-executable-not-selected'):
+                    runtime.validate_scheduler_selection(plan, private, authority)
+
+    def test_wrong_role_config_or_authority_never_reaches_live_adapter(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            plan, private, authority, settings, _ = self.fixture(Path(temporary))
+            with patch.object(runtime, 'fixed_helper', return_value=Mock(ENVIRONMENT=settings)) as helper:
+                private['scheduler']['role'] = 'previous'
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'selection-invalid'):
+                    runtime.validate_scheduler_selection(plan, private, authority)
+                helper.assert_not_called()
+                private['scheduler']['role'] = 'candidate-sender'
+                authority['syntheticContent'] = False
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'selection-not-authorized'):
+                    runtime.validate_scheduler_selection(plan, private, authority)
+                authority['syntheticContent'] = True
+                helper.return_value.ENVIRONMENT = {'changed': 'configuration'}
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'profile-not-selected'):
+                    runtime.validate_scheduler_selection(plan, private, authority)
+
+    def test_capacity_or_interrupted_lane_stops_before_borrowed_work(self):
+        supervisor = runtime.Supervisor.__new__(runtime.Supervisor)
+        supervisor.private = {'scheduler': {'selected': True}}
+        supervisor.plan = {}
+        supervisor.authorization = {'maxOperations': 999}
+        supervisor.operations = 0
+        supervisor.scheduler_observation = None
+        supervisor.private_work = {}
+        supervisor.remaining = Mock(return_value=480)
+        helper = Mock(MAX_OPERATIONS=1000, MAX_SECONDS=480)
+        with patch.object(runtime, 'validate_scheduler_selection'), patch.object(runtime, 'fixed_helper', return_value=helper):
+            with self.assertRaisesRegex(runtime.RuntimeFailure, 'capacity-unavailable'):
+                supervisor.scheduler_scenarios()
+            helper.observe_existing.assert_not_called()
+            supervisor.private_work['schedulerStarted'] = 'original-operation'
+            with self.assertRaisesRegex(runtime.RuntimeFailure, 'interrupted-reconciliation'):
+                supervisor.scheduler_scenarios()
+            helper.observe_existing.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

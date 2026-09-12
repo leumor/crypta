@@ -24,6 +24,7 @@ import network.crypta.node.RequestStarter;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchException;
+import network.crypta.runtime.spi.ContentFetchObservation;
 import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ResumeFailedException;
@@ -68,6 +69,13 @@ final class LegacyContentFetchPort implements ContentFetchPort {
   /** Node core used to create transient clients and cancel active getters on timeout. */
   private final NodeClientCore core;
 
+  private final ContentFetchActivity activity = new ContentFetchActivity();
+
+  @Override
+  public ContentFetchObservation observation() {
+    return activity.snapshot();
+  }
+
   /**
    * Creates a content-fetch port bound to one node core.
    *
@@ -88,11 +96,20 @@ final class LegacyContentFetchPort implements ContentFetchPort {
   @Override
   public BoundedContentFetchResult fetchContent(BoundedContentFetchRequest request)
       throws ContentFetchException {
-    FetchOutcome outcome = fetchOutcome(request);
-    byte[] bytes = materializeResult(request, outcome.result());
-    String resolvedUri = outcome.resolvedUri() == null ? null : outcome.resolvedUri().toString();
-    return new BoundedContentFetchResult(
-        bytes, request.uri(), resolvedUri, "Fetched " + bytes.length + " bytes");
+    long token = activity.enter();
+    boolean success = false;
+    try {
+      FetchOutcome outcome = fetchOutcome(request);
+      byte[] bytes = materializeResult(request, outcome.result());
+      String resolvedUri = outcome.resolvedUri() == null ? null : outcome.resolvedUri().toString();
+      BoundedContentFetchResult result =
+          new BoundedContentFetchResult(
+              bytes, request.uri(), resolvedUri, "Fetched " + bytes.length + " bytes");
+      success = true;
+      return result;
+    } finally {
+      activity.exit(token, success);
+    }
   }
 
   /**
@@ -107,8 +124,15 @@ final class LegacyContentFetchPort implements ContentFetchPort {
   public void fetchContent(BoundedContentFetchRequest request, OutputStream destination)
       throws ContentFetchException, IOException {
     Objects.requireNonNull(destination, "destination");
-    FetchOutcome outcome = fetchOutcome(request);
-    streamResult(request, outcome.result(), destination);
+    long token = activity.enter();
+    boolean success = false;
+    try {
+      FetchOutcome outcome = fetchOutcome(request);
+      streamResult(request, outcome.result(), destination);
+      success = true;
+    } finally {
+      activity.exit(token, success);
+    }
   }
 
   private FetchOutcome fetchOutcome(BoundedContentFetchRequest request)

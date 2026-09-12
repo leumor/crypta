@@ -11,6 +11,36 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SuppressWarnings("java:S100")
 class ContentSubscriptionSchedulerConfigTest {
   @Test
+  void from_whenShortProfileConfigured_expectEffectiveJitterAndNormalizedBackoff() {
+    var config =
+        ContentSubscriptionSchedulerConfig.from(
+            Map.of(),
+            Map.of(
+                ContentSubscriptionSchedulerConfig.JITTER_ENV, "0",
+                ContentSubscriptionSchedulerConfig.FAILURE_BACKOFF_ENV, "2",
+                ContentSubscriptionSchedulerConfig.MAXIMUM_FAILURE_BACKOFF_ENV, "1"));
+
+    assertEquals(Duration.ZERO, config.jitter());
+    assertEquals(Duration.ofSeconds(2), config.failureBackoff());
+    assertEquals(Duration.ofSeconds(2), config.maximumFailureBackoff());
+  }
+
+  @Test
+  void from_whenInvalidShortProfileConfigured_expectConservativeDefaults() {
+    var config =
+        ContentSubscriptionSchedulerConfig.from(
+            Map.of(),
+            Map.of(
+                ContentSubscriptionSchedulerConfig.JITTER_ENV, "-1",
+                ContentSubscriptionSchedulerConfig.FAILURE_BACKOFF_ENV, "0",
+                ContentSubscriptionSchedulerConfig.MAXIMUM_FAILURE_BACKOFF_ENV, "invalid"));
+
+    assertEquals(Duration.ofMinutes(1), config.jitter());
+    assertEquals(Duration.ofMinutes(5), config.failureBackoff());
+    assertEquals(Duration.ofHours(1), config.maximumFailureBackoff());
+  }
+
+  @Test
   void from_whenPropertiesAndEnvironmentConfigured_expectPropertiesOverrideEnvironment() {
     Map<String, String> properties =
         Map.of(

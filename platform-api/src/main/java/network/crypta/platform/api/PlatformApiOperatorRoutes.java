@@ -18,6 +18,7 @@ import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.operator.OperatorBetaDashboardService;
 import network.crypta.platform.api.operator.recovery.OperatorRecoveryService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
@@ -59,6 +60,8 @@ import network.crypta.runtime.spi.RuntimePorts;
  * without granting app-origin callers any new privileges.
  */
 final class PlatformApiOperatorRoutes {
+  private static final String SCHEMA_VERSION = "schemaVersion";
+  private static final String KNOWN = "known";
   private static final String HOST_OPERATOR = "host-operator";
 
   /** HTTP method accepted by read-only operator dashboard resources. */
@@ -141,6 +144,8 @@ final class PlatformApiOperatorRoutes {
   /** Detached source for redacted last-known-good core support-lifecycle state. */
   private final CoreUpdateActionPort coreUpdateActionPort;
 
+  private final RuntimePorts observationRuntime;
+  private final PlatformApiSharedAppServices observationServices;
   private final AppHost appHost;
   private final AppCatalogManager appCatalogManager;
   private final AppCatalogsApiHandler appCatalogsApiHandler;
@@ -190,6 +195,8 @@ final class PlatformApiOperatorRoutes {
       PlatformApiSharedAppServices appServices,
       PlatformApiAppRoutes appRoutes,
       TrustGraphApiHandler trustGraphApiHandler) {
+    observationRuntime = dependencies.runtimePorts();
+    observationServices = appServices;
     AppVaultService appVaultService = appServices.vaultService();
     AppsApiHandler appsApiHandler =
         dependencies.appHost() == null
@@ -338,6 +345,7 @@ final class PlatformApiOperatorRoutes {
           case "rc-dashboard" -> this::rcDashboard;
           case "support-bundle" -> this::supportBundle;
           case "network-budgets" -> recoveryService::networkBudgets;
+          case "runtime-observation" -> this::runtimeObservation;
           case APP_SUBMISSIONS_SEGMENT -> this::appSubmissionIntakeSummary;
           case CATALOG_FEDERATION_SEGMENT -> this::catalogFederationSummary;
           default -> throw notFound();
@@ -346,6 +354,152 @@ final class PlatformApiOperatorRoutes {
       return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
     }
     return PlatformApiResponse.ok(payload.get());
+  }
+
+  private Map<String, Object> runtimeObservation() {
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put(SCHEMA_VERSION, 1);
+    result.put("classification", "operator-private-runtime-metadata");
+    result.put("sampledAtEpochMillis", System.currentTimeMillis());
+    result.put("jvm", network.crypta.runtime.spi.JvmResourceObservation.capture());
+    var observation = network.crypta.runtime.spi.ContentFetchObservation.unavailable();
+    try {
+      if (observationRuntime.contentFetch() != null) {
+        var candidate = observationRuntime.contentFetch().observation();
+        if (candidate != null) observation = candidate;
+      }
+    } catch (RuntimeException _) {
+      // Observation failure must not turn an unknown signal into healthy empty activity.
+    }
+    Map<String, Object> fetch = new LinkedHashMap<>();
+    fetch.put(KNOWN, observation.known());
+    fetch.put("family", "bounded-content-fetch-operations");
+    fetch.put("unit", "port-calls");
+    fetch.put("epoch", observation.epoch());
+    fetch.put("sequence", observation.sequence());
+    fetch.put("sampledAtEpochMillis", observation.sampledAtEpochMillis());
+    fetch.put("inFlightOperations", observation.known() ? observation.inFlightOperations() : null);
+    fetch.put(
+        "oldestActiveAgeMillis", observation.known() ? observation.oldestActiveAgeMillis() : null);
+    fetch.put("startedOperations", observation.known() ? observation.startedOperations() : null);
+    fetch.put(
+        "successfulOperations", observation.known() ? observation.successfulOperations() : null);
+    fetch.put("failedOperations", observation.known() ? observation.failedOperations() : null);
+    fetch.put("truncated", observation.truncated());
+    fetch.put("pendingKeys", null);
+    fetch.put("oldestPendingKeyAgeMillis", null);
+    result.put("contentFetch", fetch);
+    addWorkObservation(result);
+    return result;
+  }
+
+  private void addWorkObservation(Map<String, Object> result) {
+    var budgets = observationServices.networkBudgetService();
+    if (budgets == null) {
+      result.put("work", Map.of(KNOWN, false));
+      result.put("budget", Map.of("valid", false));
+      return;
+    }
+    var history = budgets.observation().snapshot();
+    List<Map<String, Object>> events = new ArrayList<>();
+    for (var event : history.events()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("sequence", event.sequence());
+      row.put("observedAt", event.observedAt().toString());
+      row.put("elapsedNanos", event.elapsedNanos());
+      row.put("kind", event.kind().name());
+      row.put("operation", event.operation() == null ? null : event.operation().jsonValue());
+      row.put("windowStartEpochSecond", event.windowStartEpochSecond());
+      row.put("value", event.value());
+      row.put("operationId", event.operationId());
+      row.put("scope", event.scope());
+      row.put("sourceEpoch", event.sourceEpoch());
+      row.put("sourceSequence", event.sourceSequence());
+      row.put("sourceSampledAtEpochMillis", event.sourceSampledAtEpochMillis());
+      events.add(row);
+    }
+    result.put(
+        "work",
+        Map.of(
+            KNOWN,
+            true,
+            "version",
+            history.version(),
+            "lastSequence",
+            history.lastSequence(),
+            "dropped",
+            history.dropped(),
+            "events",
+            events));
+    var diagnostics = budgets.diagnostics();
+    result.put(
+        "budget",
+        Map.of(
+            "valid",
+            diagnostics.valid(),
+            "observedAt",
+            diagnostics.observedAt().toString(),
+            "activeFamilyLeases",
+            diagnostics.activeFamilyLeases(),
+            "reservedFamilyRates",
+            diagnostics.reservedFamilyRates()));
+    result.put("budgetConfiguration", budgetConfiguration(budgets.configuration()));
+    if (contentSubscriptionService != null) {
+      var scheduler = contentSubscriptionService.configuration();
+      Map<String, Object> effective = new LinkedHashMap<>();
+      effective.put("enabled", scheduler.enabled());
+      effective.put("initialDelayMillis", scheduler.initialDelay().toMillis());
+      effective.put("schedulerPollIntervalMillis", scheduler.schedulerPollInterval().toMillis());
+      effective.put("defaultPollIntervalMillis", scheduler.defaultPollInterval().toMillis());
+      effective.put("minimumPollIntervalMillis", scheduler.minimumPollInterval().toMillis());
+      effective.put("maximumPollIntervalMillis", scheduler.maximumPollInterval().toMillis());
+      effective.put("jitterMillis", scheduler.jitter().toMillis());
+      effective.put("failureBackoffMillis", scheduler.failureBackoff().toMillis());
+      effective.put("maximumFailureBackoffMillis", scheduler.maximumFailureBackoff().toMillis());
+      effective.put("perTickFetchLimit", scheduler.perTickFetchLimit());
+      effective.put("perAppSubscriptionLimit", scheduler.perAppSubscriptionLimit());
+      effective.put("globalSubscriptionLimit", scheduler.globalSubscriptionLimit());
+      effective.put("defaultMaxBytes", scheduler.defaultMaxBytes());
+      effective.put("hardMaxBytes", scheduler.hardMaxBytes());
+      effective.put("defaultTimeoutMillis", scheduler.defaultTimeout().toMillis());
+      effective.put("hardTimeoutMillis", scheduler.hardTimeout().toMillis());
+      result.put("schedulerConfiguration", effective);
+      var pressure = contentSubscriptionService.pressureConfiguration();
+      result.put(
+          "pressureConfiguration",
+          pressure == null
+              ? Map.of(KNOWN, false)
+              : Map.of(
+                  KNOWN,
+                  true,
+                  "family",
+                  "bounded-content-fetch-operations",
+                  "maximumInFlight",
+                  pressure.maximumInFlight(),
+                  "resumeAtOrBelow",
+                  pressure.resumeAtOrBelow()));
+    }
+  }
+
+  private static Map<String, Object> budgetConfiguration(AppNetworkBudgetConfig config) {
+    Map<String, Object> limits = new LinkedHashMap<>();
+    limits.put(
+        "foregroundContentFetchPerAppPerMinute", config.foregroundContentFetchPerAppPerMinute());
+    limits.put(
+        "foregroundContentFetchGlobalPerMinute", config.foregroundContentFetchGlobalPerMinute());
+    limits.put(
+        "foregroundContentFetchConcurrentPerApp", config.foregroundContentFetchConcurrentPerApp());
+    limits.put(
+        "foregroundContentFetchConcurrentGlobal", config.foregroundContentFetchConcurrentGlobal());
+    limits.put("subscriptionPollPerAppPerHour", config.subscriptionPollPerAppPerHour());
+    limits.put("subscriptionPollGlobalPerHour", config.subscriptionPollGlobalPerHour());
+    limits.put("subscriptionPollConcurrentPerApp", config.subscriptionPollConcurrentPerApp());
+    limits.put("subscriptionPollConcurrentGlobal", config.subscriptionPollConcurrentGlobal());
+    limits.put("trustGraphImportPerAppPerHour", config.trustGraphImportPerAppPerHour());
+    limits.put("trustGraphImportGlobalPerHour", config.trustGraphImportGlobalPerHour());
+    limits.put("trustGraphImportConcurrentPerApp", config.trustGraphImportConcurrentPerApp());
+    limits.put("trustGraphImportConcurrentGlobal", config.trustGraphImportConcurrentGlobal());
+    return limits;
   }
 
   private PlatformApiResponse routeThreeSegmentResource(
@@ -1183,7 +1337,7 @@ final class PlatformApiOperatorRoutes {
       Map<String, Object> supportBundle, Map<String, Object> recoveryContext) {
     LinkedHashMap<String, Object> bundle = LinkedHashMap.newLinkedHashMap(12);
     bundle.putAll(supportBundle);
-    bundle.put("supportBundleVersion", bundle.get("schemaVersion"));
+    bundle.put("supportBundleVersion", bundle.get(SCHEMA_VERSION));
     bundle.put("recoveryContext", recoveryContext);
     bundle.put("supportDigest", OperatorBetaDashboardService.supportDigestForPayload(bundle));
     return bundle;
@@ -1241,7 +1395,7 @@ final class PlatformApiOperatorRoutes {
 
   private static Map<String, Object> appSubmissionIntakeBaseEnvelope(boolean configured) {
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(8);
-    envelope.put("schemaVersion", 1);
+    envelope.put(SCHEMA_VERSION, 1);
     envelope.put("kind", "crypta-operator-app-submission-intake");
     envelope.put("configured", configured);
     envelope.put("route", "operator/app-submissions");

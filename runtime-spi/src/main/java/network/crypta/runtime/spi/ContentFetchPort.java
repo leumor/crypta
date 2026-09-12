@@ -29,6 +29,15 @@ import java.util.Objects;
  */
 public interface ContentFetchPort {
   /**
+   * Returns a bounded, inventory-free observation of this port's executing calls.
+   *
+   * @return explicit unsupported metadata for legacy implementations, or an owner snapshot
+   */
+  default ContentFetchObservation observation() {
+    return ContentFetchObservation.unavailable();
+  }
+
+  /**
    * Fetches one bounded content document.
    *
    * <p>The returned byte array is detached from the implementation's internal buffers. Failures are
