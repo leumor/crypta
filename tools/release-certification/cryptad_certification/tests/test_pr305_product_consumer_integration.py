@@ -1,10 +1,11 @@
-"""Full v4 cohort through native metadata, original products, runtime and measured reader.
+"""Private v4 projection and bounded runtime beside ordinary maintenance product admission.
 
 Only original transport, CMS transport and protected file ownership are synthetic seams.
 The dedicated catalog role starts absent; legacy startup roles retain their exact app subset.
 No result of this local test attests protected execution or original observer authority.
 """
 import hashlib
+import copy
 import datetime as dt
 import json
 import os
@@ -33,16 +34,18 @@ class FederationProductConsumerIntegrationTest(unittest.TestCase):
             raise AssertionError("pr305-product-integration-prerequisite-failed") from None
         cls.addClassCleanup(legacy.ProductConsumerIntegrationTest.tearDownClass)
 
-    def test_original_v4_enters_native_metadata_and_product_without_expanding_legacy_roles(self):
+    def test_private_v4_rejects_publication_and_runs_beside_admitted_legacy_product(self):
+        self._stage = "setup"
         harness = legacy.ProductConsumerIntegrationTest(methodName="runTest")
         try:
             harness.setUp()
             self.addCleanup(harness.tearDown)
             self._execute(harness)
         except Exception:
-            raise AssertionError("pr305-product-consumer-integration-failed") from None
+            raise AssertionError("pr305-product-consumer-integration-failed:" + self._stage) from None
 
     def _execute(self, h):
+        self._stage = "fixture-preparation"
         distribution = h.work / "packaged-daemon"
         shutil.copytree(legacy.ROOT / "build/cryptad-dist", distribution, symlinks=True)
         # The prospective package embeds the exact executable later launched by the dedicated
@@ -71,6 +74,7 @@ class FederationProductConsumerIntegrationTest(unittest.TestCase):
             def add(self, family, files):
                 return h.artifact(family, files)
 
+        self._stage = "original-selection"
         source, upstream, authority, evidence = fixtures._source_artifacts(fixture, Transport())
         policy = fixtures._selection_policy(fixture, source)
         for member in policy["members"]:
@@ -98,10 +102,15 @@ class FederationProductConsumerIntegrationTest(unittest.TestCase):
             selection.produce_selection(h.work, h.work / "selection.cms")
         selection_original = h.artifact("federation-selection", {selection.MEMBER: (h.work / "selection.cms").read_bytes()})
         authenticated = selection.authenticate_selection(selection_original, h.work)
-        base_cohort = h.cohort
+        # Freeze only the ordinary cohort that the maintenance publication format supports.
+        self._stage = "ordinary-maintenance-product"
+        base_inputs = h.cohort("stable-1.0-maintenance-302", commit)
+        with patch.object(h, "cohort", return_value=base_inputs):
+            freeze, package, _legacy_inventory, selected = h.freeze(302, commit)
 
-        def cohort(release, source_commit, overrides=None):
-            value, path, _inventory, _origin, product_root = base_cohort(release, source_commit, overrides)
+        def cohort():
+            base_value, path, _inventory, _origin, product_root = base_inputs
+            value = copy.deepcopy(base_value)
             members = {"catalog": "A1/catalog.properties", "catalogSignature": "A1/cryptad-app-catalog.signature",
                        "bundle": "A1/bundle.zip", "submission": "A1/submission.zip"}
             row = {"appId": "pr305-fixture", "original": source, "originalInventory": upstream,
@@ -132,8 +141,17 @@ class FederationProductConsumerIntegrationTest(unittest.TestCase):
             self.assertTrue(original.matches(inventory))
             return value, path, inventory, origin, product_root
 
-        h.cohort = cohort
-        freeze, package, inventory, selected = h.freeze(302, commit)
+        self._stage = "private-projection"
+        _cohort, policy_path, inventory, projection_origin, _products = cohort()
+        private_projection = {"coordinates": projection_origin, "cohortDigest": inventory["cohortDigest"]}
+        self._stage = "publication-boundary"
+        rejected_output = h.work / "rejected-publication-runtime"
+        with patch.object(legacy.projection, "COHORT_FILE", policy_path):
+            with self.assertRaisesRegex(legacy.metadata.RuntimeMetadataError,
+                                       "^runtime-metadata-private-companion-unsupported$"):
+                legacy.metadata.produce_runtime_metadata(freeze, package, rejected_output,
+                    projection_origin=projection_origin, private_root=h.work)
+        self.assertFalse(rejected_output.exists())
         self.assertEqual(4, inventory["schemaVersion"])
         self.assertEqual(3, inventory["baseInventoryVersion"])
         self.assertIn("pr305-fixture", inventory["requiredAppIds"])
@@ -146,27 +164,33 @@ class FederationProductConsumerIntegrationTest(unittest.TestCase):
         self.assertTrue(metadata["executable"]["digest"] == legacy.products.file_digest(h.api_jars[0]))
         self.assertNotIn("pr305-fixture", metadata["shippedAppIds"])
         native = legacy.metadata.read_json((root / "native-admissions.json").read_bytes())
-        scoped = next(row for row in native if row["appId"] == "pr305-fixture")
+        self.assertNotIn("pr305-fixture", {row["appId"] for row in native})
+        self.assertNotIn(b"federationSelection", (root / "native-admissions.json").read_bytes())
+        scoped = inventory["selectedFederation"][0]["nativeProjection"]
         self.assertEqual(3, scoped["schemaVersion"])
         self.assertEqual("accepted", scoped["nativeAdmission"])
-        self.assertTrue(scoped["federationSelection"] == inventory["selectedFederation"][0]["nativeProjection"]["federationSelection"])
         node = next(row for row in legacy.fixture_plan()["nodes"] if row["role"] == "candidate-sender")
         by_id = {row["appId"]: row for row in native}
         node.update(artifactDigest=legacy.products.file_digest(package), artifactSize=package.stat().st_size,
             sourceCommit=commit, contractVersion=metadata["contractVersion"],
             appDigests=sorted(by_id[app]["bundleDigest"] for app in metadata["rolePolicy"]["candidate-sender"]))
+        self._stage = "product-admission"
         admitted = legacy.products.authenticate_maintenance_product(selected["maintenanceProduct"], node, h.work / "admitted")
         legacy.products.authenticate_runtime_projection(admitted, selected["appProjection"], h.work)
         self.assertTrue(admitted["appMatrix"])
         self.assertTrue(all(row["nativeAdmission"] == "accepted" for row in admitted["appMatrix"]))
+        with self.assertRaisesRegex(legacy.products.ProductAdmissionError,
+                                   "maintenance-runtime-projection-selection-mismatch"):
+            legacy.products.authenticate_runtime_projection(admitted, private_projection, h.work)
         changed = {**node, "appDigests": sorted(node["appDigests"] + [scoped["bundleDigest"]])}
         with self.assertRaisesRegex(legacy.products.ProductAdmissionError, "maintenance-runtime-required-app-roster-mismatch"):
             legacy.products.authenticate_maintenance_product(selected["maintenanceProduct"], changed, h.work / "unplanned-role")
         wrong = {**selected["appProjection"], "cohortDigest": "sha256:" + "0" * 64}
         with self.assertRaisesRegex(legacy.products.ProductAdmissionError, "maintenance-runtime-projection-selection-mismatch"):
             legacy.products.authenticate_runtime_projection(admitted, wrong, h.work)
+        self._stage = "catalog-runtime"
         self._runtime(h, fixture, source, upstream, authority, evidence, authenticated,
-                      selection_original, selected["appProjection"], inventory, scoped, snapshot, registry,
+                      selection_original, private_projection, inventory, scoped, snapshot, registry,
                       package, selected["maintenanceProduct"]["coordinates"])
 
     def _runtime(self, h, fixture, source, upstream, authority, evidence, authenticated,

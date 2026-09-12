@@ -262,8 +262,11 @@ are unavailable in production manifests.
 
 The second integration retains every required Stable and explicit experimental Mail member and
 independently selects the synthetic external pilot for its prospective cohort. Historical test
-cohorts remain unchanged. It produces and authenticates encrypted inventory v4 and admits native metadata and the actual
-app-bearing product. It uses the same full daemon JAR for product export and runtime execution;
+cohorts remain unchanged. It produces and authenticates encrypted inventory v4 for the private
+bounded experiment, while separately admitting ordinary maintenance metadata and its app-bearing
+product. It requires maintenance publication of the selected cohort to fail before runtime output
+is created, and rejects substituting the v4 projection for the ordinary product's projection.
+It uses the same full daemon JAR for product export and runtime execution;
 the original portable archive digest and contained executable digest remain distinct. It then
 executes the finite catalog-origin driver with those exact native declarations and feeds the
 actual observed operations into the scoped consumer. Adding the selected fixture to a legacy

@@ -1446,7 +1446,7 @@
           },
           {
             "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
-            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "digest": "sha256:101fd20b061f9939cdd1abb05836852d6af6721e39adff5629da29c7a44af1a4",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
           },
           {
@@ -2365,7 +2365,7 @@
           },
           {
             "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
-            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "digest": "sha256:101fd20b061f9939cdd1abb05836852d6af6721e39adff5629da29c7a44af1a4",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
           }
         ]
@@ -2576,7 +2576,7 @@
           },
           {
             "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
-            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "digest": "sha256:101fd20b061f9939cdd1abb05836852d6af6721e39adff5629da29c7a44af1a4",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
           },
           {
@@ -2830,7 +2830,7 @@
           },
           {
             "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
-            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "digest": "sha256:101fd20b061f9939cdd1abb05836852d6af6721e39adff5629da29c7a44af1a4",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
           }
         ]
