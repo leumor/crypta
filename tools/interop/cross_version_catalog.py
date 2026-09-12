@@ -24,6 +24,16 @@ CASES = frozenset({"signedCatalogAdmission", "untrustedCatalogBlocking", "exactM
                    "updatePermissionConsent", "bundleRollback"})
 
 
+def run_catalog_origin_lifecycle(host, subjects, journal):
+    """Run the prospective absent-app profile through the fixed shared native-route driver.
+
+    The caller must authenticate and freeze the finite subject roster before starting its owned
+    daemon. Legacy staged-directory catalog cases retain their existing partial semantics.
+    """
+    from catalog_origin_lifecycle import Driver
+    return Driver(host, subjects, journal).run()
+
+
 class CatalogFailure(ValueError):
     """Bounded code only; no private source URI or server error detail escapes."""
 
@@ -70,7 +80,7 @@ def _file(path: Path, expected: str, maximum: int) -> None:
         raise CatalogFailure("catalog-selected-file-substituted")
 
 
-def verify_fixture(supervisor: Supervisor, tool: Tool, fixture: Fixture) -> dict:
+def verify_fixture(supervisor: Supervisor, tool: Tool, fixture: Fixture, *, native_context=None) -> dict:
     """Reopen exact signed artifacts through the production Java verifier before daemon actions."""
     if tree_digest(tool.root) != tool.tree_digest or tree_digest(tool.java_home) != tool.java_tree_digest:
         raise CatalogFailure("catalog-selected-tool-substituted")
@@ -89,11 +99,22 @@ def verify_fixture(supervisor: Supervisor, tool: Tool, fixture: Fixture) -> dict
     with tempfile.TemporaryDirectory(prefix="catalog-projection-", dir=tool.private_root) as directory:
         private = Path(directory)
         output = private / "declaration.json"
+        context_arguments = []
+        if native_context is not None:
+            if (set(native_context) - {"submission"} != {"contract", "registry", "selection", "generation"}
+                    or type(native_context["generation"]) is not int or native_context["generation"] < 1):
+                raise CatalogFailure("catalog-native-context-invalid")
+            context_arguments = ["--contract", str(native_context["contract"]), "--baseline-registry",
+                                 str(native_context["registry"]), "--federation-selection",
+                                 str(native_context["selection"]), "--federation-generation",
+                                 str(native_context["generation"])]
+            if "submission" in native_context:
+                context_arguments.extend(["--submission-file", str(native_context["submission"])])
         run([str(tool.root / "bin/crypta-app"), "subject-projection", "--catalog", str(fixture.catalog),
              "--catalog-signature", str(fixture.signature), "--catalog-key-id", fixture.catalog_key_id,
              "--catalog-keys", str(fixture.catalog_keys), "--publisher-keys", str(fixture.publisher_keys),
              "--reviewer-keys", str(fixture.reviewer_keys), "--bundle", str(fixture.bundle),
-             "--app-id", fixture.app_id, "--private-root", str(private), "--output", str(output)],
+             "--app-id", fixture.app_id, "--private-root", str(private), "--output", str(output), *context_arguments],
             environment={"JAVA_HOME": str(tool.java_home), "PATH": str(tool.java_home / "bin") + ":/usr/bin:/bin",
                          "LANG": "C.UTF-8", "TMPDIR": str(private)}, timeout=supervisor.remaining(180), output_limit=4096)
         if output.stat().st_size > 32768:

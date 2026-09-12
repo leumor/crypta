@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 import maintenance_runtime_metadata as metadata
@@ -101,6 +101,41 @@ class PackagedObservationTests(unittest.TestCase):
 
 
 class MetadataBoundaryTests(unittest.TestCase):
+    def test_selected_federation_freeze_rejects_before_private_acquisition_or_output(self):
+        import app_subject_projection as projection
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "freeze/runtime"
+            with patch.object(projection, "_cohort", return_value={"schemaVersion": 2}), \
+                    patch.object(projection, "authenticate_inventory") as authenticate, \
+                    patch.object(metadata, "observe_package") as observe:
+                with self.assertRaisesRegex(metadata.RuntimeMetadataError,
+                        "^runtime-metadata-freeze-sealing-failed$"):
+                    metadata.seal_prospective_freeze({}, root / "package", output,
+                        projection_origin={}, private_root=root / "private")
+                authenticate.assert_not_called()
+                observe.assert_not_called()
+            self.assertEqual(list(root.rglob("*")), [])
+
+    def test_private_inventory_cannot_enter_legacy_maintenance_output(self):
+        import app_subject_projection as projection
+        private_projection = Mock()
+        private_projection.inventory.return_value = {
+            "schemaVersion": 4, "privateCanary": "selected-catalog-generation-scope"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(projection, "_cohort", return_value={"schemaVersion": 1}), \
+                    patch.object(projection, "_public_cohort", return_value={}), \
+                    patch.object(projection, "authenticate_inventory", return_value=private_projection), \
+                    patch.object(metadata, "observe_package") as observe:
+                with self.assertRaisesRegex(metadata.RuntimeMetadataError,
+                        "^runtime-metadata-private-companion-unsupported$"):
+                    metadata.produce_runtime_metadata({}, root / "package", root / "freeze/runtime",
+                        projection_origin={}, private_root=root / "private")
+                private_projection.original_bytes.assert_not_called()
+                observe.assert_not_called()
+            self.assertEqual(list(root.rglob("*")), [])
+
     def test_version_dispatch_preserves_v1_and_requires_v2_metadata_identity(self):
         from cryptad_certification.tests.test_stable_maintenance_workflows import _activation_candidate_freeze
         freeze = _activation_candidate_freeze("2026-09-10T00:00:00Z")

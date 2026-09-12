@@ -150,7 +150,7 @@ public final class CatalogScopedPublisherVerificationPolicy
     TrustedAppKey publisherKey =
         appKeys
             .findActiveForVerification(verification.keyId(), now)
-            .orElseThrow(() -> new IOException("publisher key is not active for new bundles"));
+            .orElseThrow(CatalogPublisherAuthorizationException::new);
     String fingerprint = PublicKeyFingerprint.sha256(publisherKey.publicKey());
     CatalogPublisherBinding binding =
         bindingStore
@@ -161,10 +161,7 @@ public final class CatalogScopedPublisherVerificationPolicy
                 fingerprint,
                 checkedContext.entry().productionMetadata().channel(),
                 now)
-            .orElseThrow(
-                () ->
-                    new IOException(
-                        "no active local publisher binding authorizes this catalog app"));
+            .orElseThrow(CatalogPublisherAuthorizationException::new);
     requireCatalogPolicyDigest(checkedContext.catalogId());
     return new AppCatalogBundleVerificationResult(
         verification.keyId(),
@@ -201,12 +198,12 @@ public final class CatalogScopedPublisherVerificationPolicy
     FederatedCatalogTrustBinding catalogBinding =
         catalogTrustBindings
             .findByCatalogId(catalogId)
-            .orElseThrow(() -> new IOException("catalog trust binding is unavailable"));
+            .orElseThrow(CatalogPublisherAuthorizationException::new);
     if (catalogBinding
         .publisherPolicyDigest()
         .filter(bindingStore.policyDigest(catalogId)::equals)
         .isEmpty()) {
-      throw new IOException("catalog trust binding publisher-policy digest does not match");
+      throw new CatalogPublisherAuthorizationException();
     }
   }
 }

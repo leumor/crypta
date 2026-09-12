@@ -36,6 +36,14 @@
       "path": "tools/release-certification/history/phase-12-acceptance-policy-pr303.json",
       "sourceCommit": "27e478c2d1d72ce9f05925626e16c0c1fdcc8c71",
       "sourceTree": "96f6fe8d7c17ed7a8beccaddb7625dae4c39daff"
+    },
+    {
+      "authority": "Immutable integrated PR-304 acceptance scope; PR-305 changes prospective implementation and adapter evidence only. No historical acceptance or original clock is refreshed.",
+      "digest": "sha256:9a61b4b20646f1738c0cf0878580b37e1a2eb4f1d16c692144055e484c2f846e",
+      "kind": "prior-phase-12-acceptance-policy",
+      "path": "tools/release-certification/history/phase-12-acceptance-policy-pr304.json",
+      "sourceCommit": "ffd8b227e7dbc88bad22b469f14cea9f2089d742",
+      "sourceTree": "a26dc78b73b701d2caa8260ba4f9bfde9e228733"
     }
   ],
   "kind": "phase-12-acceptance-policy",
@@ -1005,6 +1013,66 @@
             "assertion": "Verify installed-origin pinning, exact source-switch consent, retained rollback, revocation isolation, no private trust publication and complete cleanup.",
             "digest": "sha256:85fbb9c3372132282ae244fa9ecf1d1d9f154857efec46c5bab85773aa79e547",
             "path": "tools/release-certification/cryptad_certification/engines/stable_1_0_federated_catalog.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:df0a8bfd1fd2a58035e97061c24259193da84528519acf79c427a617f02b598d",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:c89b2d907cfd6da2b15a87caa272a43e09885fe9df1c2e39c8950cb7c1f3e8b0",
+            "path": "tools/interop/catalog_origin_lifecycle.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:82d8e551c9a68e6e0eb3d0dce77cd58422f341572c929e9f48df0216db9ae349",
+            "path": "tools/interop/catalog_origin_fixture_server.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:481b454a3487617a89537d2a75f8781f8975b374c7ebbf381ab6f0316337e96e",
+            "path": "tools/interop/federated_catalog_runtime.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:0d032da4981a1a71fcda6ee6419bf954a4f06383eec66882409ed4bb453b008d",
+            "path": "tools/interop/cryptad-federated-catalog-runtime"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:971978eb9f13e72cd75e4fba1c078503e3965c18f3c2fba7513ec6f62e08a317",
+            "path": "tools/interop/cross_version_catalog.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:ce2fa144e61a2671c04a69a2fe60e5234650f79367b1360297ac5afbc3e17d9e",
+            "path": "tools/interop/cross_version_runtime.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:74057788606a8d122557f47a1816e87718a326ac444e442e052a0990aacf594c",
+            "path": "tools/release-certification/protected/federated_catalog_runtime_observer.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:e102b1d0bea928000b39451e0aad0a5951c79eaa17ed43ec88bcb96cf1c3b0a9",
+            "path": ".github/workflows/stable-1.0-federated-catalog-runtime.yml"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:611e2a799383630683464d6f48643829bf6e91b73c6e7a59132802a56ad91e89",
+            "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:6b736d3647b49726346b19f4b86ac2fdee085bb101045bdbc90d35db10934d68",
+            "path": "tools/release-certification/cryptad_certification/phase_12_provenance.py"
+          },
+          {
+            "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
+            "digest": "sha256:50e231f12cefdc86737e091047bcb71a274249bf806f038f2af4fddffb6d20b9",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
           }
         ],
         "state": "implemented",
@@ -1013,6 +1081,46 @@
             "assertion": "Tests reject descriptor signatures, implicit trust grants, local-state disclosure, lexical conflict selection, observer substitution and unbound predecessor summaries. This is audited test source, not an executed test claim.",
             "digest": "sha256:94b564214e574d92a5262edc5bde804a82610962bec2833897467396a7df5abd",
             "path": "tools/release-certification/cryptad_certification/tests/test_stable_federated_catalog.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:206f308c0198ec30e6d2204f4b0c24a4213b135c640299ec2ff7fb2096b15006",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:b25070c9fc0afc7ec73e73243370ef94f2c7167ad0bd11f87e78ca1aee01cf32",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/Pr305SignedCatalogFixture.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:f8854bf3e1b1585822598161c0cc8725adb442160228bf33a0890cf164dbf8e2",
+            "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:3823d3bb42bb81672d40f1631dc8a52179987699e2167ffe74823876304d220a",
+            "path": "tools/interop/test_catalog_origin_lifecycle.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:c2ce6af52a079395dcacf19c5737e4df0a2d1732745a68e0458c853fb3562dc7",
+            "path": "tools/interop/test_catalog_origin_packaged.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:bbdfa1b5a69a2608976740957841f561e0a62c6dec517854757005b6471b562c",
+            "path": "tools/release-certification/protected/test_federated_catalog_runtime_observer.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:163e404399cd7da41b690bbb64527f12c6611b729508bca5b44e4cb8fcd78162",
+            "path": ".github/workflows/ci.yml"
+          },
+          {
+            "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
+            "digest": "sha256:ac78c958e62c67eb614c23771723ff4fbb66178f0699072c4052d6318ede54bb",
+            "path": "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
           }
         ]
       },
@@ -1061,7 +1169,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify immutable 1.0 contract-19 baseline and authenticated history/proposal/graduation dispositions; contract 26 does not replace stable baseline 1.0.",
-            "digest": "sha256:cf081ee0208c0d0eae38f09f680f441cddfdfb055e34c3bce757eee8c934eab2",
+            "digest": "sha256:ef8beec2e5d51e76b380a63a92c08bcb1013653a63a002a76a441016f619ffab",
             "path": "tools/release-certification/cryptad_certification/engines/stable_platform_api_1x.py"
           }
         ],
@@ -1115,8 +1223,68 @@
         "sourceEvidence": [
           {
             "assertion": "Verify original v2 signed-artifact declarations for complete current-eight/historical-seven cohort with publisher/catalog/review/API/product bindings; broad v1 summaries are insufficient.",
-            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
+            "digest": "sha256:ca4e42226778d77aa8aa7bcfd8b1479925f6c1bbefc97abd48c838efcb4f7c48",
             "path": "tools/release-certification/protected/app_subject_projection.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:b89c2d0b376a4e0a044c2cec67d8606cac2c2353cf7701ff98cc9a73aa6e05b9",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/AppSubjectProjectionCommand.java"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:034f89548a4c41e230c9987c6cbb2619cd343cf51a7ee9438cd64e14f449d430",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/FederationSelectionContext.java"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:625d4d69c1b4e10db0cfcbc5754b8c9ba46d0d63ec87102d603c545515c91a57",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/FederationSelectionJson.java"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:ec602aa80d7378a54f6df4a3a368e2e04b00a0de98afba9a83cc8f229181421d",
+            "path": "tools/release-certification/protected/federation_selection.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:498384aeebdfbd0cb881c97f54968f4f1c2179bbeef0b08b4cc85e5a8a612041",
+            "path": "tools/release-certification/protected/original_artifact_authentication.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:b1c17a3a9824a3270df80db6767cd3567f8fb7a7053d20213c3b5346c4f45080",
+            "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:3870759baf4fb1ca9e957cfbb6537ce4389dd6b6f1c162bfb5198e5908269801",
+            "path": "tools/release-certification/protected/historical_runtime_subjects.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:ef8beec2e5d51e76b380a63a92c08bcb1013653a63a002a76a441016f619ffab",
+            "path": "tools/release-certification/cryptad_certification/engines/stable_platform_api_1x.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:b3cb1f9a6893794a79a69c5102f92d8d52c378fff4b316af857c6d0e90b3a5c5",
+            "path": "tools/release-certification/schemas/platform-api-1.x-app-subject-inventory-v4.schema.json"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:8dcac78edcd1d10c7646e039e31cbdfe2fc5fdb868af91bba14a2d98444c28a2",
+            "path": ".github/workflows/stable-1.0-app-subject-projection.yml"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:611e2a799383630683464d6f48643829bf6e91b73c6e7a59132802a56ad91e89",
+            "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:6b736d3647b49726346b19f4b86ac2fdee085bb101045bdbc90d35db10934d68",
+            "path": "tools/release-certification/cryptad_certification/phase_12_provenance.py"
           }
         ],
         "state": "implemented",
@@ -1125,6 +1293,21 @@
             "assertion": "Tests require immutable baseline and exact app subject/matrix cohorts; broad v1 summaries cannot replace original signed declarations. This is audited test source, not an executed test claim.",
             "digest": "sha256:480ef844c85bb4a0d16c8b116fd2d9d47552197ef3387d2c13babfeb8872734c",
             "path": "tools/release-certification/cryptad_certification/tests/test_stable_platform_api_1x.py"
+          },
+          {
+            "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
+            "digest": "sha256:17430d86bf2425915dd20fc162e25f9ba5a3b62ac9c98a6eefe97b562f0b5b01",
+            "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/AppSubjectProjectionCommandTest.java"
+          },
+          {
+            "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
+            "digest": "sha256:b0792ca5bb1cd23ececa941a175c122b132aa4e4a8976fa3492a5a1455e14bd8",
+            "path": "tools/release-certification/protected/test_federation_selection.py"
+          },
+          {
+            "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
+            "digest": "sha256:904175b1873c03c45636cf3c46974e8ac2d95655f95801d51037f5a49bf68e4f",
+            "path": "tools/release-certification/protected/test_pr305_native_projection.py"
           }
         ]
       },
@@ -1149,7 +1332,7 @@
       },
       "assertion": "Implement and authenticate selected federation signed-artifact projection under scoped installed-origin and trust authority; selected projection is currently unsupported.",
       "authority": {
-        "adapter": "unavailable",
+        "adapter": "api-subjects-v4",
         "module": "tools/release-certification/protected/app_subject_projection.py",
         "policy": "tools/release-certification/platform-api-1.x-compatibility-policy.json",
         "policyDigest": "sha256:575ce154523f037a80cd923ffd2555830ac77d0f0d186778c83b3344e85bcdf7",
@@ -1175,16 +1358,101 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate selected federation signed-artifact projection under scoped installed-origin and trust authority; selected projection is currently unsupported.",
-            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
+            "digest": "sha256:ca4e42226778d77aa8aa7bcfd8b1479925f6c1bbefc97abd48c838efcb4f7c48",
             "path": "tools/release-certification/protected/app_subject_projection.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:b89c2d0b376a4e0a044c2cec67d8606cac2c2353cf7701ff98cc9a73aa6e05b9",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/AppSubjectProjectionCommand.java"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:034f89548a4c41e230c9987c6cbb2619cd343cf51a7ee9438cd64e14f449d430",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/FederationSelectionContext.java"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:625d4d69c1b4e10db0cfcbc5754b8c9ba46d0d63ec87102d603c545515c91a57",
+            "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/FederationSelectionJson.java"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:ec602aa80d7378a54f6df4a3a368e2e04b00a0de98afba9a83cc8f229181421d",
+            "path": "tools/release-certification/protected/federation_selection.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:498384aeebdfbd0cb881c97f54968f4f1c2179bbeef0b08b4cc85e5a8a612041",
+            "path": "tools/release-certification/protected/original_artifact_authentication.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:b1c17a3a9824a3270df80db6767cd3567f8fb7a7053d20213c3b5346c4f45080",
+            "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:3870759baf4fb1ca9e957cfbb6537ce4389dd6b6f1c162bfb5198e5908269801",
+            "path": "tools/release-certification/protected/historical_runtime_subjects.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:ef8beec2e5d51e76b380a63a92c08bcb1013653a63a002a76a441016f619ffab",
+            "path": "tools/release-certification/cryptad_certification/engines/stable_platform_api_1x.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:b3cb1f9a6893794a79a69c5102f92d8d52c378fff4b316af857c6d0e90b3a5c5",
+            "path": "tools/release-certification/schemas/platform-api-1.x-app-subject-inventory-v4.schema.json"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:8dcac78edcd1d10c7646e039e31cbdfe2fc5fdb868af91bba14a2d98444c28a2",
+            "path": ".github/workflows/stable-1.0-app-subject-projection.yml"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:611e2a799383630683464d6f48643829bf6e91b73c6e7a59132802a56ad91e89",
+            "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
+          },
+          {
+            "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
+            "digest": "sha256:6b736d3647b49726346b19f4b86ac2fdee085bb101045bdbc90d35db10934d68",
+            "path": "tools/release-certification/cryptad_certification/phase_12_provenance.py"
           }
         ],
-        "state": "missing",
+        "state": "implemented",
         "testEvidence": [
           {
             "assertion": "Tests require immutable baseline and exact app subject/matrix cohorts; broad v1 summaries cannot replace original signed declarations. This is audited test source, not an executed test claim.",
             "digest": "sha256:480ef844c85bb4a0d16c8b116fd2d9d47552197ef3387d2c13babfeb8872734c",
             "path": "tools/release-certification/cryptad_certification/tests/test_stable_platform_api_1x.py"
+          },
+          {
+            "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
+            "digest": "sha256:17430d86bf2425915dd20fc162e25f9ba5a3b62ac9c98a6eefe97b562f0b5b01",
+            "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/AppSubjectProjectionCommandTest.java"
+          },
+          {
+            "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
+            "digest": "sha256:b0792ca5bb1cd23ececa941a175c122b132aa4e4a8976fa3492a5a1455e14bd8",
+            "path": "tools/release-certification/protected/test_federation_selection.py"
+          },
+          {
+            "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
+            "digest": "sha256:904175b1873c03c45636cf3c46974e8ac2d95655f95801d51037f5a49bf68e4f",
+            "path": "tools/release-certification/protected/test_pr305_native_projection.py"
+          },
+          {
+            "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
+            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:51a64a71b0ece0d57cc0b380286fb063c10e7a36c3d6e6613d1599f45afd9b32",
+            "path": "tools/release-certification/protected/test_app_subject_projection.py"
           }
         ]
       },
@@ -1233,7 +1501,7 @@
         "sourceEvidence": [
           {
             "assertion": "Complete and authenticate required old/current app/API runtime directions for exact selected executable implementations and signed subjects.",
-            "digest": "sha256:cf081ee0208c0d0eae38f09f680f441cddfdfb055e34c3bce757eee8c934eab2",
+            "digest": "sha256:ef8beec2e5d51e76b380a63a92c08bcb1013653a63a002a76a441016f619ffab",
             "path": "tools/release-certification/cryptad_certification/engines/stable_platform_api_1x.py"
           }
         ],
@@ -1999,17 +2267,17 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:4063a7edb4be33199de7b3ac51757e0c04861272aafb3924a4fd4e0d29b81d03",
+            "digest": "sha256:b1c17a3a9824a3270df80db6767cd3567f8fb7a7053d20213c3b5346c4f45080",
             "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:95558f855076d4ac82d54ff1f2635e4fc2cf0e0d1f2b0d5e4de822b3fb9f40d5",
+            "digest": "sha256:3870759baf4fb1ca9e957cfbb6537ce4389dd6b6f1c162bfb5198e5908269801",
             "path": "tools/release-certification/protected/historical_runtime_subjects.py"
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:695122a9c65ab49d4b1d089283f4152c07d49448969835f7aa4c9e247d8a5ad0",
+            "digest": "sha256:ca4e42226778d77aa8aa7bcfd8b1479925f6c1bbefc97abd48c838efcb4f7c48",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           },
           {
@@ -2029,7 +2297,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:c6f3845512d37db88d7cf1797eae9d9979788e7d037a94b8aec013a944758f0e",
+            "digest": "sha256:b89c2d0b376a4e0a044c2cec67d8606cac2c2353cf7701ff98cc9a73aa6e05b9",
             "path": "platform-devtools/src/main/java/network/crypta/platform/devtools/AppSubjectProjectionCommand.java"
           },
           {
@@ -2057,7 +2325,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:57432c173fc27c314f44d3b1cb704339798d77b0501353305ef6d9aedcb790d9",
+            "digest": "sha256:1bb00371d0d531d99fe676b2bbccad0f470aa801ba05275e769e026c43287e0e",
             "path": "tools/release-certification/protected/test_maintenance_runtime_metadata.py"
           },
           {
@@ -2077,7 +2345,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:954c82852b6c4b3267d1c4fb3498c715cf96163a5e6da3d982fada5ad2c05c32",
+            "digest": "sha256:163e404399cd7da41b690bbb64527f12c6611b729508bca5b44e4cb8fcd78162",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2094,6 +2362,11 @@
             "assertion": "Production preparation materializes internal JDK links against independently specified approved bytes, preserves cohort authority and rejects changed or unsafe inputs before tool authentication. Local synthetic input only.",
             "digest": "sha256:49b69ab658bb74d8c20fdc1d3d3e7d57ab915cba833cd068582e90b365657606",
             "path": "tools/release-certification/protected/test_jdk_preparation.py"
+          },
+          {
+            "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
+            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
           }
         ]
       },
@@ -2147,6 +2420,116 @@
             "assertion": "Complete catalog-origin/channel/mirror/conflict/consent/rollback, scheduler/resource baselines and required migration/profile/Mail recovery directions before a long run.",
             "digest": "sha256:0227ed675a6ff0146f4c7c1054ee9093847f024885ebbe5478f41ab454b7f796",
             "path": "tools/release-certification/cryptad_certification/cross_version_evidence.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:df0a8bfd1fd2a58035e97061c24259193da84528519acf79c427a617f02b598d",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:c89b2d907cfd6da2b15a87caa272a43e09885fe9df1c2e39c8950cb7c1f3e8b0",
+            "path": "tools/interop/catalog_origin_lifecycle.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:82d8e551c9a68e6e0eb3d0dce77cd58422f341572c929e9f48df0216db9ae349",
+            "path": "tools/interop/catalog_origin_fixture_server.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:481b454a3487617a89537d2a75f8781f8975b374c7ebbf381ab6f0316337e96e",
+            "path": "tools/interop/federated_catalog_runtime.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:0d032da4981a1a71fcda6ee6419bf954a4f06383eec66882409ed4bb453b008d",
+            "path": "tools/interop/cryptad-federated-catalog-runtime"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:971978eb9f13e72cd75e4fba1c078503e3965c18f3c2fba7513ec6f62e08a317",
+            "path": "tools/interop/cross_version_catalog.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:ce2fa144e61a2671c04a69a2fe60e5234650f79367b1360297ac5afbc3e17d9e",
+            "path": "tools/interop/cross_version_runtime.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:74057788606a8d122557f47a1816e87718a326ac444e442e052a0990aacf594c",
+            "path": "tools/release-certification/protected/federated_catalog_runtime_observer.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:e102b1d0bea928000b39451e0aad0a5951c79eaa17ed43ec88bcb96cf1c3b0a9",
+            "path": ".github/workflows/stable-1.0-federated-catalog-runtime.yml"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:611e2a799383630683464d6f48643829bf6e91b73c6e7a59132802a56ad91e89",
+            "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:6b736d3647b49726346b19f4b86ac2fdee085bb101045bdbc90d35db10934d68",
+            "path": "tools/release-certification/cryptad_certification/phase_12_provenance.py"
+          },
+          {
+            "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
+            "digest": "sha256:50e231f12cefdc86737e091047bcb71a274249bf806f038f2af4fddffb6d20b9",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:bbf0cb7600b2eae9b493181c870ac91843fe771f8777408d0730c4dd9d2684bd",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/CatalogScopeRevocation.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:ec03270490e1831f621537e712a81566ad8696c2e20fef3424c5b0cfb4ef5983",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FileCatalogPublisherBindingStore.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:03c3e8b1087faa181bfa6edb6f814aa2ae0a30d5f227fdee219903dd9f5b371a",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FileCatalogReviewerScopeStore.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:a1662c6ebe2956303066d56dc2641a59a80473909bc587838f21a06be6bca44f",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/CatalogScopedReviewerPolicy.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:b969a7b4d1c034dda353945fc6be2cd3ba277492b5ae43c22741abc82bca2b2a",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/PlatformApiOperatorRoutes.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:f7c6be0b814cad5d3c54c4d417dbf2797754df6f6db422d65ba3d9c4e69aefe8",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateFederationAuthority.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:2db21c9b66a0fa672fe371f3b5677df597a89bab8e2d64b6d8b99c1e5a03b5d3",
+            "path": "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/PlatformApiToadlet.java"
+          },
+          {
+            "assertion": "PR-305 native current-publisher authorization denials return fixed conflicts through normal catalog operations while unrelated I/O failures retain server-error handling. Audited source is not protected runtime evidence.",
+            "digest": "sha256:be95fd69f7a5b297efea14a6ba5680988b0cdfcb6bbb9fa6f0e0befb77b47314",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/CatalogPublisherAuthorizationException.java"
+          },
+          {
+            "assertion": "PR-305 native current-publisher authorization denials return fixed conflicts through normal catalog operations while unrelated I/O failures retain server-error handling. Audited source is not protected runtime evidence.",
+            "digest": "sha256:714a2fa607f9879623329c32b9dbd05d293594822a0497fb80b66dec626ddd21",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/CatalogScopedPublisherVerificationPolicy.java"
+          },
+          {
+            "assertion": "PR-305 native current-publisher authorization denials return fixed conflicts through normal catalog operations while unrelated I/O failures retain server-error handling. Audited source is not protected runtime evidence.",
+            "digest": "sha256:13e40ecc887828eec04ee8d0328d1019f38362f733366b972aa7903d8f7ad8fe",
+            "path": "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
           }
         ],
         "state": "partial",
@@ -2155,6 +2538,71 @@
             "assertion": "Tests derive required cases/directions and one qualifying epoch, rejecting duplicates, time/coverage substitutions and unauthenticated original claims. This is audited test source, not an executed test claim.",
             "digest": "sha256:d9f3f729c73d8cfca7a42f45f18398675bcbf84ccbf42e427b99d3b56ad72207",
             "path": "tools/release-certification/cryptad_certification/tests/test_cross_version_evidence.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:206f308c0198ec30e6d2204f4b0c24a4213b135c640299ec2ff7fb2096b15006",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:b25070c9fc0afc7ec73e73243370ef94f2c7167ad0bd11f87e78ca1aee01cf32",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/Pr305SignedCatalogFixture.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:f8854bf3e1b1585822598161c0cc8725adb442160228bf33a0890cf164dbf8e2",
+            "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:3823d3bb42bb81672d40f1631dc8a52179987699e2167ffe74823876304d220a",
+            "path": "tools/interop/test_catalog_origin_lifecycle.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:c2ce6af52a079395dcacf19c5737e4df0a2d1732745a68e0458c853fb3562dc7",
+            "path": "tools/interop/test_catalog_origin_packaged.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:bbdfa1b5a69a2608976740957841f561e0a62c6dec517854757005b6471b562c",
+            "path": "tools/release-certification/protected/test_federated_catalog_runtime_observer.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:163e404399cd7da41b690bbb64527f12c6611b729508bca5b44e4cb8fcd78162",
+            "path": ".github/workflows/ci.yml"
+          },
+          {
+            "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
+            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
+          },
+          {
+            "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
+            "digest": "sha256:ac78c958e62c67eb614c23771723ff4fbb66178f0699072c4052d6318ede54bb",
+            "path": "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:2fb1820bcc2bc297045dbd271553052f7a3d4992a6b429faa93c4defa7bc6eff",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/CatalogScopeRevocationTest.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:87eecc8317172a84042f86f53efa4219c72c2c0ce10dba3f2eb4f3e4290ec09a",
+            "path": "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
+          },
+          {
+            "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
+            "digest": "sha256:c2f86e07c075374e4a4d182f5a30990f6d148c6ca40eb9e5be52aaabe25ab944",
+            "path": "src/test/java/network/crypta/clients/http/PlatformApiToadletTest.java"
+          },
+          {
+            "assertion": "PR-305 native current-publisher authorization denials return fixed conflicts through normal catalog operations while unrelated I/O failures retain server-error handling. Audited source is not protected runtime evidence.",
+            "digest": "sha256:0931a6cede2a5babbf2263f2099934d7d662f80e9aa1e13e0b2b130513b6b74c",
+            "path": "platform-api/src/test/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandlerTest.java"
           }
         ]
       },
@@ -2274,13 +2722,58 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:78c0852d4a098e3a0c7585fbc23ad02b382b04a290aa69f13b688ae17b2bd3da",
+            "digest": "sha256:ce2fa144e61a2671c04a69a2fe60e5234650f79367b1360297ac5afbc3e17d9e",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:3f3cf18d609722e489beb4dc52f39badaaf519a9aad25a32f45d3bea631c2662",
+            "digest": "sha256:611e2a799383630683464d6f48643829bf6e91b73c6e7a59132802a56ad91e89",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:df0a8bfd1fd2a58035e97061c24259193da84528519acf79c427a617f02b598d",
+            "path": "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:c89b2d907cfd6da2b15a87caa272a43e09885fe9df1c2e39c8950cb7c1f3e8b0",
+            "path": "tools/interop/catalog_origin_lifecycle.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:82d8e551c9a68e6e0eb3d0dce77cd58422f341572c929e9f48df0216db9ae349",
+            "path": "tools/interop/catalog_origin_fixture_server.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:481b454a3487617a89537d2a75f8781f8975b374c7ebbf381ab6f0316337e96e",
+            "path": "tools/interop/federated_catalog_runtime.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:0d032da4981a1a71fcda6ee6419bf954a4f06383eec66882409ed4bb453b008d",
+            "path": "tools/interop/cryptad-federated-catalog-runtime"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:971978eb9f13e72cd75e4fba1c078503e3965c18f3c2fba7513ec6f62e08a317",
+            "path": "tools/interop/cross_version_catalog.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:74057788606a8d122557f47a1816e87718a326ac444e442e052a0990aacf594c",
+            "path": "tools/release-certification/protected/federated_catalog_runtime_observer.py"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:e102b1d0bea928000b39451e0aad0a5951c79eaa17ed43ec88bcb96cf1c3b0a9",
+            "path": ".github/workflows/stable-1.0-federated-catalog-runtime.yml"
+          },
+          {
+            "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
+            "digest": "sha256:6b736d3647b49726346b19f4b86ac2fdee085bb101045bdbc90d35db10934d68",
+            "path": "tools/release-certification/cryptad_certification/phase_12_provenance.py"
           }
         ],
         "state": "partial",
@@ -2299,6 +2792,46 @@
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
             "digest": "sha256:820896581b5b24b5b399642fa4c94dca909442660117b99a2c1b99c999684197",
             "path": "tools/release-certification/protected/test_maintenance_runtime_projection.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:206f308c0198ec30e6d2204f4b0c24a4213b135c640299ec2ff7fb2096b15006",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:b25070c9fc0afc7ec73e73243370ef94f2c7167ad0bd11f87e78ca1aee01cf32",
+            "path": "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/Pr305SignedCatalogFixture.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:f8854bf3e1b1585822598161c0cc8725adb442160228bf33a0890cf164dbf8e2",
+            "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:3823d3bb42bb81672d40f1631dc8a52179987699e2167ffe74823876304d220a",
+            "path": "tools/interop/test_catalog_origin_lifecycle.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:c2ce6af52a079395dcacf19c5737e4df0a2d1732745a68e0458c853fb3562dc7",
+            "path": "tools/interop/test_catalog_origin_packaged.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:bbdfa1b5a69a2608976740957841f561e0a62c6dec517854757005b6471b562c",
+            "path": "tools/release-certification/protected/test_federated_catalog_runtime_observer.py"
+          },
+          {
+            "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
+            "digest": "sha256:163e404399cd7da41b690bbb64527f12c6611b729508bca5b44e4cb8fcd78162",
+            "path": ".github/workflows/ci.yml"
+          },
+          {
+            "assertion": "PR-305 actual full-cohort inventory v4/native metadata/original product and finite runtime consumer integration; legacy staged startup rosters remain closed. Test source is not protected execution evidence.",
+            "digest": "sha256:46aa072a650da99bf68cf9f2e0ecf8d64a168d6b9e9b799b2f407806996840fd",
+            "path": "tools/release-certification/cryptad_certification/tests/test_pr305_product_consumer_integration.py"
           }
         ]
       },
@@ -3059,7 +3592,7 @@
         "sourceEvidence": [
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:6f00aaeb62d29a320572c6e77a91ef42ed2005b21a9ed6800f9c3c24a298f15f",
+            "digest": "sha256:99e4cccdfb72646f6277ca52a3847eb32c4cb2b687aeebeab4f319010860d19d",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3069,12 +3602,12 @@
           },
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:5d8a0b879b2498e4ba32c15cda1d51ab31a0aaf51326c3af95da6c2343c37b13",
+            "digest": "sha256:6b736d3647b49726346b19f4b86ac2fdee085bb101045bdbc90d35db10934d68",
             "path": "tools/release-certification/cryptad_certification/phase_12_provenance.py"
           },
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:3f3cf18d609722e489beb4dc52f39badaaf519a9aad25a32f45d3bea631c2662",
+            "digest": "sha256:611e2a799383630683464d6f48643829bf6e91b73c6e7a59132802a56ad91e89",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -3097,7 +3630,7 @@
         "testEvidence": [
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:3a672dabfa5e83f7223767e06abf4886dd3b32297e666eb8de85bc1213033cd7",
+            "digest": "sha256:466898aab7c0539896dea604051aaa838aac6e83cb5a311c7aa81567dc2de95e",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_closeout.py"
           },
           {
@@ -3169,12 +3702,12 @@
         "sourceEvidence": [
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:5d53823bb92d72443c113d6790ca5fd81761ea9393283a2920d5ec959f657e07",
+            "digest": "sha256:b6735b0375916230400a03d1e7824e545a517b4f2fd911372bcb661e38b88ad8",
             "path": "tools/release-certification/cryptad_certification/phase_12_ci.py"
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:954c82852b6c4b3267d1c4fb3498c715cf96163a5e6da3d982fada5ad2c05c32",
+            "digest": "sha256:163e404399cd7da41b690bbb64527f12c6611b729508bca5b44e4cb8fcd78162",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3197,7 +3730,7 @@
         "testEvidence": [
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:fc3f8b7958cac1763a38c0737ca6821c30954059cfc4f8d305bf0db95b9df802",
+            "digest": "sha256:b7c82de888d86a7d7920f73b1c4fa2105c68efbe714517006f491c44364f36d2",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_ci.py"
           }
         ]
@@ -3241,7 +3774,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify assessment then export only closed public fields, preserve reviewed history and prevent site feedback or circular phase authority.",
-            "digest": "sha256:6f00aaeb62d29a320572c6e77a91ef42ed2005b21a9ed6800f9c3c24a298f15f",
+            "digest": "sha256:99e4cccdfb72646f6277ca52a3847eb32c4cb2b687aeebeab4f319010860d19d",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3264,7 +3797,7 @@
           },
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:3a672dabfa5e83f7223767e06abf4886dd3b32297e666eb8de85bc1213033cd7",
+            "digest": "sha256:466898aab7c0539896dea604051aaa838aac6e83cb5a311c7aa81567dc2de95e",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_closeout.py"
           }
         ]
@@ -3291,6 +3824,27 @@
       "dependencies": [
         "product-subject-binding"
       ],
+      "disposition": {
+        "authority": "PR-305 source-owned implementation disposition; delegated review is not independent human security review",
+        "implementationEvidence": [
+          "platform-devtools/src/main/java/network/crypta/platform/devtools/AppSubjectProjectionCommand.java",
+          "platform-devtools/src/main/java/network/crypta/platform/devtools/FederationSelectionContext.java",
+          "platform-devtools/src/main/java/network/crypta/platform/devtools/FederationSelectionJson.java",
+          "tools/release-certification/protected/federation_selection.py",
+          "tools/release-certification/protected/original_artifact_authentication.py",
+          "tools/release-certification/protected/app_subject_projection.py",
+          "tools/release-certification/protected/maintenance_runtime_metadata.py",
+          "tools/release-certification/protected/historical_runtime_subjects.py",
+          "tools/release-certification/cryptad_certification/engines/stable_platform_api_1x.py",
+          "tools/release-certification/schemas/platform-api-1.x-app-subject-inventory-v4.schema.json",
+          ".github/workflows/stable-1.0-app-subject-projection.yml",
+          "platform-devtools/src/test/java/network/crypta/platform/devtools/AppSubjectProjectionCommandTest.java",
+          "tools/release-certification/protected/test_federation_selection.py",
+          "tools/release-certification/protected/test_pr305_native_projection.py"
+        ],
+        "remaining": "Native selected projection and finite catalog-origin synthetic runtime are implemented. Original protected selection/runtime observations and independent review were not supplied; historical/full role directions, scheduler/resource, Mail/profile/migration, elapsed windows and all nine maintenance parents remain unresolved. Original reason, category, status and clocks remain retained historical context.",
+        "status": "implementation-prepared-observation-outstanding"
+      },
       "id": "pr296-federation",
       "interfaces": [
         "tools/release-certification/protected/app_subject_projection.py",
@@ -3521,6 +4075,31 @@
         "profile-runtime",
         "mail-lifecycle"
       ],
+      "disposition": {
+        "authority": "PR-305 source-owned implementation disposition; delegated review is not independent human security review",
+        "implementationEvidence": [
+          "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrap.java",
+          "tools/interop/catalog_origin_lifecycle.py",
+          "tools/interop/catalog_origin_fixture_server.py",
+          "tools/interop/federated_catalog_runtime.py",
+          "tools/interop/cryptad-federated-catalog-runtime",
+          "tools/interop/cross_version_catalog.py",
+          "tools/interop/cross_version_runtime.py",
+          "tools/release-certification/protected/federated_catalog_runtime_observer.py",
+          ".github/workflows/stable-1.0-federated-catalog-runtime.yml",
+          "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/FederatedCatalogScopeBootstrapTest.java",
+          "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/Pr305SignedCatalogFixture.java",
+          "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java",
+          "tools/interop/test_catalog_origin_lifecycle.py",
+          "tools/interop/test_catalog_origin_packaged.py",
+          "tools/release-certification/protected/test_federated_catalog_runtime_observer.py",
+          ".github/workflows/ci.yml",
+          "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py",
+          "tools/release-certification/cryptad_certification/phase_12_provenance.py"
+        ],
+        "remaining": "Native selected projection and finite catalog-origin synthetic runtime are implemented. Original protected selection/runtime observations and independent review were not supplied; historical/full role directions, scheduler/resource, Mail/profile/migration, elapsed windows and all nine maintenance parents remain unresolved. Original reason, category, status and clocks remain retained historical context.",
+        "status": "catalog-slice-prepared-parent-incomplete"
+      },
       "id": "runtime-adapters",
       "interfaces": [
         "tools/release-certification/cryptad_certification/cross_version_command.py",
@@ -3945,7 +4524,20 @@
         "p12-300-consumers",
         "p12-296-subjects"
       ]
+    },
+    {
+      "authority": "docs/pr-305-federated-app-projection-and-catalog-origin.md",
+      "disposition": "PR-305 adds native scoped declaration v3, encrypted original selected-federation inventory v4 with explicit v2/v3 base authority, and a finite normal catalog-origin packaged runtime observer. The p12-296-federation implementation becomes implemented and its owner adapter becomes api-subjects-v4. The catalog slice of p12-300-adapters and p12-300-consumers gains source/test evidence while both parent implementations remain partial. All 49 mandatory IDs, assertions, dimensions, subjects, prerequisites, applicability, closure obligations, historical reasons and clocks are retained. Synthetic-local execution cannot establish protected original operations, independent providers/review, historical directions, 72-hour coverage or all nine maintenance rows. Retained historical wording describes its original disposition; this entry supplies the prospective implementation delta. No public repository statement is rewritten.",
+      "id": "pr305-selected-federation-catalog-origin-successor",
+      "priorPolicyDigest": "sha256:9a61b4b20646f1738c0cf0878580b37e1a2eb4f1d16c692144055e484c2f846e",
+      "requirements": [
+        "p12-296-federation",
+        "p12-296-subjects",
+        "p12-295-origin",
+        "p12-300-adapters",
+        "p12-300-consumers"
+      ]
     }
   ],
-  "version": 2
+  "version": 3
 }

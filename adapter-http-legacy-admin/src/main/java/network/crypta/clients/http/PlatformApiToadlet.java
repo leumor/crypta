@@ -747,7 +747,13 @@ public final class PlatformApiToadlet extends Toadlet {
 
   private static boolean requiresCatalogTrustLifecycleFormPassword(String action) {
     return switch (action) {
-      case "trust", "suspend", "revoke", REMOVE_ACTION -> true;
+      case "trust",
+          "suspend",
+          "revoke",
+          REMOVE_ACTION,
+          "publisher-scope-revoke",
+          "reviewer-scope-revoke" ->
+          true;
       default -> false;
     };
   }

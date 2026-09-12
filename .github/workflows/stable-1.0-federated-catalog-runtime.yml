@@ -3,6 +3,12 @@ name: Stable 1.0 federated catalog protected runtime producer
 on:
   workflow_dispatch:
     inputs:
+      runtime_scope:
+        description: Legacy broad federation or the separately reviewed finite synthetic catalog-origin cohort.
+        required: true
+        type: choice
+        default: legacy-federation
+        options: [legacy-federation, catalog-origin-synthetic]
       federation_id:
         description: Closed federation identity bound by the execution contract.
         required: true
@@ -13,23 +19,23 @@ on:
         type: string
       source_run_id:
         description: Exact protected evidence-producer run.
-        required: true
+        required: false
         type: string
       source_run_attempt:
         description: Exact protected evidence-producer attempt.
-        required: true
+        required: false
         type: string
       source_artifact_id:
         description: Immutable confined source artifact ID.
-        required: true
+        required: false
         type: string
       source_artifact_name:
         description: Immutable confined source artifact name.
-        required: true
+        required: false
         type: string
       source_artifact_digest:
         description: Exact GitHub artifact archive digest.
-        required: true
+        required: false
         type: string
 permissions: {}
 
@@ -40,7 +46,7 @@ concurrency:
 jobs:
   runtime-observation:
     name: Collect and sign exact federation runtime observation
-    if: github.ref_protected
+    if: github.ref_protected && (inputs.runtime_scope == 'legacy-federation' || inputs.runtime_scope == '')
     runs-on: [self-hosted, linux, x64, cryptad-federated-catalog-runtime]
     timeout-minutes: 90
     environment: stable-1-0-federated-catalog-runtime-observation
@@ -313,3 +319,98 @@ jobs:
           if-no-files-found: error
           include-hidden-files: false
           retention-days: 7
+
+
+  catalog-origin-synthetic:
+    name: Observe authenticated synthetic catalog-origin cohort
+    if: github.ref_protected && inputs.runtime_scope == 'catalog-origin-synthetic' && github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor'
+    runs-on: [self-hosted, linux, x64, cryptad-federated-catalog-runtime]
+    timeout-minutes: 90
+    environment: stable-1-0-federated-catalog-runtime-observation
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+    steps:
+      - name: Check out exact reviewed observer implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind the narrow dispatch to the reviewed source
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EXECUTION_ID: ${{ inputs.federation_id }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$SOURCE_COMMIT" = "$GITHUB_SHA"
+          test "$WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PYCODE'
+          import json, os, re
+          from pathlib import Path
+          selected = os.environ['EXECUTION_ID']
+          if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,95}', selected) is None:
+              raise SystemExit('catalog_observer_dispatch_invalid')
+          target = Path(os.environ['RUNNER_TEMP']) / 'catalog-origin-execution.json'
+          with target.open('x') as output:
+              json.dump({'schemaVersion': 1, 'kind': 'catalog-origin-synthetic-execution',
+                         'executionId': selected, 'sourceCommit': os.environ['GITHUB_SHA'],
+                         'evidenceClass': 'synthetic-local'}, output, sort_keys=True)
+          PYCODE
+      - name: Authenticate original subjects and execute the owned loopback cohort
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 tools/release-certification/protected/federated_catalog_runtime_observer.py run \
+            --execution-contract "$RUNNER_TEMP/catalog-origin-execution.json" \
+            --require-managed-daemon \
+            --observation-dir "$RUNNER_TEMP/catalog-origin-upload"
+      - name: Upload randomized private observation and approved synthetic summary only
+        id: narrow-observation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: catalog-origin-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/catalog-origin-upload/catalog-origin-observation.cms
+            ${{ runner.temp }}/catalog-origin-upload/catalog-origin-synthetic-summary.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+      - name: Seal only the original uploaded immutable ciphertext
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          CRYPTAD_FEDERATION_OBSERVER_PRIVATE_KEY: ${{ secrets.CRYPTAD_FEDERATED_CATALOG_OBSERVER_PRIVATE_KEY }}
+          ORIGINAL_ARTIFACT_ID: ${{ steps.narrow-observation.outputs.artifact-id }}
+          ORIGINAL_ARTIFACT_NAME: catalog-origin-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          ORIGINAL_ARTIFACT_DIGEST: sha256:${{ steps.narrow-observation.outputs.artifact-digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 tools/release-certification/protected/federated_catalog_runtime_observer.py seal \
+            --execution-contract "$RUNNER_TEMP/catalog-origin-execution.json" \
+            --observation-dir "$RUNNER_TEMP/catalog-origin-upload" \
+            --receipt-dir "$RUNNER_TEMP/catalog-origin-receipt-upload" \
+            --artifact-id "$ORIGINAL_ARTIFACT_ID" \
+            --artifact-name "$ORIGINAL_ARTIFACT_NAME" \
+            --artifact-digest "$ORIGINAL_ARTIFACT_DIGEST"
+      - name: Upload original scoped observer receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: catalog-origin-observer-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/catalog-origin-receipt-upload/catalog-origin-observation.cms
+            ${{ runner.temp }}/catalog-origin-receipt-upload/catalog-origin-synthetic-summary.json
+            ${{ runner.temp }}/catalog-origin-receipt-upload/catalog-origin-observer-receipt.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false

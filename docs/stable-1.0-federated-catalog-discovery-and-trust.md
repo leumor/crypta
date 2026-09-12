@@ -257,3 +257,7 @@ Federation does not create:
 - transitive trust propagation;
 - subscription gossip;
 - automatic cross-catalog source or publisher switching.
+
+## Selected app projection and packaged lifecycle
+
+The [PR-305 runbook](pr-305-federated-app-projection-and-catalog-origin.md) adds the private pre-runtime selected-subject handoff, native scoped exporter and fresh-root publisher/reviewer bootstrap. Normal catalog trust, conflict resolution, source-switch consent and AppHost origin/rollback remain authoritative. The executable loopback cohort supplies local process/HTTP/persistence evidence only; original protected observers and broad federation closeout retain their existing requirements.

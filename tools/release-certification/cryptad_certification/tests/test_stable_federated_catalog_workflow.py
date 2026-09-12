@@ -38,6 +38,27 @@ class StableFederatedCatalogWorkflowTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, self.workflow)
 
+    def test_catalog_origin_observer_can_read_original_producer_deployments(self) -> None:
+        job = self.runtime_workflow.split("\n  catalog-origin-synthetic:\n", 1)[1]
+        permissions = job.split("    permissions:\n", 1)[1].split("    steps:\n", 1)[0]
+        self.assertEqual(
+            {"actions": "read", "contents": "read", "deployments": "read"},
+            dict(re.findall(r"^      ([\w-]+): (\w+)$", permissions, re.MULTILINE)),
+        )
+
+    def test_catalog_origin_upload_digest_reaches_seal_in_canonical_format(self) -> None:
+        job = self.runtime_workflow.split("\n  catalog-origin-synthetic:\n", 1)[1]
+        seal = job.split("      - name: Seal only the original uploaded immutable ciphertext\n", 1)[1]
+        seal = seal.split("      - name:", 1)[0]
+        digest = re.search(r"^          ORIGINAL_ARTIFACT_DIGEST: (.+)$", seal, re.MULTILINE)
+        self.assertIsNotNone(digest)
+        action_output = "0fde654d4c6e659b45783a725dc92f1bfb0baa6c2de64b34e814dc206ff4aaaf"
+        rendered = digest.group(1).replace(
+            "${{ steps.narrow-observation.outputs.artifact-digest }}", action_output
+        )
+        self.assertEqual("sha256:" + action_output, rendered)
+        self.assertIn('--artifact-digest "$ORIGINAL_ARTIFACT_DIGEST"', seal)
+
     def test_workflow_when_code_runs_expect_exact_sha_and_repository_identity(self) -> None:
         self.assertEqual(4, self.workflow.count("ref: ${{ github.sha }}"))
         self.assertEqual(4, self.workflow.count("persist-credentials: false"))

@@ -56,6 +56,7 @@ import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.AppReviewTransparencyQuery;
 import network.crypta.platform.appcatalog.AppReviewTransparencyVerificationResult;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.CatalogPublisherAuthorizationException;
 import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
@@ -1423,6 +1424,8 @@ public final class AppCatalogsApiHandler {
       throw catalogFailure(exception);
     } catch (AppHostException exception) {
       throw installFailure(exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      throw publisherScopeConflict();
     } catch (IOException _) {
       throw internalError(INSTALL_FAILED_MESSAGE);
     } finally {
@@ -1480,11 +1483,20 @@ public final class AppCatalogsApiHandler {
       return preview;
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      throw publisherScopeConflict();
     } catch (IOException _) {
       throw internalError("Source-switch preview could not be prepared.");
     } finally {
       cleanUpPlan(plan);
     }
+  }
+
+  private static PlatformApiException publisherScopeConflict() {
+    return new PlatformApiException(
+        409,
+        "catalog_publisher_scope_rejected",
+        "Current local publisher scope does not authorize this catalog operation.");
   }
 
   private SourceSwitchAuthorization requireSourceSwitchConsent(
@@ -1710,6 +1722,8 @@ public final class AppCatalogsApiHandler {
       throw catalogFailure(exception);
     } catch (AppHostException exception) {
       throw updateFailure(normalizedAppId, exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      throw publisherScopeConflict();
     } catch (IOException _) {
       throw internalError(UPDATE_FAILED_MESSAGE);
     } finally {

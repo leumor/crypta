@@ -40,9 +40,10 @@ def _native_subject(source, signed, snapshot, registry, cohort, root):
         if source[key] is not None and digest_bytes(_regular(Path(source[key]))) != source[key + "Digest"]:
             raise RuntimeMetadataError("historical-trust-registry-substituted")
     artifact = authenticate_original(source["original"], root)
+    scoped, _ = projection.selected_federation(cohort, source["appId"], root)
     catalog = None
     if source["catalogOriginal"] is not None:
-        if source["catalogOriginal"].get("sourceFamily") != "catalog-source":
+        if not scoped and source["catalogOriginal"].get("sourceFamily") != "catalog-source":
             raise RuntimeMetadataError("historical-catalog-source-invalid")
         catalog = authenticate_original(source["catalogOriginal"], root)
     exporter = Path(cohort["toolRoot"]) / cohort["exporterRelativePath"]
@@ -52,12 +53,10 @@ def _native_subject(source, signed, snapshot, registry, cohort, root):
         publisher_keys=Path(source["publisherKeys"]),
         reviewer_keys=Path(source["reviewerKeys"]) if source["reviewerKeys"] else None,
         private_root=root, java_home=Path(cohort["javaHome"]), catalog_artifact=catalog,
-        contract_path=snapshot, baseline_registry_path=registry)
+        contract_path=snapshot, baseline_registry_path=registry, source=source, **scoped)
     declaration = projection.validate_declaration(result["declaration"])
-    legacy = {key: value for key, value in declaration.items() if key not in _NATIVE_FIELDS}
-    legacy["schemaVersion"] = 1
-    expected = {key: value for key, value in signed.items() if key not in _NATIVE_FIELDS}
-    expected["schemaVersion"] = 1
+    legacy = projection.content_declaration(declaration)
+    expected = projection.content_declaration(signed)
     if (declaration.get("nativeAdmission") != "accepted" or declaration.get("catalogChannel") == "deprecated" or legacy != expected
             or declaration["contractSnapshotDigest"] != digest_bytes(_regular(snapshot))
             or declaration["baselineRegistryDigest"] != digest_bytes(_regular(registry))):
@@ -70,8 +69,12 @@ def _native_subject(source, signed, snapshot, registry, cohort, root):
 
 
 def _original_inventory_bytes(original, authenticated):
-    raw = projection.selected_members(original,
-        {"catalog": "platform-api-1.x-app-subject-inventory.json"})["catalog"]
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(original.content)) as archive:
+        encrypted = archive.namelist() == ["platform-api-1.x-app-subject-inventory.cms"]
+    raw = (authenticated.original_bytes() if encrypted else projection.selected_members(original,
+        {"catalog": "platform-api-1.x-app-subject-inventory.json"})["catalog"])
     if (len(raw) > 1024 * 1024 or digest_bytes(raw) != authenticated.digest
             or not authenticated.matches(read_json(raw))):
         raise RuntimeMetadataError("historical-original-projection-substituted")

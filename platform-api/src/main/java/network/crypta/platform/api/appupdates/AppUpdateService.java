@@ -31,8 +31,10 @@ import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.CatalogScopeRevocation;
 import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.InstalledAppOrigin;
@@ -95,6 +97,8 @@ public final class AppUpdateService {
   private static final String ERROR_ROLLBACK_NOT_AVAILABLE = "rollback_not_available";
   private static final String ERROR_ROLLBACK_APP_RUNNING = "rollback_app_running";
   private static final String ERROR_ROLLBACK_FAILED = "rollback_failed";
+  private static final String ERROR_ROLLBACK_BUNDLE_VERIFICATION_FAILED =
+      "rollback_bundle_verification_failed";
   private static final String ERROR_ROLLBACK_RESTART_FAILED = "rollback_restart_failed";
   private static final String ERROR_HEALTH_CHECK_FAILED = "health_check_failed";
   private static final String ERROR_UPDATE_FAILED = "update_failed";
@@ -465,6 +469,51 @@ public final class AppUpdateService {
       AppUpdateFederationAuthority federationAuthority) {
     federatedConflictPolicy.set(Objects.requireNonNull(federationAuthority, "federationAuthority"));
     candidates.clear();
+  }
+
+  /**
+   * Revokes an exact existing scope through the shared native authorization stores.
+   *
+   * <p>This host-operator operation accepts no replacement authorization. App principals cannot
+   * reach it through the app API; the operator router enforces principal and federation guards.
+   *
+   * @param kind either publisher or reviewer
+   * @param request exact current record and bounded audit decision
+   * @return path-free acknowledgement of the terminal scope change
+   * @throws IOException if policy persistence fails
+   */
+  public Map<String, Object> revokeCatalogScope(String kind, CatalogScopeRevocation request)
+      throws IOException {
+    String selfDigest;
+    if ("publisher".equals(kind)) {
+      selfDigest = requireFederatedConflictPolicy().revokePublisherScope(request).selfDigest();
+    } else if ("reviewer".equals(kind)) {
+      selfDigest =
+          catalogScopedReviewerPolicy()
+              .orElseThrow(
+                  () ->
+                      lifecycleFailure(
+                          503,
+                          "catalog_federation_unavailable",
+                          "Catalog federation is unavailable."))
+              .revoke(request)
+              .selfDigest();
+    } else {
+      throw lifecycleFailure(400, "invalid_request", "Scope kind is invalid.");
+    }
+    return Map.of(
+        JSON_CATALOG_ID,
+        request.catalogId(),
+        "scopeId",
+        request.scopeId(),
+        "scopeKind",
+        kind,
+        JSON_STATUS,
+        "revoked",
+        "previousDigestSha256",
+        request.expectedDigestSha256(),
+        "selfDigestSha256",
+        selfDigest);
   }
 
   /** Returns the exact current cross-catalog conflict set for one app namespace. */
@@ -1722,6 +1771,12 @@ public final class AppUpdateService {
   }
 
   private static PlatformApiException appHostRollbackFailure(AppHostException exception) {
+    if (exception instanceof AppBundleVerificationException) {
+      return lifecycleFailure(
+          409,
+          ERROR_ROLLBACK_BUNDLE_VERIFICATION_FAILED,
+          "Retained app bundle verification blocks rollback.");
+    }
     if (exception instanceof AppHostException.CatalogRollbackAuthorizationException) {
       return lifecycleFailure(
           409,

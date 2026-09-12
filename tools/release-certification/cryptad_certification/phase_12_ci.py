@@ -35,6 +35,10 @@ TRIGGERS = {
 }
 CI_STEPS = {
     "build / build": ("Build and analyze (Gradle)", "Build (no Sonar token)"),
+    "Exact packaged runtime subject integration": (
+        "Build fixed native test tools", "Verify private selection envelope prerequisite",
+        "Exercise synthetic producer and original consumer semantics",
+        "Exercise real catalog-origin packaged lifecycle"),
     "interop-smoke": ("Run Hyphanet interop smoke",),
     "dependency-submission": ("Generate and submit dependency graph",),
     **{f"interop parser/client self-test ({system})":

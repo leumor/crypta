@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Repository-owned entry point; synthetic execution never becomes protected signing."""
+import sys
+from pathlib import Path
+from federated_catalog_runtime import main
+
+if len(sys.argv) > 1 and sys.argv[1] in {"run", "seal"}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "release-certification/protected"))
+    try:
+        from federated_catalog_runtime_observer import main as protected_main
+    except ImportError:
+        print("federated-runtime-original-selection-observer-admission-required")
+        raise SystemExit(2) from None
+    raise SystemExit(protected_main())
+raise SystemExit(main())

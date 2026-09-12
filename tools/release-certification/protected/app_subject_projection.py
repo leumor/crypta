@@ -31,12 +31,13 @@ _VERIFIED = object()
 
 class AuthenticatedProjection:
     """Internal result of original artifact and member-attestation authentication."""
-    __slots__ = ("__canonical", "digest")
-    def __init__(self, inventory: dict, digest: str, _authority: object = None):
+    __slots__ = ("__canonical", "digest", "__raw")
+    def __init__(self, inventory: dict, digest: str, _authority: object = None, *, raw: bytes | None = None):
         if _authority is not _VERIFIED:
             raise ProjectionFailure("app-subject-unverified-constructor")
         self.__canonical = json.dumps(inventory, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         self.digest = digest
+        self.__raw = raw
 
     def matches(self, inventory: dict) -> bool:
         return json.dumps(inventory, sort_keys=True, separators=(",", ":"), ensure_ascii=False) == self.__canonical
@@ -44,6 +45,12 @@ class AuthenticatedProjection:
     def inventory(self) -> dict:
         """Return a defensive copy of exactly the authenticated member for admission consumers."""
         return json.loads(self.__canonical)
+
+    def original_bytes(self) -> bytes:
+        """Return exact authenticated plaintext; ciphertext transport does not alter its identity."""
+        if self.__raw is None:
+            raise ProjectionFailure("app-subject-original-bytes-unavailable")
+        return self.__raw
 
 DECLARATION_FIELDS = frozenset({"schemaVersion", "kind", "appId", "appVersion", "bundleDigest",
     "bundleSize", "manifestDigest", "signedContentDigest", "signatureDigest", "publisherId",
@@ -69,22 +76,32 @@ def _strict_json(raw):
 
 
 def inventory_schema(version):
-    if type(version) is not int or version not in {2, 3}:
+    if type(version) is not int or version not in {2, 3, 4}:
         raise ProjectionFailure("app-subject-inventory-version-unsupported")
     return f"platform-api-1.x-app-subject-inventory-v{version}.schema.json"
 
 
 def validate_declaration(value: Any) -> dict[str, Any]:
     import re
-    extra = {"contractSnapshotDigest", "baselineRegistryDigest", "nativeAdmission", "catalogChannel"} if isinstance(value, dict) and value.get("schemaVersion") == 2 else set()
-    if (not isinstance(value, dict) or set(value) != DECLARATION_FIELDS | extra
-            or type(value["schemaVersion"]) is not int or value["schemaVersion"] not in {1, 2}
+    extra = {"contractSnapshotDigest", "baselineRegistryDigest", "nativeAdmission", "catalogChannel"} if isinstance(value, dict) and value.get("schemaVersion") in {2, 3} else set()
+    federation = {"federationSelection"} if isinstance(value, dict) and value.get("schemaVersion") == 3 else set()
+    if (not isinstance(value, dict) or set(value) != DECLARATION_FIELDS | extra | federation
+            or type(value["schemaVersion"]) is not int or value["schemaVersion"] not in {1, 2, 3}
             or value["kind"] != "signed-app-subject-projection"):
         raise ProjectionFailure("app-subject-declaration-fields-invalid")
     if extra and (value["nativeAdmission"] != "accepted" or value["catalogChannel"] not in {"stable", "beta", "nightly", "deprecated"} or any(
             re.fullmatch(r"sha256:[0-9a-f]{64}", str(value[key])) is None
             for key in ("contractSnapshotDigest", "baselineRegistryDigest"))):
         raise ProjectionFailure("app-subject-native-admission-invalid")
+    if federation:
+        selected = value["federationSelection"]
+        fields = {"selectionDigest", "generation", "selectedSubjectDigest", "conflictSetDigest",
+                  "catalogBindingDigest", "catalogRevisionDigest", "publisherPolicyDigest",
+                  "publisherBindingDigest", "reviewerPolicyDigest"}
+        if (not isinstance(selected, dict) or set(selected) != fields
+                or type(selected["generation"]) is not int or not 1 <= selected["generation"] <= 2**53-1
+                or any(re.fullmatch(r"sha256:[0-9a-f]{64}", str(selected[key])) is None for key in fields - {"generation"})):
+            raise ProjectionFailure("app-subject-federation-selection-invalid")
     for key in ("bundleDigest", "manifestDigest", "signedContentDigest", "signatureDigest",
                 "publisherFingerprint", "catalogDigest", "catalogSignatureDigest"):
         if not isinstance(value[key], str) or re.fullmatch(r"sha256:[0-9a-f]{64}", value[key]) is None:
@@ -171,7 +188,9 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
             catalog_keys: Path, publisher_keys: Path, reviewer_keys: Path | None,
             private_root: Path, java_home: Path | None = None,
             catalog_artifact: OriginalArtifact | None = None,
-            contract_path: Path | None = None, baseline_registry_path: Path | None = None) -> dict[str, Any]:
+            contract_path: Path | None = None, baseline_registry_path: Path | None = None,
+            federation_selection=None, selection_id: str | None = None,
+            source: dict | None = None) -> dict[str, Any]:
     """Execute the pinned Java exporter against exact selected original signed artifact bytes.
 
     The supervisor authenticates the exporter distribution and public-key registry artifact origins.
@@ -180,6 +199,14 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
     """
     if (contract_path is None) != (baseline_registry_path is None):
         raise ProjectionFailure("app-subject-contract-pair-required")
+    if (federation_selection is None) != (selection_id is None):
+        raise ProjectionFailure("app-subject-federation-pair-required")
+    if federation_selection is not None:
+        from federation_selection import AuthenticatedSelection
+        if (not isinstance(federation_selection, AuthenticatedSelection) or source is None
+                or contract_path is None):
+            raise ProjectionFailure("app-subject-federation-original-required")
+        federation_selection.require_source(selection_id, source)
     if (exporter.is_symlink() or not exporter.is_file() or exporter.stat().st_size > 512 * 1024 * 1024
             or "sha256:" + hashlib.sha256(exporter.read_bytes()).hexdigest() != exporter_digest):
         raise ProjectionFailure("app-subject-exporter-identity-invalid")
@@ -204,6 +231,13 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
                      "--private-root", str(root), "--output", str(output)]
         if contract_path is not None:
             arguments += ["--contract", str(contract_path), "--baseline-registry", str(baseline_registry_path)]
+        selected = None
+        if federation_selection is not None:
+            selected = federation_selection.context(selection_id)
+            selection_root = root / "federation"
+            federation_selection.materialize(selection_root)
+            arguments += ["--federation-selection", str(selection_root / selected["member"]),
+                          "--federation-generation", str(selected["generation"])]
         if reviewer_keys is not None:
             arguments += ["--reviewer-keys", str(reviewer_keys)]
         if "submission" in members:
@@ -218,6 +252,10 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
             if not output.is_file() or output.stat().st_size > 32768:
                 raise ProjectionFailure("app-subject-java-verification-failed")
             declaration = validate_declaration(_strict_json(output.read_bytes()))
+            if selected is not None and (declaration["schemaVersion"] != 3
+                    or declaration["federationSelection"]["selectionDigest"] != selected["digest"]
+                    or declaration["federationSelection"]["generation"] != selected["generation"]):
+                raise ProjectionFailure("app-subject-federation-export-substituted")
         except (OSError, subprocess.TimeoutExpired, ValueError):
             raise ProjectionFailure("app-subject-java-verification-failed") from None
     if (declaration["appId"] != app_id or declaration["bundleSize"] != len(members["bundle"])
@@ -242,9 +280,12 @@ def _cohort() -> dict:
     if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 1024 * 1024:
         raise ProjectionFailure("app-subject-protected-cohort-unavailable")
     value = _strict_json(COHORT_FILE.read_bytes())
+    prospective_fields = {"federationSelections", "admissionContract"} if isinstance(value, dict) and value.get("schemaVersion") == 2 else set()
+    if prospective_fields and info.st_mode & 0o007:
+        raise ProjectionFailure("app-subject-private-cohort-unavailable")
     if (not isinstance(value, dict) or set(value) != {"schemaVersion", "cohortPolicy", "releaseId",
             "sourceCommit", "authorityRoots", "toolRoot", "toolTreeDigest", "toolOriginal", "toolMember", "exporterRelativePath",
-            "javaHome", "javaTreeDigest", "sources"} or value["schemaVersion"] != 1
+            "javaHome", "javaTreeDigest", "sources"} | prospective_fields or type(value["schemaVersion"]) is not int or value["schemaVersion"] not in {1, 2}
             or value["cohortPolicy"] not in {"historical-seven", "current-eight-experimental-mail"}
             or not isinstance(value["sources"], list) or not 8 <= len(value["sources"]) <= 64):
         raise ProjectionFailure("app-subject-protected-cohort-invalid")
@@ -280,6 +321,27 @@ def _cohort() -> dict:
                        or source["sourceEvidenceDigest"] != source["sourceAuthorityRoot"] for source in prospective)
                 or len({_canonical_digest(source["original"]) for source in prospective}) != 1):
             raise ProjectionFailure("app-subject-prospective-owner-roots-invalid")
+    if prospective_fields:
+        from original_artifact_authentication import validate_coordinates
+        selected_ids = set()
+        if not isinstance(value["federationSelections"], list) or not 1 <= len(value["federationSelections"]) <= 32:
+            raise ProjectionFailure("app-subject-federation-cohort-invalid")
+        for selected in value["federationSelections"]:
+            if (not isinstance(selected, dict) or set(selected) != {"appId", "original", "contextId", "contextDigest", "generation"}
+                    or selected["appId"] in selected_ids or selected["appId"] not in ids
+                    or selected["appId"] in FIRST_PARTY | {"mail-prototype"}
+                    or selected["original"].get("sourceFamily") != "federation-selection"
+                    or type(selected["generation"]) is not int or selected["generation"] < 1):
+                raise ProjectionFailure("app-subject-federation-cohort-invalid")
+            validate_coordinates(selected["original"])
+            selected_ids.add(selected["appId"])
+        contract = value["admissionContract"]
+        if not isinstance(contract, dict) or set(contract) != {"snapshotPath", "snapshotDigest", "registryPath", "registryDigest"}:
+            raise ProjectionFailure("app-subject-federation-contract-invalid")
+        for field in ("snapshot", "registry"):
+            from federation_selection import _regular, digest
+            if digest(_regular(Path(contract[field + "Path"]), 8 * 1024 * 1024)) != contract[field + "Digest"]:
+                raise ProjectionFailure("app-subject-federation-contract-substituted")
     return value
 
 
@@ -364,13 +426,43 @@ def authenticate_tool_tree(cohort: dict, tool_root: Path, private_root: Path) ->
 
 
 def _public_cohort(value: dict) -> dict:
-    return {"cohortPolicy": value["cohortPolicy"], "releaseId": value["releaseId"],
+    result = {"cohortPolicy": value["cohortPolicy"], "releaseId": value["releaseId"],
             "sourceCommit": value["sourceCommit"], "authorityRoots": value["authorityRoots"],
             "toolTreeDigest": value["toolTreeDigest"], "javaTreeDigest": value["javaTreeDigest"],
             "toolOriginal": value["toolOriginal"], "toolMember": value["toolMember"],
             "sources": [{key: source[key] for key in sorted(source)
                          if key not in {"catalogKeys", "publisherKeys", "reviewerKeys"}}
                         for source in value["sources"]]}
+    # This digest projection is private for v2; hashes of local choices are not public summaries.
+    if value.get("schemaVersion", 1) == 2:
+        result["federationSelections"] = value["federationSelections"]
+        result["admissionContract"] = {key: item for key, item in value["admissionContract"].items() if key.endswith("Digest")}
+    return result
+
+
+def content_declaration(value):
+    """Project the unchanged v1 app-content declaration, without erasing selection authority."""
+    validate_declaration(value)
+    result = {key: item for key, item in value.items() if key in DECLARATION_FIELDS}
+    result["schemaVersion"] = 1
+    return result
+
+
+def selected_federation(cohort, app_id, private_root):
+    """Reopen the original pre-runtime selection; callers cannot supply an authenticated flag."""
+    rows = [row for row in cohort.get("federationSelections", []) if row["appId"] == app_id]
+    if not rows:
+        return {}, None
+    if len(rows) != 1:
+        raise ProjectionFailure("app-subject-federation-selection-ambiguous")
+    row = rows[0]
+    from federation_selection import authenticate_selection
+    authenticated = authenticate_selection(row["original"], private_root)
+    context = authenticated.context(row["contextId"])
+    if (context["digest"] != row["contextDigest"] or context["generation"] != row["generation"]
+            or context["appId"] != app_id):
+        raise ProjectionFailure("app-subject-federation-original-substituted")
+    return {"federation_selection": authenticated, "selection_id": row["contextId"]}, row
 
 
 def _artifact_json(artifact: OriginalArtifact, name: str) -> dict:
@@ -477,9 +569,7 @@ def _verify_maintenance_handoff(source: dict, declaration: dict, artifact: Origi
                 or inventory[members["catalogSignature"]]["digest"] != signed["catalogSignatureDigest"]):
             raise ProjectionFailure("app-subject-maintenance-declared-member-substitution")
     selected = subjects.get(declaration["appId"])
-    legacy = {key: item for key, item in declaration.items() if key not in
-              {"contractSnapshotDigest", "baselineRegistryDigest", "nativeAdmission", "catalogChannel"}}
-    legacy["schemaVersion"] = 1
+    legacy = content_declaration(declaration)
     if selected is None or selected["members"] != source["members"] or selected["signedProjection"] != legacy:
         raise ProjectionFailure("app-subject-maintenance-selected-subject-substitution")
     invocation = (f"https://github.com/{REPOSITORY}/actions/runs/{artifact.coordinates['runId']}"
@@ -565,6 +655,7 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
         raise ProjectionFailure("app-subject-exporter-outside-tree")
     exporter_digest = "sha256:" + hashlib.sha256(exporter.read_bytes()).hexdigest()
     rows = []
+    federation_rows = []
     for source in sorted(cohort["sources"], key=lambda item: item["appId"]):
         for key in ("catalogKeys", "publisherKeys", "reviewerKeys"):
             if source[key] is not None:
@@ -572,21 +663,30 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
                 if selected.is_symlink() or "sha256:" + hashlib.sha256(selected.read_bytes()).hexdigest() != source[key + "Digest"]:
                     raise ProjectionFailure("app-subject-trust-registry-substituted")
         artifact = authenticate_original(source["original"], private_root)
+        scoped, selection = selected_federation(cohort, source["appId"], private_root)
         catalog_artifact = None
         if source["catalogOriginal"] is not None:
-            if source["catalogOriginal"].get("sourceFamily") != "catalog-source":
+            if not scoped and source["catalogOriginal"].get("sourceFamily") != "catalog-source":
                 raise ProjectionFailure("app-subject-catalog-source-invalid")
             catalog_artifact = authenticate_original(source["catalogOriginal"], private_root)
+        admission = {}
+        if scoped:
+            admission = {"contract_path": Path(cohort["admissionContract"]["snapshotPath"]),
+                         "baseline_registry_path": Path(cohort["admissionContract"]["registryPath"])}
         result = produce(artifact, source["members"], exporter=exporter, exporter_digest=exporter_digest,
                          app_id=source["appId"], catalog_key_id=source["catalogKeyId"],
                          catalog_keys=Path(source["catalogKeys"]), publisher_keys=Path(source["publisherKeys"]),
                          reviewer_keys=Path(source["reviewerKeys"]) if source["reviewerKeys"] else None,
-                         private_root=private_root, java_home=java_home, catalog_artifact=catalog_artifact)
+                         private_root=private_root, java_home=java_home, catalog_artifact=catalog_artifact,
+                         source=source, **admission, **scoped)
         declaration = result["declaration"]
         if source["original"]["sourceFamily"] == "third-party-pilot" and (declaration["reviewDigest"] is None or declaration["submissionDigest"] is None):
             raise ProjectionFailure("app-subject-external-review-missing")
         verify_upstream_subject(source, declaration, artifact, private_root,
             expected_release={key: cohort[key] for key in ("releaseId", "sourceCommit")})
+        if selection is not None:
+            federation_rows.append({**selection, "nativeProjection": declaration})
+            declaration = content_declaration(declaration)
         keys = {"appId", "appVersion", "bundleDigest", "manifestDigest", "publisherId", "catalogId",
                 "reviewDigest", "targetStability", "targetBaseline", "minimumContractVersion",
                 "maximumTestedContractVersion", "requiredCapabilities", "optionalCapabilities",
@@ -610,6 +710,10 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
                  "producer": {"sourceCommit": os.environ["GITHUB_SHA"], "workflowPath": WORKFLOW,
                               "environment": "stable-1-0-app-subject-projection",
                               "runId": int(os.environ["GITHUB_RUN_ID"]), "runAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"])}}
+    if federation_rows:
+        inventory.update({"schemaVersion": 4, "baseInventoryVersion": version,
+                          "selectedFederation": federation_rows, "privacy": "private-local-selection",
+                          "cohortProjection": _public_cohort(cohort)})
     inventory["inventoryDigest"] = "sha256:" + "0" * 64
     inventory["inventoryDigest"] = _canonical_digest(inventory)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -625,20 +729,25 @@ def produce_cohort(private_root: Path, output: Path) -> dict:
 
 
 def authenticate_inventory(coordinates: dict, private_root: Path,
-                           expected_cohort_digest: str | None = None) -> AuthenticatedProjection:
+                           expected_cohort_digest: str | None = None,
+                           expected_inventory_version: int | None = None) -> AuthenticatedProjection:
     """Authenticate the original projection job and exact attested inventory member."""
     if coordinates.get("sourceFamily") != "app-subject-projection":
         raise ProjectionFailure("app-subject-producer-family-invalid")
     artifact = authenticate_original(coordinates, private_root)
     with zipfile.ZipFile(io.BytesIO(artifact.content)) as archive:
-        if archive.namelist() != ["platform-api-1.x-app-subject-inventory.json"]:
+        member_name = "platform-api-1.x-app-subject-inventory.json"
+        encrypted = archive.namelist() == ["platform-api-1.x-app-subject-inventory.cms"]
+        if encrypted:
+            member_name = "platform-api-1.x-app-subject-inventory.cms"
+        if archive.namelist() != [member_name]:
             raise ProjectionFailure("app-subject-producer-artifact-members-invalid")
         entry = archive.infolist()[0]
         if entry.file_size > 1024 * 1024 or stat.S_ISLNK(entry.external_attr >> 16):
             raise ProjectionFailure("app-subject-producer-inventory-invalid")
         raw = archive.read(entry)
     with tempfile.TemporaryDirectory(prefix="verify-projection-", dir=private_root) as directory:
-        member = Path(directory) / "platform-api-1.x-app-subject-inventory.json"
+        member = Path(directory) / member_name
         member.write_bytes(raw)
         verified = _gh(["attestation", "verify", str(member), "--repo", REPOSITORY,
              "--signer-workflow", REPOSITORY + "/" + WORKFLOW,
@@ -650,7 +759,14 @@ def authenticate_inventory(coordinates: dict, private_root: Path,
                 row.get("verificationResult", {}).get("signature", {}).get("certificate", {}).get("runInvocationURI")
                 == expected_invocation for row in verified):
             raise ProjectionFailure("app-subject-attested-attempt-mismatch")
+    if encrypted:
+        from federation_selection import _cms
+        raw = _cms(raw, private_root, decrypt=True)
+        if len(raw) > 1024 * 1024:
+            raise ProjectionFailure("app-subject-private-inventory-budget")
     inventory = _strict_json(raw)
+    if (inventory.get("schemaVersion") == 4) != encrypted:
+        raise ProjectionFailure("app-subject-inventory-privacy-boundary-invalid")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from cryptad_certification.schema_validation import validate_schema
     from cryptad_certification.redaction import scan_value
@@ -663,21 +779,65 @@ def authenticate_inventory(coordinates: dict, private_root: Path,
         validate_coordinates(subject["originalInventorySource"])
         if subject["originalCatalogSource"] is not None:
             validate_coordinates(subject["originalCatalogSource"])
+    validate_federation_inventory(inventory)
     producer = inventory.get("producer", {})
     if expected_cohort_digest is None:
-        expected_cohort_digest = _canonical_digest(_public_cohort(_cohort()))
+        cohort = _cohort()
+        expected_cohort_digest = _canonical_digest(_public_cohort(cohort))
+        if cohort["schemaVersion"] == 2:
+            expected_inventory_version = 4
+    if expected_inventory_version is not None and inventory["schemaVersion"] != expected_inventory_version:
+        raise ProjectionFailure("app-subject-inventory-version-substituted")
     if (producer.get("runId") != coordinates["runId"] or producer.get("runAttempt") != coordinates["runAttempt"]
             or producer.get("sourceCommit") != coordinates["sourceCommit"]
             or producer.get("workflowPath") != WORKFLOW
             or inventory.get("cohortDigest") != expected_cohort_digest):
         raise ProjectionFailure("app-subject-producer-substitution")
-    return AuthenticatedProjection(inventory, "sha256:" + hashlib.sha256(raw).hexdigest(), _VERIFIED)
+    return AuthenticatedProjection(inventory, "sha256:" + hashlib.sha256(raw).hexdigest(), _VERIFIED, raw=raw)
+
+
+def validate_federation_inventory(inventory):
+    """Validate selected context without collapsing competing candidates into app-ID slots."""
+    if inventory.get("schemaVersion") != 4:
+        return
+    from original_artifact_authentication import validate_coordinates
+    subjects = {row["appId"]: row for row in inventory["subjects"]}
+    if (len(subjects) != len(inventory["subjects"]) or inventory.get("baseInventoryVersion") not in {2, 3}
+            or inventory.get("privacy") != "private-local-selection"
+            or not isinstance(inventory.get("selectedFederation"), list) or not inventory["selectedFederation"]):
+        raise ProjectionFailure("app-subject-federation-inventory-invalid")
+    cohort = inventory.get("cohortProjection")
+    if (not isinstance(cohort, dict) or _canonical_digest(cohort) != inventory.get("cohortDigest")
+            or not isinstance(cohort.get("federationSelections"), list)
+            or sorted(cohort["federationSelections"], key=lambda row: row["appId"]) != sorted(
+                [{key: item for key, item in row.items() if key != "nativeProjection"}
+                 for row in inventory["selectedFederation"]], key=lambda row: row["appId"])):
+        raise ProjectionFailure("app-subject-federation-approved-roster-substituted")
+    prospective = any(row["sourceAuthority"] == "maintenance-app-products" for row in inventory["subjects"])
+    if inventory["baseInventoryVersion"] != (3 if prospective else 2):
+        raise ProjectionFailure("app-subject-federation-content-authority-substituted")
+    selected = set()
+    for row in inventory["selectedFederation"]:
+        if (not isinstance(row, dict) or set(row) != {"appId", "original", "contextId", "contextDigest", "generation", "nativeProjection"}
+                or row["appId"] in selected or row["appId"] not in subjects or row["appId"] in FIRST_PARTY | {"mail-prototype"}):
+            raise ProjectionFailure("app-subject-federation-subject-invalid")
+        selected.add(row["appId"])
+        validate_coordinates(row["original"])
+        native = validate_declaration(row["nativeProjection"])
+        target = cohort.get("admissionContract", {})
+        if (row["original"]["sourceFamily"] != "federation-selection" or native["schemaVersion"] != 3
+                or native["federationSelection"]["selectionDigest"] != row["contextDigest"]
+                or native["federationSelection"]["generation"] != row["generation"]
+                or content_declaration(native) != subjects[row["appId"]]["signedProjection"]
+                or native["contractSnapshotDigest"] != target.get("snapshotDigest")
+                or native["baselineRegistryDigest"] != target.get("registryDigest")):
+            raise ProjectionFailure("app-subject-federation-subject-substituted")
 
 
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("produce", "verify-matrix"))
+    parser.add_argument("mode", choices=("produce", "produce-selection", "verify-matrix"))
     parser.add_argument("--private-root", required=True, type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--coordinates", type=Path)
@@ -689,9 +849,25 @@ def main() -> int:
                         default="verify-app-matrix")
     args = parser.parse_args()
     try:
+        if args.mode == "produce-selection":
+            if args.output is None:
+                raise ProjectionFailure("app-subject-output-required")
+            from federation_selection import produce_selection
+            produce_selection(args.private_root, args.output)
+            return 0
         if args.mode == "produce":
             if args.output is None: raise ProjectionFailure("app-subject-output-required")
-            produce_cohort(args.private_root, args.output)
+            with tempfile.TemporaryDirectory(prefix="private-inventory-", dir=args.private_root) as directory:
+                plaintext = Path(directory) / "inventory.json"
+                inventory = produce_cohort(args.private_root, plaintext)
+                payload = plaintext.read_bytes()
+                destination = args.output
+                if inventory["schemaVersion"] == 4:
+                    from federation_selection import _cms
+                    payload = _cms(payload, args.private_root)
+                    destination = args.output.with_suffix(".cms")
+                with destination.open("xb") as stream:
+                    stream.write(payload)
             return 0
         if any(value is None for value in (args.coordinates, args.execution_contract, args.evidence_dir, args.out_dir)):
             raise ProjectionFailure("app-subject-verification-input-required")
@@ -703,7 +879,7 @@ def main() -> int:
         return stable_platform_api_1x.run(Path.cwd(), args.execution_contract,
                                          args.verification_mode, args.out_dir, args.evidence_dir,
                                          authenticated_projection=authenticated)
-    except (ProjectionFailure, OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, zipfile.BadZipFile):
         print("app_subject_projection_failed", file=__import__("sys").stderr)
         return 2
 

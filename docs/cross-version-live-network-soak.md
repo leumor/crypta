@@ -514,3 +514,7 @@ See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the 
 maintenance v2 private metadata, exact packaged API export, independently selected app sets and
 versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
 narrow admission success does not close missing runtime adapters or operational evidence.
+
+## Catalog-origin role and finite transitions
+
+The [PR-305 catalog-origin driver](pr-305-federated-app-projection-and-catalog-origin.md) exercises an absent-app role with exact preselected A1/A2/B3 subjects through normal catalog install/update/switch/rollback. It reuses the bounded supervisor HTTP client and binds native declarations, daemon/tool/JDK identity, private mutation intent and actual durable postconditions. The existing four-role staged Mail/API path retains its startup subjects. Local mirror request counters prove only owned loopback traffic; the broader measured maintenance directions and 72-hour requirement remain open.

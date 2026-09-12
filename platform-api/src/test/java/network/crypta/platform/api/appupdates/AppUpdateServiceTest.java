@@ -70,6 +70,7 @@ import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeys;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -4072,6 +4073,29 @@ class AppUpdateServiceTest {
     assertEquals(ROLLBACK_FAILED, exception.errorCode());
     assertEquals(500, exception.statusCode());
     verify(appHost).rollback(APP_ID);
+  }
+
+  @Test
+  void rollback_whenRetainedBundleVerificationFails_expectTypedConflictWithoutPrivateDetails()
+      throws Exception {
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.rollbackRequiresCatalogAuthorization(APP_ID)).thenReturn(true);
+    when(appHost.rollback(eq(APP_ID), any(AppHost.CatalogRollbackAuthorization.class)))
+        .thenThrow(
+            new AppBundleVerificationException(
+                "private-verification-canary /private/operator/bundle"));
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, false));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("rollback_bundle_verification_failed", exception.errorCode());
+    assertEquals("Retained app bundle verification blocks rollback.", exception.getMessage());
+    verify(appHost).rollback(eq(APP_ID), any(AppHost.CatalogRollbackAuthorization.class));
+    verify(appHost, never()).rollback(APP_ID);
+    verify(appHost, never()).stop(APP_ID);
+    verify(appHost, never()).start(APP_ID);
   }
 
   @Test

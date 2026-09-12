@@ -124,3 +124,5 @@ Read for Ownership in the partial multi-project build, Distributions and Windows
   closed gzip headers, only necessary canonical PAX extensions, empty ZIP archive/member comments
   and extra fields, and explicit Unix type/mode metadata for every ZIP member. Bound a nested
   member before reading or decompressing its bytes.
+
+The Linux catalog-origin integration requires `./gradlew :platform-devtools:installDist assembleCryptadDist` and `python3 -m unittest discover -s tools/interop -p 'test_catalog_origin_packaged.py'`. It uses the actual packaged daemon and native test-only signed fixtures in an owned root. Preserve packaging policy: no explicit leaf JAR task is required. See `docs/pr-305-federated-app-projection-and-catalog-origin.md` for exact scope and private-output handling.

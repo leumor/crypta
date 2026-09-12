@@ -239,3 +239,5 @@ Read for Guardrails. Commands and unlinked source paths are relative to the repo
   are under `artifacts/inputs/`. All writers must remain symlink-safe and confined to the marked
   workspace. If engine output fails the fallback scan, remove the unsafe raw copies and emit only a
   sanitized failed envelope with `promotionReady=false`.
+
+For selected federation app projection and disposable catalog-origin tests, follow `docs/pr-305-federated-app-projection-and-catalog-origin.md`. Keep native scoped context mandatory, app content origin distinct from local selection, and all private choices/digests outside ordinary public artifacts. Use the explicit fresh-root scope bootstrap and guarded catalog approval; never fabricate installed origins or weaken source-switch/conflict/rollback checks.

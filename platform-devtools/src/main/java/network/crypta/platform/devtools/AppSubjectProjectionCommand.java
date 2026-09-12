@@ -1,6 +1,8 @@
 package network.crypta.platform.devtools;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -12,6 +14,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.PlatformApiContractJson;
@@ -50,12 +53,14 @@ import picocli.CommandLine.Spec;
  *
  * <p>Instances hold mutable invocation state and must not be shared between concurrent executions.
  * The caller owns the trust registries, private root, and output destination; this command does not
- * grant installation authority or fetch an artifact from the catalog's bundle URI.
+ * grant installation authority or fetch an artifact from the catalog's bundle URI. Federation mode
+ * requires the independently selected generation and packaged contract pair and emits a private
+ * version-3 declaration; its local scope and selection identities must not be publicly disclosed.
  */
 @Command(
     name = "subject-projection",
     mixinStandardHelpOptions = true,
-    description = "Derive public compatibility metadata from exact signed catalog and app bytes.")
+    description = "Derive compatibility metadata from exact signed catalog and app bytes.")
 public final class AppSubjectProjectionCommand implements Callable<Integer> {
   private static final String SHA256_PREFIX = "sha256:";
   private CommandSpec spec;
@@ -96,6 +101,12 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
   @Option(names = "--baseline-registry")
   private Path baselineRegistry;
 
+  @Option(names = "--federation-selection")
+  private Path federationSelection;
+
+  @Option(names = "--federation-generation")
+  private Long federationGeneration;
+
   @Option(names = "--output", required = true)
   private Path output;
 
@@ -120,7 +131,9 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
   }
 
   /**
-   * Writes a new public projection only after the entire selected artifact verifies.
+   * Writes a new projection only after the entire selected artifact verifies.
+   *
+   * <p>Version-3 federation selection fields are private operator evidence.
    *
    * <p>The destination is created with {@link StandardOpenOption#CREATE_NEW}; an existing file is
    * never overwritten. Verification or I/O failures emit a fixed diagnostic and return one without
@@ -149,11 +162,21 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
               "subject-",
               PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
       var projection = derive(scratch);
-      Files.writeString(
-          output,
-          PlatformApiJsonWriter.write(projection) + "\n",
-          StandardOpenOption.CREATE_NEW,
-          StandardOpenOption.WRITE);
+      String serialized = PlatformApiJsonWriter.write(projection) + "\n";
+      if (federationSelection == null) {
+        Files.writeString(
+            output, serialized, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+      } else {
+        try (var channel =
+            Files.newByteChannel(
+                output,
+                Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
+                PosixFilePermissions.asFileAttribute(
+                    PosixFilePermissions.fromString("rw-------")))) {
+          ByteBuffer bytes = StandardCharsets.UTF_8.encode(serialized);
+          while (bytes.hasRemaining()) channel.write(bytes);
+        }
+      }
       spec.commandLine().getOut().println("app_subject_projection_complete");
       return 0;
     } catch (IOException | RuntimeException _) {
@@ -179,11 +202,32 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
    * @throws IOException if reading, extraction, verification, or subject matching fails
    */
   private Map<String, Object> derive(Path scratch) throws IOException {
+    if ((federationSelection == null) != (federationGeneration == null)
+        || (federationSelection != null && (contract == null || baselineRegistry == null)))
+      throw new IOException("federation selection incomplete");
+    var selection =
+        federationSelection == null
+            ? null
+            : FederationSelectionContext.snapshot(
+                federationSelection,
+                federationGeneration,
+                Files.createDirectory(scratch.resolve("federation")));
+    Path catalogKeysSnapshot = snapshot(catalogKeys, scratch.resolve("catalog-keys"), 1024L * 1024);
+    Path publisherKeysSnapshot =
+        snapshot(publisherKeys, scratch.resolve("publisher-keys"), 1024L * 1024);
+    Path reviewerKeysSnapshot =
+        reviewerKeys == null
+            ? null
+            : snapshot(reviewerKeys, scratch.resolve("reviewer-keys"), 1024L * 1024);
+    var catalogTrust = TrustedAppKeys.load(catalogKeysSnapshot);
+    var reviewerTrust =
+        reviewerKeysSnapshot == null
+            ? TrustedReviewerKeys.empty()
+            : TrustedReviewerKeys.load(reviewerKeysSnapshot);
     Path catalogSnapshot = snapshot(catalog, scratch.resolve("catalog"), 8L * 1024 * 1024);
     Path signatureSnapshot = snapshot(catalogSignature, scratch.resolve("signature"), 64L * 1024);
     var verifiedCatalog =
-        AppCatalogVerifier.verify(
-            catalogSnapshot, signatureSnapshot, TrustedAppKeys.load(catalogKeys), catalogKeyId);
+        AppCatalogVerifier.verify(catalogSnapshot, signatureSnapshot, catalogTrust, catalogKeyId);
     var entry =
         verifiedCatalog.entries().stream()
             .filter(value -> value.appId().equals(appId))
@@ -194,7 +238,7 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
         || !digest(artifact).equals(SHA256_PREFIX + entry.bundleSha256())) {
       throw new IOException("artifact mismatch");
     }
-    var keys = TrustedAppKeys.load(publisherKeys);
+    var keys = TrustedAppKeys.load(publisherKeysSnapshot);
     Path staged = new AppCatalogBundleExtractor().extract(entry, artifact, scratch, keys);
     var verification = AppBundleVerifier.requireSigned(keys).verify(staged);
     Path manifestPath = staged.resolve(AppBundleDigest.MANIFEST_FILE_NAME);
@@ -222,18 +266,8 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
     result.put("reviewDigest", null);
     result.put("reviewerId", null);
     result.put("submissionDigest", null);
-    if (submissionFile != null) {
-      Path submission =
-          snapshot(submissionFile, scratch.resolve("submission.zip"), 512L * 1024 * 1024);
-      var submitted = AppSubmissionPackageVerifier.readVerifiedBundleArtifact(submission);
-      if (!MessageDigest.isEqual(submitted.bytes(), Files.readAllBytes(artifact))
-          || !digest(manifestPath)
-              .equals(SHA256_PREFIX + submitted.submission().manifestDigest())) {
-        throw new IOException("submission subject mismatch");
-      }
-      result.put("submissionDigest", digest(submission));
-    }
-    addReviewProjection(entry, verification.keyId(), result);
+    addSubmissionProjection(scratch, artifact, manifestPath, result);
+    addReviewProjection(entry, verification.keyId(), reviewerTrust, result);
     result.put(
         "targetStability",
         compatibility.targetStabilityDeclared()
@@ -266,7 +300,35 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
       result.put("nativeAdmission", "accepted");
       result.put("catalogChannel", entry.productionMetadata().channel().catalogValue());
     }
+    if (selection != null) {
+      result.put(
+          "federationSelection", selection.verify(catalogTrust, keys, reviewerTrust, result));
+      result.put("schemaVersion", 3);
+    }
     return result;
+  }
+
+  /**
+   * Adds the optional submission identity after matching its bundle and manifest bytes.
+   *
+   * @param scratch invocation-owned directory for the submission snapshot
+   * @param artifact verified bundle archive to match
+   * @param manifestPath extracted signed manifest to match
+   * @param result projection to update; unchanged when no submission was supplied
+   * @throws IOException if snapshotting, verification, or subject matching fails
+   */
+  private void addSubmissionProjection(
+      Path scratch, Path artifact, Path manifestPath, Map<String, Object> result)
+      throws IOException {
+    if (submissionFile == null) return;
+    Path submission =
+        snapshot(submissionFile, scratch.resolve("submission.zip"), 512L * 1024 * 1024);
+    var submitted = AppSubmissionPackageVerifier.readVerifiedBundleArtifact(submission);
+    if (!MessageDigest.isEqual(submitted.bytes(), Files.readAllBytes(artifact))
+        || !digest(manifestPath).equals(SHA256_PREFIX + submitted.submission().manifestDigest())) {
+      throw new IOException("submission subject mismatch");
+    }
+    result.put("submissionDigest", digest(submission));
   }
 
   /**
@@ -274,19 +336,21 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
    *
    * @param entry verified catalog entry whose optional receipt is evaluated
    * @param publisherId signing key identifier from bundle verification
+   * @param reviewerTrust immutable snapshot of the local reviewer registry
    * @param result projection to update; unchanged when the entry has no receipt
    * @throws IOException if a receipt lacks reviewer trust or fails the required checks
    */
   private void addReviewProjection(
-      AppCatalogEntry entry, String publisherId, Map<String, Object> result) throws IOException {
+      AppCatalogEntry entry,
+      String publisherId,
+      TrustedReviewerKeys reviewerTrust,
+      Map<String, Object> result)
+      throws IOException {
     if (entry.reviewReceipt().isPresent()) {
       if (reviewerKeys == null) throw new IOException("reviewer trust missing");
       var review =
           AppReviewReceiptVerifier.evaluate(
-              entry,
-              TrustedReviewerKeys.load(reviewerKeys),
-              AppReviewPolicy.DEFAULT,
-              Instant.now());
+              entry, reviewerTrust, AppReviewPolicy.DEFAULT, Instant.now());
       if (!review.trusted() || !review.positive()) throw new IOException("review rejected");
       var receipt = entry.reviewReceipt().orElseThrow();
       if (receipt.payload().bundleKeyId().isPresent()
@@ -309,7 +373,7 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
    * @return the destination path after the copy completes
    * @throws IOException if the bound or input is invalid, the destination exists, or copying fails
    */
-  private static Path snapshot(Path source, Path destination, long maximum) throws IOException {
+  static Path snapshot(Path source, Path destination, long maximum) throws IOException {
     if (maximum < 1
         || maximum > 512L * 1024 * 1024
         || !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
@@ -336,7 +400,7 @@ public final class AppSubjectProjectionCommand implements Callable<Integer> {
    * @throws IOException if the file cannot be read
    * @throws IllegalStateException if the runtime lacks the required SHA-256 algorithm
    */
-  private static String digest(Path file) throws IOException {
+  static String digest(Path file) throws IOException {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       try (var input = Files.newInputStream(file)) {
