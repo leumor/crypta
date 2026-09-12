@@ -5,6 +5,7 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -20,7 +21,7 @@ class CatalogObserverTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.now = dt.datetime(2026, 9, 11, 20, tzinfo=dt.timezone.utc)
         self.pin = 'sha256:' + 'a' * 64
         self.producer = {'repository': observer.REPOSITORY, 'workflowPath': observer.WORKFLOW,
@@ -310,10 +311,35 @@ class CatalogObserverTest(unittest.TestCase):
             observer.AuthenticatedCatalogObservation(self.value)
 
     def keys(self):
+        # Protected Linux execution pins /usr/bin/openssl. The offline macOS suite
+        # uses Homebrew OpenSSL because the system tool lacks Ed25519 support.
+        candidates = dict.fromkeys(filter(None, (
+            '/usr/bin/openssl', shutil.which('openssl'),
+            '/opt/homebrew/opt/openssl@3/bin/openssl',
+            '/usr/local/opt/openssl@3/bin/openssl',
+        )))
         key = self.root / 'observer.der'
-        subprocess.run(['/usr/bin/openssl', 'genpkey', '-algorithm', 'ED25519', '-outform', 'DER', '-out', str(key)],
-                       check=True, capture_output=True)
-        public = subprocess.run(['/usr/bin/openssl', 'pkey', '-inform', 'DER', '-in', str(key), '-pubout', '-outform', 'DER'],
+        for executable in candidates:
+            if not Path(executable).is_file():
+                continue
+            result = subprocess.run(
+                [executable, 'genpkey', '-algorithm', 'ED25519', '-outform', 'DER', '-out', str(key)],
+                capture_output=True, timeout=30)
+            if result.returncode == 0:
+                break
+        else:
+            self.fail('observer tests require OpenSSL with Ed25519 support')
+
+        original_run = observer.bounded_run
+
+        def run_with_test_openssl(command, **kwargs):
+            self.assertEqual(command[0], '/usr/bin/openssl')
+            return original_run([executable, *command[1:]], **kwargs)
+
+        transport = patch.object(observer, 'bounded_run', side_effect=run_with_test_openssl)
+        transport.start()
+        self.addCleanup(transport.stop)
+        public = subprocess.run([executable, 'pkey', '-inform', 'DER', '-in', str(key), '-pubout', '-outform', 'DER'],
                                 check=True, capture_output=True).stdout
         return key.read_bytes(), {'observerKeyId': 'synthetic-observer', 'observerFingerprint': observer._digest(public),
                                  'observerPublicKeySpkiBase64': base64.b64encode(public).decode()}

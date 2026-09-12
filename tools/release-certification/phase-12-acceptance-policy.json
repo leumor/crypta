@@ -1109,7 +1109,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:bbdfa1b5a69a2608976740957841f561e0a62c6dec517854757005b6471b562c",
+            "digest": "sha256:356acbfa0c73b3e7ce4b1780d85baa40ac076dbba2bc3f00b1e757be9a2f5cf1",
             "path": "tools/release-certification/protected/test_federated_catalog_runtime_observer.py"
           },
           {
@@ -2566,7 +2566,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:bbdfa1b5a69a2608976740957841f561e0a62c6dec517854757005b6471b562c",
+            "digest": "sha256:356acbfa0c73b3e7ce4b1780d85baa40ac076dbba2bc3f00b1e757be9a2f5cf1",
             "path": "tools/release-certification/protected/test_federated_catalog_runtime_observer.py"
           },
           {
@@ -2820,7 +2820,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:bbdfa1b5a69a2608976740957841f561e0a62c6dec517854757005b6471b562c",
+            "digest": "sha256:356acbfa0c73b3e7ce4b1780d85baa40ac076dbba2bc3f00b1e757be9a2f5cf1",
             "path": "tools/release-certification/protected/test_federated_catalog_runtime_observer.py"
           },
           {
