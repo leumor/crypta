@@ -1382,6 +1382,8 @@ public final class AppUpdateService {
       catalogManager.verifyInstallPlan(staged.plan);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
+    } catch (CatalogPublisherAuthorizationException _) {
+      throw publisherScopeConflict();
     } catch (IOException _) {
       throw lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
     }

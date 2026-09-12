@@ -4848,6 +4848,49 @@ class AppUpdateServiceTest {
     assertFalse(Files.exists(plan.scratchDirectory()));
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void apply_whenPublisherScopeRevoked_expectConflictWithoutInstalling(boolean afterDryRun)
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppDataService appDataService = appDataServiceWithFeedRecord();
+    List<AppDataMigrationRunner.Mode> modes = new java.util.ArrayList<>();
+    AppUpdateService service =
+        serviceWithAppData(appDataService, payloadRewritingMigrationRunner(modes));
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    service.check(APP_ID, false);
+    service.stage(APP_ID);
+    modes.clear();
+    if (afterDryRun) {
+      doNothing()
+          .doThrow(new CatalogPublisherAuthorizationException())
+          .when(catalogManager)
+          .verifyInstallPlan(plan);
+    } else {
+      doThrow(new CatalogPublisherAuthorizationException())
+          .when(catalogManager)
+          .verifyInstallPlan(plan);
+    }
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("catalog_publisher_scope_rejected", exception.errorCode());
+    assertEquals(afterDryRun ? List.of(AppDataMigrationRunner.Mode.DRY_RUN) : List.of(), modes);
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
   @Test
   void apply_whenMigrationDryRunMutatesStagedBundle_expectReverifiedBeforeInstall()
       throws Exception {
