@@ -192,8 +192,11 @@ const driver=require(process.argv[1]);
 
     def test_pressure_controller_preserves_driver_latency_and_rejects_invalid_values(self):
         import io
-        import scheduler_pressure_runtime as adapter
+        import cross_version_runtime as runtime
         from unittest.mock import Mock
+
+        with runtime.fixed_helper_imports():
+            import scheduler_pressure_runtime as adapter
 
         def lane_for(values):
             lane = object.__new__(adapter.SchedulerLane)
