@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalog;
@@ -55,6 +56,10 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  * this pure tool.
  */
 final class FederationSelectionContext {
+  /** Closed basename grammar for copied local scope records. */
+  private static final Pattern RECORD_FILE_NAME =
+      Pattern.compile("[a-z0-9][a-z0-9._-]{0,127}\\.properties");
+
   /** Canonical handoff field {@code generation}. */
   private static final String FIELD_GENERATION = "generation";
 
@@ -247,7 +252,7 @@ final class FederationSelectionContext {
         Path fileName = file.getFileName();
         if (fileName == null) throw invalid();
         String name = fileName.toString();
-        if (!name.matches("[a-z0-9][a-z0-9._-]{0,127}\\.properties")) throw invalid();
+        if (!RECORD_FILE_NAME.matcher(name).matches()) throw invalid();
         copyReference(root, reference, directory.resolve(name), 1024L * 1024);
       }
     }

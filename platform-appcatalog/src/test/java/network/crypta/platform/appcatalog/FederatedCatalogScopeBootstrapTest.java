@@ -44,9 +44,10 @@ class FederatedCatalogScopeBootstrapTest {
         reviewers.policyDigest("fixture-catalog"), result.getFirst().reviewerPolicyDigestSha256());
     assertFalse(Files.exists(target.resolve("catalog-trust")));
     assertFalse(Files.exists(target.resolve("catalog-origins")));
+    String expectedManifestDigest = manifestDigest(input);
     assertThrows(
         IOException.class,
-        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, manifestDigest(input)));
+        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
   }
 
   @Test
@@ -55,9 +56,10 @@ class FederatedCatalogScopeBootstrapTest {
     Files.writeString(input.resolve("publishers/publisher.properties"), "private-canary");
     Path target = temporary.resolve("apps");
 
+    String expectedManifestDigest = manifestDigest(input);
     assertThrows(
         IOException.class,
-        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, manifestDigest(input)));
+        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
 
     assertFalse(Files.exists(target));
     assertNoScratchDirectories();
@@ -68,9 +70,10 @@ class FederatedCatalogScopeBootstrapTest {
     Path input = handoff("other-app");
     Path target = temporary.resolve("apps");
 
+    String expectedManifestDigest = manifestDigest(input);
     assertThrows(
         IOException.class,
-        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, manifestDigest(input)));
+        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
 
     assertFalse(Files.exists(target));
     assertNoScratchDirectories();
@@ -82,9 +85,10 @@ class FederatedCatalogScopeBootstrapTest {
     Files.writeString(input.resolve("publishers/extra.properties"), "unapproved");
     Path target = temporary.resolve("apps");
 
+    String expectedManifestDigest = manifestDigest(input);
     assertThrows(
         IOException.class,
-        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, manifestDigest(input)));
+        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
 
     assertFalse(Files.exists(target));
   }
@@ -97,11 +101,11 @@ class FederatedCatalogScopeBootstrapTest {
     Files.move(publisherRecord, outside);
     Files.createSymbolicLink(publisherRecord, outside);
 
+    Path target = temporary.resolve("apps");
+    String expectedManifestDigest = manifestDigest(input);
     assertThrows(
         IOException.class,
-        () ->
-            FederatedCatalogScopeBootstrap.bootstrap(
-                temporary.resolve("apps"), input, manifestDigest(input)));
+        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
 
     assertTrue(Files.exists(outside));
     assertFalse(Files.exists(temporary.resolve("apps")));
@@ -114,9 +118,10 @@ class FederatedCatalogScopeBootstrapTest {
     Path original = target.resolve("original");
     Files.writeString(original, "preserved");
 
+    String expectedManifestDigest = manifestDigest(input);
     assertThrows(
         IOException.class,
-        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, manifestDigest(input)));
+        () -> FederatedCatalogScopeBootstrap.bootstrap(target, input, expectedManifestDigest));
 
     assertEquals("preserved", Files.readString(original));
     assertFalse(Files.exists(target.resolve("catalog-publisher-bindings")));

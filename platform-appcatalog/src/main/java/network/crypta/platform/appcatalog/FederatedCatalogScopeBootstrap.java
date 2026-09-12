@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 
 /**
  * Imports an explicitly selected private scope handoff before a host's first app-platform startup.
@@ -26,6 +27,10 @@ import java.util.TreeSet;
  * selection of the expected digest; a digest alone is not original producer authentication.
  */
 public final class FederatedCatalogScopeBootstrap {
+  /** Closed basename grammar for snapshotted publisher and reviewer records. */
+  private static final Pattern RECORD_FILE_NAME =
+      Pattern.compile("[a-z0-9][a-z0-9._-]{0,127}\\.properties");
+
   /** Fixed manifest basename in the private handoff directory. */
   private static final String MANIFEST = "bootstrap.properties";
 
@@ -181,9 +186,7 @@ public final class FederatedCatalogScopeBootstrap {
     for (int index = 0; index < count; index++) {
       String name = fields.remove(prefix + "." + index + ".file");
       String digest = fields.remove(prefix + "." + index + ".sha256");
-      if (name == null
-          || !name.matches("[a-z0-9][a-z0-9._-]{0,127}\\.properties")
-          || !names.add(name)) {
+      if (name == null || !RECORD_FILE_NAME.matcher(name).matches() || !names.add(name)) {
         throw new IOException(FAILURE);
       }
       byte[] bytes = readBounded(originals.resolve(name));
