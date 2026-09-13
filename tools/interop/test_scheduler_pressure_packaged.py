@@ -101,7 +101,8 @@ class PackagedSchedulerPressureTest(unittest.TestCase):
             self.assertEqual('not-observed', result['fullAppBudgets'])
             claims = result['runtimeComponents']['claims']
             for name in adapter.pressure_evidence.CLAIMS[:5]:
-                self.assertEqual('observed', claims[name], name)
+                self.assertEqual('observed', claims[name],
+                                 f"{name}: {result['runtimeComponents']['resourceFindings']}")
             for name in adapter.pressure_evidence.CLAIMS[5:]:
                 self.assertEqual('not-observed', claims[name], name)
             self.assertGreaterEqual(len(lane.samples), 20)

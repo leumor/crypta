@@ -358,6 +358,30 @@ Deadline-correction validation passed: 147 interop tests, 42 runtime evidence/pr
 19 comparator tests, and one actual packaged executor/contention/recovery/resource integration
 with zero skips. The existing Phase 12 assessment still verifies with 47 unresolved requirements.
 
+### Hosted-runner cgroup observation
+
+The environment collector resolves the selected process's cgroup v2 membership and mount instead
+of assuming controller files at `/sys/fs/cgroup` describe that process. Before launch it observes
+the collector; after launch it binds the daemon's exact process identity and brackets collection
+with identity, membership and mount checks. It inspects at most 32 visible ancestors, retaining the
+tightest memory limit and CPU quota ratio plus a digest of the observed controller configuration.
+The process's allowed CPU mask and host RAM are recorded separately from cgroup limits.
+
+The kernel's `cpu.max` and `memory.max` interfaces are non-root controls. Their absence at the
+visible hierarchy root is distinct from an unreadable controller file. An absent child interface
+counts as no direct child limit only when the parent's `cgroup.subtree_control` confirms that
+controller is disabled; ancestor limits still apply. Missing enabled interfaces, permissions
+failures, hidden ancestors, unsupported v1 layouts and changing process identity remain unknown.
+The scope is the visible cgroup v2 hierarchy, without a claim about inaccessible outer namespaces.
+This correction changes the collector/environment fingerprints; it does not change baseline
+thresholds or weaken series validity. Packaged test failures print only the fixed resource finding
+codes alongside the failed claim, retaining private runtime files separately.
+
+Local validation of this correction passed 160 offline adapter tests, 42 evidence/projection
+tests, 19 comparator tests and both fresh packaged scheduler cases (227.045s, zero skips).
+Both cases also passed locally before the correction (237.704s); the original hosted log omitted
+the underlying resource findings, so that local comparison alone does not prove the hosted cause.
+
 Narrow claims remain separate: scheduler executor observation, pressure before budget, verified
 budget-family accounting, background recovery, valid resource series, baseline comparability and
 within-reviewed-bounds. Original producer authentication, synthetic/live classification, product and

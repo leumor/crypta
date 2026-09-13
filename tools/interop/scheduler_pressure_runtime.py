@@ -63,6 +63,146 @@ def private_json(path, value):
     temporary.replace(path)
 
 
+def _environment_text(path, maximum=4096):
+    """Read a finite private kernel descriptor without retaining raw failures."""
+    with path.open('rb') as source:
+        raw = source.read(maximum + 1)
+    if len(raw) > maximum:
+        raise ValueError('bounded-read')
+    return raw.decode('ascii').strip()
+
+
+def cgroup_environment(pid, proc_root=Path('/proc'), identity_reader=None, expected_identity=None):
+    """Observe the selected process's visible v2 hierarchy, including inherited limits.
+
+    Root cpu.max/memory.max are absent on the host hierarchy by kernel definition; this is
+    known absence of a root controller limit, not an unreadable non-root limit. A mount hiding
+    ancestors remains unavailable. Namespace-external constraints are not host RAM and are
+    never invented from these visible controller values.
+    """
+    unknown = {'known': False, 'scope': 'selected-process-visible-cgroup-v2-hierarchy',
+               'diagnostic': 'scheduler-cgroup-observation-unavailable'}
+    read_identity = identity_reader or runtime.process_identity
+    process = proc_root / str(pid)
+    try:
+        before = read_identity(pid)
+        if expected_identity is not None and before != expected_identity:
+            raise ValueError('selected-process-changed')
+        membership = _environment_text(process / 'cgroup')
+        mountinfo = _environment_text(process / 'mountinfo', 256 * 1024)
+        rows = membership.splitlines()
+        if len(rows) != 1 or not rows[0].startswith('0::/'):
+            return {**unknown, 'diagnostic': 'scheduler-cgroup-v2-unsupported'}
+        member = rows[0][3:]
+        def safe_path(value):
+            if (not value.startswith('/') or '\\' in value or any(ord(c) < 32 for c in value)
+                    or any(part in ('.', '..') for part in value.split('/'))):
+                raise ValueError('unsafe-path')
+            return Path(value)
+        member_path = safe_path(member)
+        mounts = []
+        for line in mountinfo.splitlines():
+            fields = line.split()
+            if '-' not in fields:
+                raise ValueError('mountinfo')
+            divider = fields.index('-')
+            if divider < 6 or len(fields) <= divider + 2:
+                raise ValueError('mountinfo')
+            if fields[divider + 1] == 'cgroup2':
+                # Kernel mountinfo escapes spaces and backslashes. Unsupported escaped control
+                # characters fail closed instead of becoming an alternate filesystem path.
+                decode = lambda value: value.replace('\\040', ' ').replace('\\134', '\\')
+                mounts.append((safe_path(decode(fields[3])), safe_path(decode(fields[4]))))
+        if len(mounts) != 1:
+            raise ValueError('mount-count')
+        mount_root, mount = mounts[0]
+        if mount_root != Path('/'):
+            return {**unknown, 'diagnostic': 'scheduler-cgroup-ancestors-unavailable'}
+        if mount.resolve(strict=True) != mount:
+            raise ValueError('mount-link')
+        leaf = mount.joinpath(*member_path.parts[1:])
+        if not leaf.is_relative_to(mount) or leaf.resolve(strict=True) != leaf:
+            raise ValueError('member-link')
+        ancestors = [leaf]
+        while ancestors[-1] != mount:
+            if len(ancestors) >= 32:
+                raise ValueError('ancestor-budget')
+            ancestors.append(ancestors[-1].parent)
+        controllers = set(_environment_text(mount / 'cgroup.controllers').split())
+        if not {'cpu', 'memory'}.issubset(controllers):
+            raise ValueError('controllers-unavailable')
+        memory_values, cpu_values, controller_values = [], [], []
+        for directory in ancestors:
+            for family in ('memory', 'cpu'):
+                path = directory / (family + '.max')
+                try:
+                    if path.is_symlink():
+                        raise ValueError('controller-link')
+                    value = _environment_text(path)
+                    controller_values.append((len(controller_values), family, value))
+                except FileNotFoundError:
+                    if directory == mount:
+                        continue
+                    # Disabled delegation removes the child's interface. Parent limits still
+                    # apply and are read below; a missing enabled interface stays unknown.
+                    enabled = set(_environment_text(directory.parent / 'cgroup.subtree_control').split())
+                    if family not in enabled:
+                        continue
+                    raise
+                if family == 'memory':
+                    if value != 'max':
+                        if not value.isdecimal() or not 0 < int(value) < 2**63:
+                            raise ValueError('memory-limit')
+                        memory_values.append(int(value))
+                else:
+                    values = value.split()
+                    if (len(values) != 2 or not values[1].isdecimal()
+                            or not 0 < int(values[1]) < 2**63):
+                        raise ValueError('cpu-limit')
+                    if values[0] != 'max':
+                        if not values[0].isdecimal() or not 0 < int(values[0]) < 2**63:
+                            raise ValueError('cpu-limit')
+                        cpu_values.append((int(values[0]), int(values[1])))
+        effective_cpu = None
+        for quota, period in cpu_values:
+            if effective_cpu is None or quota * effective_cpu[1] < effective_cpu[0] * period:
+                effective_cpu = (quota, period)
+        # Process affinity includes cpuset placement even when the cpuset controller is not
+        # enabled in this systemd subtree. It is explicitly a process mask, not host CPU count.
+        status = _environment_text(process / 'status', 64 * 1024)
+        masks = [line.split(':', 1)[1].strip() for line in status.splitlines()
+                 if line.startswith('Cpus_allowed_list:')]
+        if len(masks) != 1 or not masks[0] or len(masks[0]) > 4096:
+            raise ValueError('cpu-mask')
+        last = -1
+        for segment in masks[0].split(','):
+            endpoints = segment.split('-')
+            if len(endpoints) > 2 or any(not value.isdecimal() for value in endpoints):
+                raise ValueError('cpu-mask')
+            lower, upper = int(endpoints[0]), int(endpoints[-1])
+            if not last < lower <= upper < 2**20:
+                raise ValueError('cpu-mask')
+            last = upper
+        memory = _environment_text(proc_root / 'meminfo', 64 * 1024)
+        totals = [line.split() for line in memory.splitlines() if line.startswith('MemTotal:')]
+        if (len(totals) != 1 or len(totals[0]) != 3 or totals[0][2] != 'kB'
+                or not totals[0][1].isdecimal() or not 0 < int(totals[0][1]) < 2**53 // 1024):
+            raise ValueError('host-memory')
+        if (membership != _environment_text(process / 'cgroup')
+                or mountinfo != _environment_text(process / 'mountinfo', 256 * 1024)
+                or before != read_identity(pid)):
+            raise ValueError('process-changed')
+        return {'known': True, 'scope': unknown['scope'], 'ancestorCount': len(ancestors),
+                'controllerConfigurationDigest': runtime.canonical_digest(controller_values),
+                'memoryMax': min(memory_values) if memory_values else None,
+                'cpuMax': {'quotaMicros': effective_cpu[0], 'periodMicros': effective_cpu[1]} if effective_cpu else None,
+                'processAllowedCpuList': masks[0], 'hostRamBytes': int(totals[0][1]) * 1024,
+                'unlimitedMeaning': 'no-finite-limit-in-visible-controller-hierarchy',
+                'membershipDigest': runtime.canonical_digest({'membership': membership, 'mountRoot': str(mount_root)})}
+    except (OSError, ValueError, UnicodeError, IndexError):
+        return unknown
+
+
 class SchedulerLane(runtime.Supervisor):
     """One finite local cohort; launch, FCP client, identity and HTTP stay supervisor-owned."""
     scheduler_lane = True
@@ -175,16 +315,10 @@ class SchedulerLane(runtime.Supervisor):
         self.journal.checkpoint()
 
     def environment_digest(self):
-        limits = {}
-        for key, path in (('memoryMax', '/sys/fs/cgroup/memory.max'), ('cpuMax', '/sys/fs/cgroup/cpu.max'),
-                          ('cpuSetEffective', '/sys/fs/cgroup/cpuset.cpus.effective')):
-            try:
-                raw = Path(path).read_bytes()
-                if len(raw) > 4096:
-                    raise runtime.RuntimeFailure('scheduler-environment-read-budget-exceeded')
-                limits[key] = {'known': True, 'value': raw.decode().strip()}
-            except OSError:
-                limits[key] = {'known': False, 'value': None}
+        selected_identity = getattr(self, 'identity', None)
+        selected_pid = selected_identity['pid'] if selected_identity is not None else os.getpid()
+        limits = cgroup_environment(selected_pid, expected_identity=selected_identity)
+        host_ram_bytes = limits.pop('hostRamBytes', None)
         cpu_fields = {'vendor_id', 'model name', 'cpu family', 'model', 'flags', 'CPU implementer', 'CPU part', 'Features'}
         try:
             with Path('/proc/cpuinfo').open('rb') as source:
@@ -208,9 +342,11 @@ class SchedulerLane(runtime.Supervisor):
         environment = {'javaExecutable': runtime.digest_file(self.java / 'bin/java'),
             'javaVersion': version.stderr.decode(), 'os': os.uname().sysname, 'arch': os.uname().machine,
             'kernel': os.uname().release, 'cpuCount': os.cpu_count(), 'container': limits, 'hardware': cpu,
+            'hostRamBytes': host_ram_bytes,
+            'processObservation': 'selected-daemon' if selected_identity is not None else 'collector-before-launch',
             'network': getattr(self, 'network_class', {'class': 'single-node-isolated-loopback'}), 'storage': storage}
         private_json(self.root / 'environment.json', environment)
-        self.environment_known = cpu['known'] and storage['known'] and all(value['known'] for value in limits.values())
+        self.environment_known = cpu['known'] and storage['known'] and limits['known'] and host_ram_bytes is not None
         return runtime.canonical_digest(environment)
 
     def remaining(self, seconds):
