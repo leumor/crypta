@@ -42,6 +42,7 @@ public final class AppNetworkBudgetService {
   private static final Duration MINUTE_WINDOW = Duration.ofMinutes(1);
   private static final Duration HOUR_WINDOW = Duration.ofHours(1);
 
+  private final RuntimeWorkObservation observation = new RuntimeWorkObservation();
   private final AppNetworkBudgetStore store;
   private final AppNetworkBudgetConfig config;
   private final Clock clock;
@@ -81,6 +82,79 @@ public final class AppNetworkBudgetService {
   }
 
   /**
+   * Returns bounded causal observations shared with the subscription scheduler.
+   *
+   * <p>This is an intentional mutable producer collaborator for trusted native composition.
+   * Returning a detached copy would split admission and fetch ordering into unrelated event
+   * sequences. Operator readers receive only detached snapshots; app/browser routes never receive
+   * this collaborator.
+   *
+   * @return bounded causal observations shared with the subscription scheduler
+   */
+  public RuntimeWorkObservation observation() {
+    return observation;
+  }
+
+  /**
+   * Returns normalized effective budget configuration.
+   *
+   * @return normalized effective budget configuration
+   */
+  public AppNetworkBudgetConfig configuration() {
+    return config;
+  }
+
+  /**
+   * Reads operator diagnostics without confusing a failed store read with zero usage.
+   *
+   * <p>The returned family snapshots are private operator data containing app scopes. They must not
+   * be exported as public telemetry. Active and reserved counts sum family holds, not requests.
+   *
+   * @return detached diagnostic result with explicit validity and sample time
+   */
+  public synchronized Diagnostics diagnostics() {
+    try {
+      List<AppNetworkBudgetSnapshot> usage =
+          store.observe(4096).stream().map(this::snapshotFor).toList();
+      return new Diagnostics(
+          true,
+          clock.instant(),
+          usage,
+          activeLeases.values().stream().mapToLong(Integer::longValue).sum(),
+          pendingRateReservations.values().stream().mapToLong(Integer::longValue).sum());
+    } catch (IOException _) {
+      observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
+      return new Diagnostics(
+          false,
+          clock.instant(),
+          List.of(),
+          activeLeases.values().stream().mapToLong(Integer::longValue).sum(),
+          pendingRateReservations.values().stream().mapToLong(Integer::longValue).sum());
+    }
+  }
+
+  /**
+   * Private operator diagnostic snapshot; unavailable durable usage is never a zero measurement.
+   *
+   * @param valid whether durable usage enumeration succeeded
+   * @param observedAt sample time
+   * @param usage private family/window snapshots, empty when unavailable
+   * @param activeFamilyLeases process-local held concurrency summed across families
+   * @param reservedFamilyRates process-local uncommitted rate holds summed across families/windows
+   */
+  public record Diagnostics(
+      boolean valid,
+      Instant observedAt,
+      List<AppNetworkBudgetSnapshot> usage,
+      long activeFamilyLeases,
+      long reservedFamilyRates) {
+    /** Copies private usage rows so callers cannot mutate an issued diagnostic snapshot. */
+    public Diagnostics {
+      usage = List.copyOf(usage);
+    }
+  }
+
+  /**
    * Attempts to acquire budget for one app operation.
    *
    * <p>Denied decisions fail closed with a safe status and message. Store read/write failures
@@ -97,8 +171,16 @@ public final class AppNetworkBudgetService {
    */
   public synchronized AppNetworkBudgetDecision acquire(
       String appId, AppNetworkBudgetOperation operation) {
+    long operationId = observation.nextOperation();
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
     AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
+    observation.recordEvent(
+        RuntimeWorkObservation.Kind.BUDGET_ACQUIRE,
+        checkedOperation,
+        0,
+        0,
+        operationId,
+        observation.scope(normalizedAppId));
     Instant now = clock.instant();
     List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
@@ -107,25 +189,70 @@ public final class AppNetworkBudgetService {
           concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
       if (!concurrencyDecision.allowed()) {
         recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED,
+            checkedOperation,
+            0,
+            0,
+            operationId,
+            observation.scope(normalizedAppId));
         return concurrencyDecision;
       }
       AppNetworkBudgetDecision rateDecision =
           rateDecision(normalizedAppId, checkedOperation, now, rateLimits);
       if (!rateDecision.allowed()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
+            operation,
+            0,
+            0,
+            operationId,
+            observation.scope(normalizedAppId));
         return rateDecision;
       }
       for (RateLimit limit : rateLimits) {
-        store.write(usage(limit, now).allowedAt(now));
+        AppNetworkBudgetUsage previous = usage(limit, now);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RATE_OBSERVED,
+            limit.operation(),
+            previous.windowStart().getEpochSecond(),
+            previous.count(),
+            operationId,
+            observation.scope(limit.appId()));
+        AppNetworkBudgetUsage charged = previous.allowedAt(now);
+        store.write(charged);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RATE_CHARGED,
+            limit.operation(),
+            charged.windowStart().getEpochSecond(),
+            charged.count(),
+            operationId,
+            observation.scope(limit.appId()));
       }
       for (ConcurrencyLimit limit : concurrencyLimits) {
         activeLeases.merge(limit.key(), 1, Integer::sum);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.CONCURRENCY_HELD,
+            limit.operation(),
+            0,
+            activeLeases.get(limit.key()),
+            operationId,
+            observation.scope(limit.appId()));
       }
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.BUDGET_COMMITTED,
+          checkedOperation,
+          0,
+          0,
+          operationId,
+          observation.scope(normalizedAppId));
       return AppNetworkBudgetDecision.allowed(
           normalizedAppId,
           checkedOperation,
           now,
-          new AppNetworkBudgetLease(() -> release(concurrencyLimits)));
+          new AppNetworkBudgetLease(() -> release(concurrencyLimits, operationId)));
     } catch (IOException _) {
+      observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return AppNetworkBudgetDecision.denied(
           503,
           normalizedAppId,
@@ -158,8 +285,16 @@ public final class AppNetworkBudgetService {
    */
   public synchronized AppNetworkBudgetDecision check(
       String appId, AppNetworkBudgetOperation operation) {
+    long operationId = observation.nextOperation();
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
     AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
+    observation.recordEvent(
+        RuntimeWorkObservation.Kind.BUDGET_CHECK,
+        checkedOperation,
+        0,
+        0,
+        operationId,
+        observation.scope(normalizedAppId));
     Instant now = clock.instant();
     List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
@@ -167,16 +302,31 @@ public final class AppNetworkBudgetService {
       AppNetworkBudgetDecision concurrencyDecision =
           concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
       if (!concurrencyDecision.allowed()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED,
+            checkedOperation,
+            0,
+            0,
+            operationId,
+            observation.scope(normalizedAppId));
         return concurrencyDecision;
       }
       AppNetworkBudgetDecision rateDecision =
           rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits);
       if (!rateDecision.allowed()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
+            operation,
+            0,
+            0,
+            operationId,
+            observation.scope(normalizedAppId));
         return rateDecision;
       }
       return AppNetworkBudgetDecision.allowed(
           normalizedAppId, checkedOperation, now, AppNetworkBudgetLease.noop());
     } catch (IOException _) {
+      observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return AppNetworkBudgetDecision.denied(
           503,
           normalizedAppId,
@@ -208,8 +358,16 @@ public final class AppNetworkBudgetService {
    */
   public synchronized AppNetworkBudgetReservation reserve(
       String appId, AppNetworkBudgetOperation operation) {
+    long operationId = observation.nextOperation();
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
     AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
+    observation.recordEvent(
+        RuntimeWorkObservation.Kind.BUDGET_RESERVE,
+        checkedOperation,
+        0,
+        0,
+        operationId,
+        observation.scope(normalizedAppId));
     Instant now = clock.instant();
     List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
@@ -218,17 +376,45 @@ public final class AppNetworkBudgetService {
           concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
       if (!concurrencyDecision.allowed()) {
         recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED,
+            checkedOperation,
+            0,
+            0,
+            operationId,
+            observation.scope(normalizedAppId));
         return deniedReservation(concurrencyDecision);
       }
       AppNetworkBudgetDecision rateDecision =
           rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits);
       if (!rateDecision.allowed()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
+            checkedOperation,
+            0,
+            0,
+            operationId,
+            observation.scope(normalizedAppId));
         return deniedReservation(rateDecision);
       }
-      List<String> rateReservationKeys = reserveRateCapacity(rateLimits, now);
+      List<String> rateReservationKeys = reserveRateCapacity(rateLimits, now, operationId);
       for (ConcurrencyLimit limit : concurrencyLimits) {
         activeLeases.merge(limit.key(), 1, Integer::sum);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.CONCURRENCY_HELD,
+            limit.operation(),
+            0,
+            activeLeases.get(limit.key()),
+            operationId,
+            observation.scope(limit.appId()));
       }
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.BUDGET_RESERVED,
+          checkedOperation,
+          0,
+          0,
+          operationId,
+          observation.scope(normalizedAppId));
       AtomicBoolean rateReservationActive = new AtomicBoolean(true);
       AppNetworkBudgetDecision decision =
           AppNetworkBudgetDecision.allowed(
@@ -237,9 +423,17 @@ public final class AppNetworkBudgetService {
           decision,
           () ->
               commitReservation(
-                  normalizedAppId, checkedOperation, rateReservationKeys, rateReservationActive),
-          () -> releaseReservation(concurrencyLimits, rateReservationKeys, rateReservationActive));
+                  normalizedAppId,
+                  checkedOperation,
+                  rateReservationKeys,
+                  rateReservationActive,
+                  operationId),
+          () ->
+              releaseReservation(
+                  concurrencyLimits, rateReservationKeys, rateReservationActive, operationId),
+          operationId);
     } catch (IOException _) {
+      observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return deniedReservation(
           AppNetworkBudgetDecision.denied(
               503,
@@ -271,6 +465,7 @@ public final class AppNetworkBudgetService {
                   .thenComparing(snapshot -> snapshot.operation().jsonValue()))
           .toList();
     } catch (IOException _) {
+      observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return List.of();
     }
   }
@@ -371,11 +566,19 @@ public final class AppNetworkBudgetService {
     }
   }
 
-  private List<String> reserveRateCapacity(List<RateLimit> rateLimits, Instant now) {
+  private List<String> reserveRateCapacity(
+      List<RateLimit> rateLimits, Instant now, long operationId) {
     ArrayList<String> reservationKeys = new ArrayList<>(rateLimits.size());
     for (RateLimit limit : rateLimits) {
       String key = rateReservationKey(limit, truncate(now, limit.window()));
       pendingRateReservations.merge(key, 1, Integer::sum);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.RATE_RESERVED,
+          limit.operation(),
+          truncate(now, limit.window()).getEpochSecond(),
+          pendingRateReservations.get(key),
+          operationId,
+          observation.scope(limit.appId()));
       reservationKeys.add(key);
     }
     return reservationKeys;
@@ -385,22 +588,54 @@ public final class AppNetworkBudgetService {
       String appId,
       AppNetworkBudgetOperation operation,
       List<String> rateReservationKeys,
-      AtomicBoolean rateReservationActive) {
+      AtomicBoolean rateReservationActive,
+      long operationId) {
     Instant now = clock.instant();
     if (rateReservationActive.compareAndSet(true, false)) {
-      releasePendingRateReservations(rateReservationKeys);
+      releasePendingRateReservations(rateReservationKeys, operationId);
     }
     List<RateLimit> rateLimits = rateLimits(appId, operation);
     try {
       AppNetworkBudgetDecision rateDecision = rateDecision(appId, operation, now, rateLimits);
       if (!rateDecision.allowed()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
+            operation,
+            0,
+            0,
+            operationId,
+            observation.scope(appId));
         return rateDecision;
       }
       for (RateLimit limit : rateLimits) {
-        store.write(usage(limit, now).allowedAt(now));
+        AppNetworkBudgetUsage previous = usage(limit, now);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RATE_OBSERVED,
+            limit.operation(),
+            previous.windowStart().getEpochSecond(),
+            previous.count(),
+            operationId,
+            observation.scope(limit.appId()));
+        AppNetworkBudgetUsage charged = previous.allowedAt(now);
+        store.write(charged);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RATE_CHARGED,
+            limit.operation(),
+            charged.windowStart().getEpochSecond(),
+            charged.count(),
+            operationId,
+            observation.scope(limit.appId()));
       }
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.BUDGET_COMMITTED,
+          operation,
+          0,
+          0,
+          operationId,
+          observation.scope(appId));
       return AppNetworkBudgetDecision.allowed(appId, operation, now, AppNetworkBudgetLease.noop());
     } catch (IOException _) {
+      observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return AppNetworkBudgetDecision.denied(
           503,
           appId,
@@ -416,25 +651,43 @@ public final class AppNetworkBudgetService {
     return new AppNetworkBudgetReservation(decision, () -> decision, () -> {});
   }
 
-  private synchronized void release(List<ConcurrencyLimit> limits) {
+  private synchronized void release(List<ConcurrencyLimit> limits, long operationId) {
     for (ConcurrencyLimit limit : limits) {
       activeLeases.computeIfPresent(limit.key(), (_, count) -> count <= 1 ? null : count - 1);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.CONCURRENCY_RELEASED,
+          limit.operation(),
+          0,
+          activeLeases.getOrDefault(limit.key(), 0),
+          operationId,
+          observation.scope(limit.appId()));
     }
+    observation.recordEvent(
+        RuntimeWorkObservation.Kind.BUDGET_RELEASED, null, 0, 0, operationId, 0);
   }
 
   private synchronized void releaseReservation(
       List<ConcurrencyLimit> concurrencyLimits,
       List<String> rateReservationKeys,
-      AtomicBoolean rateReservationActive) {
-    release(concurrencyLimits);
+      AtomicBoolean rateReservationActive,
+      long operationId) {
     if (rateReservationActive.compareAndSet(true, false)) {
-      releasePendingRateReservations(rateReservationKeys);
+      releasePendingRateReservations(rateReservationKeys, operationId);
     }
+    release(concurrencyLimits, operationId);
   }
 
-  private void releasePendingRateReservations(List<String> reservationKeys) {
+  private void releasePendingRateReservations(List<String> reservationKeys, long operationId) {
     for (String key : reservationKeys) {
       pendingRateReservations.computeIfPresent(key, (_, count) -> count <= 1 ? null : count - 1);
+      String[] identity = key.split("\\n", 3);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.RATE_RESERVATION_RELEASED,
+          AppNetworkBudgetOperation.fromJsonValue(identity[1]),
+          Instant.parse(identity[2]).getEpochSecond(),
+          pendingRateReservations.getOrDefault(key, 0),
+          operationId,
+          observation.scope(identity[0]));
     }
   }
 

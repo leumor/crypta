@@ -48,6 +48,14 @@ public final class InMemoryAppNetworkBudgetStore implements AppNetworkBudgetStor
         .toList();
   }
 
+  @Override
+  public synchronized List<AppNetworkBudgetUsage> observe(int maximumEntries) throws IOException {
+    if (maximumEntries <= 0 || records.size() > maximumEntries) {
+      throw new IOException("Budget observation unavailable");
+    }
+    return listAll();
+  }
+
   private static String key(String appId, AppNetworkBudgetOperation operation) {
     return AppNetworkBudgetScope.normalize(appId) + '\n' + operation.jsonValue();
   }

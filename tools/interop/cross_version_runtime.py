@@ -342,6 +342,7 @@ def fixed_helper(name):
                "cross_version_product_admission": "tools/release-certification/protected/cross_version_product_admission.py",
                "cross_version_supervisor_authority": "tools/release-certification/protected/cross_version_supervisor_authority.py",
                "cross_version_budget": "tools/interop/cross_version_budget.py",
+               "scheduler_pressure_runtime": "tools/interop/scheduler_pressure_runtime.py",
                "cross_version_catalog": "tools/interop/cross_version_catalog.py"}
     if name not in allowed:
         raise RuntimeFailure("unselected-helper-rejected")
@@ -458,6 +459,38 @@ def validate_budget_selection(plan, private_config, authorization):
         raise RuntimeFailure("budget-node-executable-not-selected")
 
 
+def validate_scheduler_selection(plan, private_config, authorization):
+    """Bind a finite opt-in workload before any selected daemon receives its configuration."""
+    selection = private_config.get("scheduler")
+    declared = plan.get("workloadInputs", {}).get("scheduler")
+    if selection is None:
+        if declared is not None or (authorization or {}).get("schedulerInputsDigest") is not None:
+            raise RuntimeFailure("scheduler-declared-without-private-selection")
+        return None
+    fields = {"role", "profile", "nodeExecutable", "nodeDigest", "configurationDigest"}
+    if (not isinstance(selection, dict) or set(selection) != fields
+            or selection["role"] != "candidate-sender" or selection["profile"] != "bounded-contention-v1"
+            or not all(re.fullmatch(r"sha256:[a-f0-9]{64}", str(selection[key])) for key in ("nodeDigest", "configurationDigest"))):
+        raise RuntimeFailure("scheduler-selection-invalid")
+    binding = canonical_digest({"schemaVersion": 1, **{key: selection[key] for key in
+                                ("role", "profile", "nodeDigest", "configurationDigest")}})
+    if (declared != binding or authorization is None or authorization.get("schedulerInputsDigest") != binding
+            or authorization.get("syntheticContent") is not True):
+        raise RuntimeFailure("scheduler-selection-not-authorized")
+    if not any(app.get("appId") == "feed-reader" for app in private_config["nodes"][selection["role"]]["apps"]):
+        raise RuntimeFailure("scheduler-signed-feed-reader-not-selected")
+    executable = Path(selection["nodeExecutable"])
+    if (not executable.is_absolute() or executable.is_symlink() or not executable.is_file()
+            or any(parent.is_symlink() for parent in executable.parents)
+            or digest_file(executable) != selection["nodeDigest"]):
+        raise RuntimeFailure("scheduler-node-executable-not-selected")
+    with fixed_helper_imports():
+        helper = fixed_helper("scheduler_pressure_runtime")
+        if canonical_digest(helper.ENVIRONMENT) != selection["configurationDigest"]:
+            raise RuntimeFailure("scheduler-effective-profile-not-selected")
+    return binding
+
+
 class _BootstrapParser(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -491,13 +524,19 @@ class ObservedMailClient(mail_demo.Client):
         return super().post(path, parameters, host)
 
 
+class _UnfollowedRedirect(urllib.request.HTTPRedirectHandler):
+    """Expose redirect metadata for the fixed app launch proof without following it."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class AppHandle:
     """Private own-app session and bounded HTTP access bound to an owned node process."""
     def __init__(self, supervisor, role, app_id):
         self.supervisor, self.role, self.app_id = supervisor, role, app_id
         self.base = "http://127.0.0.1:" + str(supervisor.private["nodes"][role]["httpPort"])
         self.api = self.base + "/api/v1"
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), mail_demo.NoRedirect())
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _UnfollowedRedirect())
         self.origin = self.session = self.password = None
         self.session_expires_at = None
         self.worker_identity = None
@@ -510,6 +549,13 @@ class AppHandle:
         if self.app_id == "feed-reader" and principal == "app":
             if (method == "GET" and path == "/api/v1/content/subscriptions") or (method == "POST" and path == "/api/v1/content/fetch"):
                 exact.add(path)
+            if getattr(self.supervisor, "scheduler_lane", False) and (
+                    (method == "POST" and (path == "/api/v1/content/subscriptions"
+                        or re.fullmatch(r"/api/v1/content/subscriptions/[A-Za-z0-9-]{1,128}/(?:pause|resume)", path)))
+                    or (method == "DELETE" and re.fullmatch(r"/api/v1/content/subscriptions/[A-Za-z0-9-]{1,128}", path))):
+                exact.add(path)
+        if principal == "host" and method == "GET" and path == "/api/v1/operator/runtime-observation":
+            exact.add(path)
         if principal == "host" and getattr(self.supervisor, "catalog_prepared", None) is not None:
             if self.supervisor.catalog_route_allowed(self.role, self.app_id, method, path) is True:
                 exact.add(path)
@@ -588,6 +634,8 @@ class AppHandle:
         status, value = self.request("GET", "/apps/" + self.app_id + "/.well-known/cryptad-bootstrap.json")
         if status != 200:
             raise RuntimeFailure("own-app-bootstrap-failed")
+        if value.get("uiOrigin") is None:
+            value = self.isolated_bootstrap()
         self.origin = mail_demo.target(value.get("uiOrigin"))
         self.session = value.get("browserSessionToken")
         self.session_expires_at = value.get("browserSessionExpiresAt")
@@ -596,6 +644,52 @@ class AppHandle:
         if self.origin == self.base:
             raise RuntimeFailure("isolated-own-app-origin-required")
         return self
+
+    def isolated_bootstrap(self):
+        """Use the existing Web Shell launch-proof handoff; follow no unvalidated redirect.
+
+        The ordinary admin bootstrap intentionally issues a same-origin fallback principal. An
+        isolated browser principal requires its own loopback listener and app-scoped launch nonce.
+        """
+        launch = self.base + '/apps/' + self.app_id + '/?cryptadIsolatedLaunch'
+        self.supervisor.next_operation()
+        try:
+            with absolute_deadline(self.supervisor.remaining(30)):
+                try:
+                    response = self.opener.open(urllib.request.Request(launch, headers={'Accept': 'text/html'}), timeout=25)
+                except urllib.error.HTTPError as error:
+                    response = error
+                with response:
+                    if response.status not in (301, 302, 303, 307, 308):
+                        raise RuntimeFailure('own-app-isolated-launch-unavailable')
+                    selected = urllib.parse.urlsplit(response.headers.get('Location', ''))
+                    if selected.path not in ('/', '/static/') or selected.query:
+                        raise RuntimeFailure('own-app-isolated-launch-invalid')
+                    origin = mail_demo.target(urllib.parse.urlunsplit((selected.scheme, selected.netloc, '', '', '')))
+                    if origin == self.base:
+                        raise RuntimeFailure('own-app-isolated-launch-invalid')
+                    fragment = urllib.parse.parse_qs(selected.fragment, strict_parsing=True)
+                    if set(fragment) != {'cryptadBootstrapNonce'} or len(fragment['cryptadBootstrapNonce']) != 1:
+                        raise RuntimeFailure('own-app-isolated-launch-invalid')
+                    nonce = fragment['cryptadBootstrapNonce'][0]
+                    if not re.fullmatch(r'[A-Za-z0-9_-]{16,512}', nonce):
+                        raise RuntimeFailure('own-app-isolated-launch-invalid')
+                self.supervisor.next_operation()
+                request = urllib.request.Request(origin + '/.well-known/cryptad-bootstrap.json', headers={
+                    'Accept': 'application/json', 'Origin': origin, 'X-Crypta-App-Bootstrap-Nonce': nonce})
+                with self.opener.open(request, timeout=25) as response:
+                    raw = response.read(65537)
+                    if response.status != 200 or len(raw) > 65536:
+                        raise RuntimeFailure('own-app-isolated-bootstrap-invalid')
+                    value = json.loads(raw)
+                    if not isinstance(value, dict) or value.get('uiOrigin') != origin:
+                        raise RuntimeFailure('own-app-isolated-bootstrap-invalid')
+                    return value
+        except urllib.error.HTTPError as error:
+            code = error.code if error.code in (400, 401, 403, 404, 429, 500, 503) else 0
+            raise RuntimeFailure('own-app-isolated-bootstrap-http-' + str(code)) from None
+        except (OSError, ValueError, mail_demo.DemoFailure):
+            raise RuntimeFailure('own-app-isolated-bootstrap-failed') from None
 
     def observe_worker(self):
         status, value = self.request("GET", "/api/v1/apps/" + self.app_id + "/runtime")
@@ -648,6 +742,41 @@ class AppHandle:
     def mail_client(self):
         self.refresh_session()
         return ObservedMailClient(self.supervisor, self.api, self.origin, self.session, self.password)
+
+
+def owned_jvm_descendants(supervisor_pid, executable_digest, proc_root=Path('/proc')):
+    """Find exact JVM descendants even when the packaged wrapper creates child process groups.
+
+    Each accepted candidate's epoch is checked again after its bounded ancestry walk. The selected
+    supervisor epoch brackets the entire scan; unrelated matching JVM executables never qualify.
+    """
+    before = process_identity(supervisor_pid)
+    descendants = []
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            candidate = int(entry.name)
+            identity = process_identity(candidate)
+            if identity['executableDigest'] != executable_digest:
+                continue
+            cursor = candidate
+            seen = set()
+            for _ in range(64):
+                if cursor == supervisor_pid:
+                    if process_identity(candidate) == identity:
+                        descendants.append(identity)
+                    break
+                if cursor <= 1 or cursor in seen:
+                    break
+                seen.add(cursor)
+                fields = (proc_root / str(cursor) / 'stat').read_text().rsplit(')', 1)[1].split()
+                cursor = int(fields[1])
+        except (OSError, ValueError, IndexError):
+            continue
+    if process_identity(supervisor_pid) != before:
+        raise RuntimeFailure('owned-supervisor-epoch-changed-during-scan')
+    return descendants
 
 
 def require_persistent_identity(requests, operation, uri):
@@ -787,6 +916,7 @@ class Supervisor:
         self.catalog_prepared = None
         self.catalog_environment = {}
         self.budget_observation = None
+        self.scheduler_observation = None
         self.resource_observations = {"sampleCount": 0, "initial": {}, "latest": {}}
         self.recovery_cohort = None
         self.recovery_incomplete = False
@@ -812,11 +942,11 @@ class Supervisor:
             raise RuntimeFailure("linux-supervisor-required")
         if self.plan.get("profile") not in {"bounded-live", "protected-long-live"} or self.plan.get("provenanceClass") not in {"source-build-comparison", "production-artifact-comparison"}:
             raise RuntimeFailure("protected-producer-admission-not-configured")
-        if set(self.private) - {"migration", "productAdmission", "recovery", "budget", "catalog"} != {"root", "nodes"}:
+        if set(self.private) - {"migration", "productAdmission", "recovery", "budget", "catalog", "scheduler"} != {"root", "nodes"}:
             raise RuntimeFailure("private-config-fields-invalid")
         required = {"experimentId", "planDigest", "root", "maxSeconds", "maxOperations", "syntheticContent"}
         auth = self.authorization
-        if (set(auth) - {"runtimeStateDigest", "migrationInputsDigest", "recoveryInputsDigest", "budgetInputsDigest", "catalogInputsDigest"} != required or auth["experimentId"] != self.plan["experimentId"]
+        if (set(auth) - {"runtimeStateDigest", "migrationInputsDigest", "recoveryInputsDigest", "budgetInputsDigest", "catalogInputsDigest", "schedulerInputsDigest"} != required or auth["experimentId"] != self.plan["experimentId"]
                 or auth["planDigest"] != canonical_digest(self.plan)
                 or auth["syntheticContent"] is not True
                 or type(auth["maxSeconds"]) is not int or not 30 <= auth["maxSeconds"] <= 432000
@@ -880,6 +1010,7 @@ class Supervisor:
             raise RuntimeFailure("node-port-alias-rejected")
         validate_recovery_selection(self.plan, self.private, self.authorization)
         validate_budget_selection(self.plan, self.private, self.authorization)
+        validate_scheduler_selection(self.plan, self.private, self.authorization)
         if (self.root / "runtime").is_symlink():
             raise RuntimeFailure("runtime-root-already-exists")
         if (self.root / "runtime").exists() and not getattr(self.journal, "resumed", False):
@@ -914,11 +1045,11 @@ class Supervisor:
             if total > MAX_LOG_BYTES:
                 raise RuntimeFailure("private-log-budget-exceeded")
 
-    def emit(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, peer_role="", node_epoch=None, cohort=""):
+    def emit(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, peer_role="", node_epoch=None, cohort="", runtime_evidence=None):
         if kind == "operation" and outcome == "pass" and not cohort:
             self.observed_operations += 1
         return self.journal.append(kind, role=role, scenario=scenario, operation=operation,
-                            outcome=outcome, counters=counters or {}, peer_role=peer_role, node_epoch=node_epoch, cohort=cohort)
+                            outcome=outcome, counters=counters or {}, peer_role=peer_role, node_epoch=node_epoch, cohort=cohort, runtime_evidence=runtime_evidence)
 
     def prepare(self):
         """Check every package/runtime before any selected executable may run."""
@@ -977,6 +1108,16 @@ class Supervisor:
         if len(set(stores)) != len(stores):
             raise RuntimeFailure("node-store-alias-rejected")
 
+    def scheduler_process_environment(self, role):
+        """Apply only an explicitly selected finite synthetic scheduler profile at owned launch."""
+        selection = self.private.get('scheduler')
+        if selection is None or selection.get('role') != role:
+            return {}
+        validate_scheduler_selection(self.plan, self.private, self.authorization)
+        with fixed_helper_imports():
+            helper = fixed_helper('scheduler_pressure_runtime')
+            return dict(helper.ENVIRONMENT)
+
     def start(self, role):
         if role in self.nodes and self.nodes[role].runtime.process.poll() is None:
             raise RuntimeFailure("owned-node-already-running")
@@ -989,6 +1130,7 @@ class Supervisor:
         command.extend(f"wrapper.app.parameter.{i}={value}" for i, value in enumerate(args, 1))
         environment = {"PATH": str(java_home / "bin") + ":/usr/bin:/bin", "JAVA_HOME": str(java_home),
                        "HOME": str(node_root), "LANG": "C.UTF-8"}
+        environment.update(self.scheduler_process_environment(role))
         private = self.private["nodes"][role]
         if private["apps"]:
             environment["CRYPTAD_APPHOST_TRUSTED_KEYS_FILE"] = str(self.trust_paths[role])
@@ -1033,17 +1175,7 @@ class Supervisor:
                 node.reference = interop.get_node_reference(client, "node-identity")
             # Launcher wrapper PID is not necessarily JVM PID. Verify an actual owned JVM descendant.
             java_digest = digest_file(java_home / "bin/java")
-            descendants = []
-            for proc in Path("/proc").iterdir():
-                if not proc.name.isdigit():
-                    continue
-                try:
-                    if os.getpgid(int(proc.name)) == process.pid:
-                        observed = process_identity(int(proc.name))
-                        if observed["executableDigest"] == java_digest:
-                            descendants.append(observed)
-                except (OSError, ValueError):
-                    continue
+            descendants = owned_jvm_descendants(process.pid, java_digest)
             if len(descendants) != 1:
                 raise RuntimeFailure("owned-java-process-identity-unobserved")
         node.identity = process_identity(process.pid)
@@ -1093,7 +1225,7 @@ class Supervisor:
                  "observedOperations": self.observed_operations,
                  "mailInitialized": "mail-delivery" in self.outcomes, "privateWork": self.private_work,
                  "migrationObservation": self.migration_observation, "recoveryObservation": self.recovery_observation,
-                 "catalogObservation": self.catalog_observation, "budgetObservation": self.budget_observation, "resourceObservations": self.resource_observations, "appTrees": self.app_staging_identities, "privateCanaries": self.canaries,
+                 "catalogObservation": self.catalog_observation, "budgetObservation": self.budget_observation, "schedulerObservation": self.scheduler_observation, "resourceObservations": self.resource_observations, "appTrees": self.app_staging_identities, "privateCanaries": self.canaries,
                  "mailOriginObservations": self.mail_origin_observations, "mailCanaryObservations": self.mail_canary_observations}
         target = self.root / "runtime/runtime-state.json"
         temporary = target.with_suffix(".new")
@@ -1132,6 +1264,7 @@ class Supervisor:
         self.recovery_observation = state.get("recoveryObservation")
         self.catalog_observation = state.get("catalogObservation")
         self.budget_observation = state.get("budgetObservation")
+        self.scheduler_observation = state.get("schedulerObservation")
         self.resource_observations = state.get("resourceObservations", {"sampleCount": 0, "initial": {}, "latest": {}})
         self.app_staging_identities = state.get("appTrees", {})
         self.canaries = state.get("privateCanaries", [])
@@ -1693,6 +1826,28 @@ class Supervisor:
             else:
                 self.emit("operation", role, "app-budgets", self.next_operation(), outcome="partial", counters=counters)
 
+    def scheduler_scenarios(self):
+        """Execute one selected real scheduler lane on this supervisor's admitted running subject."""
+        selection = self.private.get('scheduler')
+        if selection is None:
+            return
+        validate_scheduler_selection(self.plan, self.private, self.authorization)
+        if self.scheduler_observation is not None:
+            self.outcomes['app-budgets'] = 'partial'
+            return
+        if 'schedulerStarted' in self.private_work:
+            raise RuntimeFailure('scheduler-interrupted-reconciliation-required')
+        with fixed_helper_imports():
+            helper = fixed_helper('scheduler_pressure_runtime')
+            if (self.authorization['maxOperations'] - self.operations < helper.MAX_OPERATIONS
+                    or self.remaining(helper.MAX_SECONDS) < helper.MAX_SECONDS):
+                raise RuntimeFailure('scheduler-scenario-capacity-unavailable')
+            self.private_work['schedulerStarted'] = self.next_operation()
+            self.save_state()
+            self.scheduler_observation = helper.observe_existing(self, selection)
+        self.outcomes['app-budgets'] = 'partial'
+        self.save_state()
+
     def budget_scenarios(self):
         selection = self.private.get("budget")
         if selection is None:
@@ -2052,6 +2207,7 @@ class Supervisor:
                 self.provision_apps()
                 self.mail_delivery()
                 self.save_state()
+            self.scheduler_scenarios()
             self.migrate_synthetic()
             self.stable_api_scenarios()
             self.recovery_scenarios()
@@ -2091,6 +2247,7 @@ class Supervisor:
                 "runnerAuthority": self.runner_admission.public_identity() if self.runner_admission else None,
                 "independentSecurityReview": "not-observed", "migrationObservation": self.migration_observation,
                 "recoveryObservation": self.recovery_observation, "catalogObservation": self.catalog_observation, "budgetObservation": self.budget_observation,
+                **({"schedulerObservation": self.scheduler_observation} if self.private.get("scheduler") is not None else {}),
                 "resourceObservations": self.resource_observations,
                 "mailOriginObservations": self.mail_origin_observations, "mailCanaryObservations": self.mail_canary_observations}
 
@@ -2138,6 +2295,9 @@ def runner_identity():
              "tools/interop/cryptad-federated-catalog-runtime",
              "tools/interop/cross_version_budget.py",
              "tools/interop/cross_version_budget_driver.cjs",
+             "tools/interop/scheduler_pressure_runtime.py",
+             "tools/perf/runtime_baseline.py",
+             "tools/perf/baselines/runtime-synthetic-policy.json",
              "tools/release-certification/protected/sharesite_observation.py",
              "tools/release-certification/protected/sharesite_runtime_driver.cjs",
              "tools/release-certification/protected/bounded_process.py",
@@ -2216,6 +2376,7 @@ def _preflight(plan, private_config, authorization=None, product_admission=None)
         raise RuntimeFailure("node-port-alias-rejected")
     validate_recovery_selection(plan, private_config, authorization)
     validate_budget_selection(plan, private_config, authorization)
+    validate_scheduler_selection(plan, private_config, authorization)
     if private_config.get("migration") is not None:
         validate_migration_selection(private_config["migration"])
         if authorization is None or authorization.get("migrationInputsDigest") != canonical_digest(private_config["migration"]):

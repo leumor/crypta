@@ -19,6 +19,7 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
@@ -62,6 +63,8 @@ public final class ContentSubscriptionService {
   private static final String PURPOSE = "content-subscription";
   private static final HexFormat HEX = HexFormat.of();
 
+  private final RuntimeWorkObservation observation;
+  private volatile ContentSubscriptionPressureGate.Configuration pressureConfiguration;
   private final ContentSubscriptionStore store;
   private final ContentFetchPort contentFetchPort;
   private final ContentSubscriptionSchedulerConfig config;
@@ -154,8 +157,47 @@ public final class ContentSubscriptionService {
     this.contentFetchPort = Objects.requireNonNull(contentFetchPort, "contentFetchPort");
     this.config = Objects.requireNonNull(config, "config");
     this.networkBudgetService = networkBudgetService;
+    this.observation =
+        networkBudgetService == null
+            ? new RuntimeWorkObservation()
+            : networkBudgetService.observation();
     this.clock = Objects.requireNonNull(clock, "clock");
     this.random = Objects.requireNonNull(random, "random");
+  }
+
+  /**
+   * Returns bounded causal observations shared with the scheduler and budget service.
+   *
+   * <p>This intentionally returns the trusted native producer collaborator, so scheduler and budget
+   * transitions share one causal sequence. Operator transport returns detached snapshots instead;
+   * neither app principals nor browser principals can access the recording collaborator.
+   *
+   * @return bounded causal observations shared with the scheduler and budget service
+   */
+  public RuntimeWorkObservation observation() {
+    return observation;
+  }
+
+  /**
+   * Returns captured scheduler pressure policy, or null when no scheduler was constructed.
+   *
+   * @return captured scheduler pressure policy, or null when no scheduler was constructed
+   */
+  public ContentSubscriptionPressureGate.Configuration pressureConfiguration() {
+    return pressureConfiguration;
+  }
+
+  void setPressureConfiguration(ContentSubscriptionPressureGate.Configuration configuration) {
+    pressureConfiguration = configuration;
+  }
+
+  /**
+   * Returns effective normalized subscription timing and limits.
+   *
+   * @return effective normalized subscription timing and limits
+   */
+  public ContentSubscriptionSchedulerConfig configuration() {
+    return config;
   }
 
   /**
@@ -426,6 +468,11 @@ public final class ContentSubscriptionService {
     ContentSubscription skipped =
         current.withSkipped(now, nextAfterFailure(now, current), status, errorCode, message);
     write(skipped);
+    observation.recordEvent(
+        RuntimeWorkObservation.Kind.RETRY_SCHEDULED,
+        null,
+        0,
+        skipped.nextCheckAt().getEpochSecond());
     return skipped;
   }
 
@@ -458,12 +505,18 @@ public final class ContentSubscriptionService {
         write(skipped);
         return skipped;
       }
-      return fetchAndRecordResult(running, now);
+      return fetchAndRecordResult(running, now, operation, budgetReservation.observationId());
     }
   }
 
-  private ContentSubscription fetchAndRecordResult(ContentSubscription running, Instant now) {
+  private ContentSubscription fetchAndRecordResult(
+      ContentSubscription running,
+      Instant now,
+      AppNetworkBudgetOperation operation,
+      long operationId) {
     try {
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.FETCH_INVOKED, operation, 0, 0, operationId, 0);
       BoundedContentFetchResult result =
           contentFetchPort.fetchContent(
               new BoundedContentFetchRequest(
@@ -480,6 +533,13 @@ public final class ContentSubscriptionService {
                 "content_fetch_too_large",
                 "Subscription fetch exceeded the configured byte bound.");
         write(failed);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.FETCH_FAILED, operation, 0, 0, operationId, 0);
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RETRY_SCHEDULED,
+            operation,
+            0,
+            failed.nextCheckAt().getEpochSecond());
         return failed;
       }
       String resolvedUri = ContentSubscriptionSource.sanitizeResolvedUri(result.resolvedUri());
@@ -496,6 +556,13 @@ public final class ContentSubscriptionService {
               bytes.length,
               changed);
       write(success);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.FETCH_SUCCEEDED, operation, 0, 0, operationId, 0);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.NEXT_DUE,
+          operation,
+          0,
+          success.nextCheckAt().getEpochSecond());
       return success;
     } catch (ContentFetchException exception) {
       ContentSubscription failed =
@@ -505,6 +572,13 @@ public final class ContentSubscriptionService {
               mappedFetchErrorCode(exception),
               "Subscription fetch failed.");
       write(failed);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.FETCH_FAILED, operation, 0, 0, operationId, 0);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.RETRY_SCHEDULED,
+          operation,
+          0,
+          failed.nextCheckAt().getEpochSecond());
       return failed;
     } catch (RuntimeException _) {
       ContentSubscription failed =
@@ -514,6 +588,13 @@ public final class ContentSubscriptionService {
               DEFAULT_ERROR_CODE,
               "Subscription fetch failed.");
       write(failed);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.FETCH_FAILED, operation, 0, 0, operationId, 0);
+      observation.recordEvent(
+          RuntimeWorkObservation.Kind.RETRY_SCHEDULED,
+          operation,
+          0,
+          failed.nextCheckAt().getEpochSecond());
       return failed;
     }
   }

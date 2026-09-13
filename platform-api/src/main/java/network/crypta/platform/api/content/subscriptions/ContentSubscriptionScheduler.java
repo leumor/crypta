@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 
@@ -98,8 +99,19 @@ public final class ContentSubscriptionScheduler {
     this.service = Objects.requireNonNull(service, "service");
     this.config = Objects.requireNonNull(config, "config");
     this.pressureGate = Objects.requireNonNull(pressureGate, "pressureGate");
+    service.setPressureConfiguration(pressureGate.configuration());
+    pressureGate.setObservation(service.observation());
     this.clock = Objects.requireNonNull(clock, "clock");
     this.random = Objects.requireNonNull(random, "random");
+  }
+
+  /**
+   * Returns shared bounded causal observations; manual and executor ticks are distinct.
+   *
+   * @return shared bounded causal observations; manual and executor ticks are distinct
+   */
+  public RuntimeWorkObservation observation() {
+    return service.observation();
   }
 
   /**
@@ -158,11 +170,14 @@ public final class ContentSubscriptionScheduler {
       return ContentSubscriptionSchedulerTickResult.disabled(checkedNow);
     }
     if (!running.compareAndSet(false, true)) {
+      observation().recordEvent(RuntimeWorkObservation.Kind.TICK_ALREADY_RUNNING);
       return ContentSubscriptionSchedulerTickResult.alreadyRunning(checkedNow);
     }
+    observation().recordEvent(RuntimeWorkObservation.Kind.TICK_ENTERED);
     try {
       return runTick(checkedNow);
     } finally {
+      observation().recordEvent(RuntimeWorkObservation.Kind.TICK_COMPLETED);
       running.set(false);
     }
   }
@@ -187,6 +202,7 @@ public final class ContentSubscriptionScheduler {
   }
 
   private void runDueTasksOnceSafely() {
+    observation().recordEvent(RuntimeWorkObservation.Kind.EXECUTOR_TICK);
     try {
       runDueTasksOnce();
     } catch (RuntimeException exception) {
@@ -199,6 +215,7 @@ public final class ContentSubscriptionScheduler {
     try {
       subscriptions = service.listAllForScheduler();
     } catch (PlatformApiException _) {
+      observation().recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return new ContentSubscriptionSchedulerTickResult(
           now,
           ContentSubscriptionStatus.BACKOFF,
@@ -220,18 +237,28 @@ public final class ContentSubscriptionScheduler {
     }
     Map<String, InstalledAppSnapshot> installedApps = installedAppsById();
     ContentSubscriptionPressureGate.PressureAssessment pressure = pressureGate.assess();
+    observation().recordEvent(pressureObservationKind(pressure));
     int attempted = 0;
     int failures = 0;
     int skipped = 0;
     Instant nextDueAt = null;
     for (ContentSubscription subscription : subscriptions) {
       if (subscription.shouldSkipPollAt(now)) {
+        observation()
+            .recordEvent(
+                subscription.status() == ContentSubscriptionStatus.PAUSED
+                    ? RuntimeWorkObservation.Kind.PAUSED
+                    : RuntimeWorkObservation.Kind.NOT_DUE);
         skipped++;
         nextDueAt = earliest(nextDueAt, subscription.nextCheckAt());
       } else if (attempted >= config.perTickFetchLimit()) {
+        observation().recordEvent(RuntimeWorkObservation.Kind.DUE);
+        observation().recordEvent(RuntimeWorkObservation.Kind.TICK_LIMIT);
         skipped++;
         nextDueAt = earliest(nextDueAt, now);
       } else if (!appMayRefresh(installedApps.get(subscription.appId()))) {
+        observation().recordEvent(RuntimeWorkObservation.Kind.DUE);
+        observation().recordEvent(RuntimeWorkObservation.Kind.CAPABILITY_DENIED);
         ContentSubscription skippedSubscription =
             service.schedulerSkip(
                 subscription,
@@ -243,6 +270,8 @@ public final class ContentSubscriptionScheduler {
         skipped++;
         nextDueAt = earliest(nextDueAt, skippedSubscription.nextCheckAt());
       } else if (!pressure.allowed()) {
+        observation().recordEvent(RuntimeWorkObservation.Kind.DUE);
+        observation().recordEvent(RuntimeWorkObservation.Kind.PRESSURE_SKIP);
         ContentSubscription skippedSubscription =
             service.schedulerSkip(
                 subscription, now, pressure.status(), pressure.errorCode(), pressure.message());
@@ -250,6 +279,7 @@ public final class ContentSubscriptionScheduler {
         skipped++;
         nextDueAt = earliest(nextDueAt, skippedSubscription.nextCheckAt());
       } else {
+        observation().recordEvent(RuntimeWorkObservation.Kind.DUE);
         SchedulerPollOutcome outcome = pollDueSubscription(subscription, now);
         attempted += outcome.attempted();
         failures += outcome.failures();
@@ -265,6 +295,20 @@ public final class ContentSubscriptionScheduler {
         skipped,
         nextDueAt,
         aggregateMessage(attempted, failures, skipped));
+  }
+
+  private static RuntimeWorkObservation.Kind pressureObservationKind(
+      ContentSubscriptionPressureGate.PressureAssessment pressure) {
+    if (!pressure.allowed()) {
+      if (pressure.contention()) {
+        return RuntimeWorkObservation.Kind.PRESSURE_CONTENTION_BLOCKED;
+      }
+      return RuntimeWorkObservation.Kind.PRESSURE_AVAILABILITY_BLOCKED;
+    }
+    if (pressure.known()) {
+      return RuntimeWorkObservation.Kind.PRESSURE_KNOWN_CLEAR;
+    }
+    return RuntimeWorkObservation.Kind.PRESSURE_UNKNOWN;
   }
 
   private SchedulerPollOutcome pollDueSubscription(ContentSubscription subscription, Instant now) {

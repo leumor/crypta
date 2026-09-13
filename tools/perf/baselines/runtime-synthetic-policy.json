@@ -1,0 +1,121 @@
+{
+  "bounds": {
+    "fileDescriptors": {
+      "absolutePeak": 4096,
+      "maximumSlopePerSecond": 34.13333333333333,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "heapCommittedBytes": {
+      "absolutePeak": 4294967296,
+      "maximumSlopePerSecond": 35791394.13333333,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "heapMaxBytes": {
+      "absolutePeak": 4294967296,
+      "maximumSlopePerSecond": 35791394.13333333,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "heapUsedBytes": {
+      "absolutePeak": 2147483648,
+      "maximumSlopePerSecond": 17895697.066666666,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "inFlight": {
+      "absolutePeak": 16,
+      "maximumSlopePerSecond": 0.13333333333333333,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "nonHeapUsedBytes": {
+      "absolutePeak": 1073741824,
+      "maximumSlopePerSecond": 8947848.533333333,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "oldestActiveMillis": {
+      "absolutePeak": 120000,
+      "maximumSlopePerSecond": 1000.0,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "osThreads": {
+      "absolutePeak": 1024,
+      "maximumSlopePerSecond": 8.533333333333333,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "platformThreads": {
+      "absolutePeak": 512,
+      "maximumSlopePerSecond": 4.266666666666667,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    },
+    "rssBytes": {
+      "absolutePeak": 2147483648,
+      "maximumSlopePerSecond": 17895697.066666666,
+      "relativeMedian": 0.25,
+      "relativeP95": 0.25,
+      "relativePeak": 0.25
+    }
+  },
+  "cadenceMillis": 1000,
+  "kind": "cryptad-runtime-baseline-policy",
+  "maxGapMillis": 10000,
+  "maximumDispersionRatio": 0.25,
+  "maximumOutstanding": 2,
+  "metricUnits": {
+    "cpuNanos": "nanoseconds",
+    "fileDescriptors": "descriptors",
+    "gcCount": "collections",
+    "gcMillis": "milliseconds",
+    "heapCommittedBytes": "bytes",
+    "heapMaxBytes": "bytes",
+    "heapUsedBytes": "bytes",
+    "inFlight": "operations",
+    "nonHeapUsedBytes": "bytes",
+    "oldestActiveMillis": "milliseconds",
+    "osThreads": "threads",
+    "platformThreads": "threads",
+    "rssBytes": "bytes"
+  },
+  "minimumRepetitions": 2,
+  "minimumSamples": 3,
+  "minimumSuccessRatio": 0.5,
+  "minimumWindowMillis": 2000,
+  "phases": [
+    "reference",
+    "recovery",
+    "sustained"
+  ],
+  "recoveryAllowance": 0.25,
+  "recoveryMetric": "rssBytes",
+  "requiredMetrics": [
+    "rssBytes",
+    "heapUsedBytes",
+    "heapCommittedBytes",
+    "heapMaxBytes",
+    "nonHeapUsedBytes",
+    "platformThreads",
+    "osThreads",
+    "fileDescriptors",
+    "cpuNanos",
+    "gcCount",
+    "gcMillis",
+    "inFlight",
+    "oldestActiveMillis"
+  ],
+  "schemaVersion": 1
+}

@@ -2,14 +2,18 @@ package network.crypta.platform.api.networkbudget;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryIteratorException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -125,6 +129,83 @@ public final class FileAppNetworkBudgetStore implements AppNetworkBudgetStore {
     }
   }
 
+  @Override
+  public synchronized List<AppNetworkBudgetUsage> observe(int maximumEntries) throws IOException {
+    if (maximumEntries <= 0) {
+      throw counterUnavailable();
+    }
+    if (Files.notExists(rootDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return List.of();
+    }
+    if (!Files.isDirectory(rootDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      throw counterUnavailable();
+    }
+    ArrayList<AppNetworkBudgetUsage> result = new ArrayList<>();
+    InspectionBudget budget = new InspectionBudget(maximumEntries);
+    try (var directories = Files.newDirectoryStream(rootDirectory)) {
+      for (Path directory : directories) {
+        budget.visit();
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+          throw counterUnavailable();
+        }
+        observeDirectory(directory, budget, result);
+      }
+    } catch (DirectoryIteratorException | IllegalArgumentException _) {
+      throw counterUnavailable();
+    }
+    result.sort(
+        Comparator.comparing(AppNetworkBudgetUsage::appId)
+            .thenComparing(usage -> usage.operation().jsonValue()));
+    return List.copyOf(result);
+  }
+
+  private void observeDirectory(
+      Path directory, InspectionBudget budget, List<AppNetworkBudgetUsage> result)
+      throws IOException {
+    Path directoryName = directory.getFileName();
+    if (directoryName == null) {
+      throw counterUnavailable();
+    }
+    String appId = AppNetworkBudgetScope.normalize(directoryName.toString());
+    try (var files = Files.newDirectoryStream(directory)) {
+      for (Path file : files) {
+        budget.visit();
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+          throw counterUnavailable();
+        }
+        Path fileName = file.getFileName();
+        if (fileName == null) {
+          throw counterUnavailable();
+        }
+        String filename = fileName.toString();
+        if (filename.startsWith(".app-network-budget-") && filename.endsWith(".tmp")) {
+          continue;
+        }
+        if (!filename.endsWith(FILE_SUFFIX)) {
+          throw counterUnavailable();
+        }
+        AppNetworkBudgetOperation operation =
+            AppNetworkBudgetOperation.fromJsonValue(
+                filename.substring(0, filename.length() - FILE_SUFFIX.length()));
+        result.add(readUsage(file, appId, operation, true));
+      }
+    }
+  }
+
+  private static final class InspectionBudget {
+    private int remaining;
+
+    private InspectionBudget(int remaining) {
+      this.remaining = remaining;
+    }
+
+    private void visit() throws IOException {
+      if (remaining-- <= 0) {
+        throw counterUnavailable();
+      }
+    }
+  }
+
   private Stream<AppNetworkBudgetUsage> listAppDirectorySafely(Path appDirectory) {
     String appId = appDirectory.getFileName().toString();
     try {
@@ -154,6 +235,20 @@ public final class FileAppNetworkBudgetStore implements AppNetworkBudgetStore {
     }
   }
 
+  private static Reader usageReader(Path file, boolean bounded) throws IOException {
+    if (!bounded) {
+      return Files.newBufferedReader(file, StandardCharsets.UTF_8);
+    }
+    byte[] bytes;
+    try (var input = Files.newInputStream(file)) {
+      bytes = input.readNBytes(8193);
+    }
+    if (bytes.length > 8192) {
+      throw counterUnavailable();
+    }
+    return new StringReader(new String(bytes, StandardCharsets.UTF_8));
+  }
+
   private AppNetworkBudgetUsage readUsage(Path file, String expectedAppId) throws IOException {
     return readUsage(file, expectedAppId, null);
   }
@@ -161,11 +256,17 @@ public final class FileAppNetworkBudgetStore implements AppNetworkBudgetStore {
   private AppNetworkBudgetUsage readUsage(
       Path file, String expectedAppId, AppNetworkBudgetOperation expectedOperation)
       throws IOException {
+    return readUsage(file, expectedAppId, expectedOperation, false);
+  }
+
+  private AppNetworkBudgetUsage readUsage(
+      Path file, String expectedAppId, AppNetworkBudgetOperation expectedOperation, boolean bounded)
+      throws IOException {
     if (!Files.isRegularFile(file)) {
       throw counterUnavailable();
     }
     Properties properties = new Properties();
-    try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+    try (Reader reader = usageReader(file, bounded)) {
       properties.load(reader);
       if (!"1".equals(properties.getProperty(KEY_VERSION))) {
         throw counterUnavailable();

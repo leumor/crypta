@@ -150,3 +150,60 @@ def measure_resources(identity, app=None, *, jvm_executable_digest, proc_root=Pa
     return {'schemaVersion': 1, 'status': 'measured-but-uncompared', 'metrics': metrics,
             'unavailable': unavailable, 'queueSource': 'legacy-html-count-not-admitted', 'baseline': 'missing-reviewed-runtime-baseline',
             'baselineApplicability': 'existing-performance-smoke-startup-and-assets-do-not-cover-runtime-growth'}
+
+
+RUNTIME_METRICS = ('rssBytes', 'heapUsedBytes', 'heapCommittedBytes', 'heapMaxBytes',
+                   'nonHeapUsedBytes', 'platformThreads', 'osThreads', 'fileDescriptors',
+                   'cpuNanos', 'gcCount', 'gcMillis', 'inFlight', 'oldestActiveMillis')
+
+
+def measure_runtime_sample(identity, *, executable_digest, proc_root=Path('/proc'), runtime_snapshot=None):
+    """Fixed numeric process reads; callers retain each epoch separately and never export identity.
+
+    RSS is Linux resident process memory, OS threads count /proc task threads (not Java virtual
+    threads), FDs are counted without reading targets. CPU is cumulative user+system process time
+    converted using this host's SC_CLK_TCK, not a percentage. JVM values come only from the fixed
+    operator snapshot. Missing reads remain None; every sample brackets all reads by exact identity.
+    """
+    started = time.monotonic_ns()
+    try:
+        old = measure_resources(identity, jvm_executable_digest=executable_digest, proc_root=proc_root)
+    except (OSError, KeyError, IndexError):
+        raise BudgetObservationError('resource-exact-process-read-unavailable') from None
+    metrics = dict.fromkeys(RUNTIME_METRICS)
+    metrics.update(rssBytes=old['metrics']['memoryBytes'], osThreads=old['metrics']['threads'],
+                   fileDescriptors=old['metrics']['fileDescriptors'])
+    pid = identity['pid']
+    expected = {key: identity[key] for key in ('pid', 'startTicks', 'bootId')}
+    try:
+        fields = (proc_root / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
+        user, system = int(fields[11]), int(fields[12])
+        ticks = os.sysconf('SC_CLK_TCK')
+        if user >= 0 and system >= 0 and ticks > 0:
+            metrics['cpuNanos'] = (user + system) * 1000000000 // ticks
+    except (OSError, ValueError, IndexError):
+        pass
+    snapshot = runtime_snapshot() if callable(runtime_snapshot) else runtime_snapshot
+    if snapshot is not None:
+        if not isinstance(snapshot, dict):
+            raise BudgetObservationError('resource-runtime-snapshot-invalid')
+        # This shape is the fixed operator collector contract, not arbitrary management reads.
+        for key in RUNTIME_METRICS:
+            if key in {'rssBytes', 'osThreads', 'fileDescriptors', 'cpuNanos'}:
+                continue
+            value = snapshot.get('jvm', {}).get('metrics', {}).get('gcTimeMillis' if key == 'gcMillis' else key)
+            if key in {'inFlight', 'oldestActiveMillis'}:
+                fetch = snapshot.get('contentFetch', {})
+                value = (fetch.get('inFlightOperations' if key == 'inFlight' else 'oldestActiveAgeMillis')
+                         if fetch.get('known') is True and fetch.get('truncated') is False else None)
+            if value is not None and (type(value) is not int or not 0 <= value <= 2**63 - 1):
+                raise BudgetObservationError('resource-runtime-metric-invalid')
+            metrics[key] = value
+    if (_epoch(pid, proc_root) != expected
+            or file_digest(proc_root / str(pid) / 'exe') != executable_digest):
+        raise BudgetObservationError('resource-process-epoch-changed-during-sample')
+    if any(value is not None and (type(value) is not int or not 0 <= value <= 2**63 - 1)
+           for value in metrics.values()):
+        raise BudgetObservationError('resource-process-metric-invalid')
+    return {'metrics': metrics, 'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns(),
+            'unavailable': sorted(key for key, value in metrics.items() if value is None)}

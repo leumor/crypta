@@ -239,3 +239,20 @@ rerunning or cleaning the workspace.
 The public summary, report, raw metrics, and logs redact token-like, password-like, key-like, and
 private URI material. The runner does not dump the process environment or raw Platform API response
 bodies.
+
+## Bounded runtime resource baselines
+
+The separate [`runtime_baseline.py`](runtime_baseline.py) collect/compare path consumes exact-process
+numeric series from the packaged content-subscription workload. It does not reuse the startup or
+asset limits in `baselines/performance-smoke.json`, launch nodes, or approve collected references.
+Run `python3 -m unittest discover -s tools/perf -p test_runtime_baseline.py` for the pure verifier.
+
+The checked-in `baselines/runtime-synthetic-policy.json` is a finite synthetic integration policy,
+not a reviewed production baseline. Select the exact policy and optional baseline before workload
+execution; collection preserves every selected attempt with `review: null`. Comparison checks
+fingerprints, process epochs, complete phase coverage, all terminal outcomes, useful progress,
+absolute safety, median/p95/peak, trend and recovery. CPU deltas use one logical CPU times elapsed
+nanoseconds as their denominator; GC deltas are collector statistics, not exact pause totals.
+
+See [the scheduler/resource runbook](../../docs/pr-306-scheduler-pressure-and-runtime-resource-baselines.md)
+for actual commands, units, privacy constraints and retained operational requirements.

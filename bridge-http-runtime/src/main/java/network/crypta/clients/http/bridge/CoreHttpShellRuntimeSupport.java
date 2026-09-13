@@ -854,8 +854,10 @@ public record CoreHttpShellRuntimeSupport(
     ContentSubscriptionPressureGate pressureGate =
         runtimePorts == null
             ? new ContentSubscriptionPressureGate(null, null)
-            : new ContentSubscriptionPressureGate(
-                runtimePorts.queueSupport(), runtimePorts.requestQueue());
+            : ContentSubscriptionPressureGate.fromSystem(
+                runtimePorts.queueSupport(),
+                runtimePorts.requestQueue(),
+                runtimePorts.contentFetch());
     return new ContentSubscriptionScheduler(
         appHost, contentSubscriptionService, schedulerConfig, pressureGate);
   }

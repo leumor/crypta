@@ -31,8 +31,10 @@ public record CatalogScopeRevocation(
    * @param scopeId existing scope identifier using the local policy identifier grammar
    * @param expectedDigestSha256 current record digest as 64 lowercase hexadecimal characters
    * @param changedAt non-null local decision time; checked against the record when applied
-   * @param reason nonblank single-line audit reason, at most 512 characters
-   * @param operatorId nonblank single-line operator identity, at most 128 characters
+   * @param reason nonblank single-line audit reason without equals signs or commas, at most 512
+   *     characters
+   * @param operatorId nonblank single-line operator identity without equals signs or commas, at
+   *     most 128 characters
    * @throws NullPointerException if {@code changedAt} is null
    * @throws AppCatalogException if an identifier, digest, or audit text is invalid
    */

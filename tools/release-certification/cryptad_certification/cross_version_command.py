@@ -179,20 +179,21 @@ def run(args):
             raise ValueError('cross-version-journal-required')
         checkpoint = read(args.journal_root / 'checkpoint.json', private=True)
         path = args.journal_root / 'journal.jsonl'
+        line_limit = evidence.event_byte_limit(plan) if 'scheduler' in plan.get('workloadInputs', {}) else 2048
         if (path.is_symlink() or any(p.is_symlink() for p in path.parents)
                 or not path.is_file() or path.stat().st_mode & 0o077
                 or path.stat().st_uid != os.geteuid()
-                or path.stat().st_size > plan['policy']['maxEvents'] * 2048):
+                or path.stat().st_size > (16 * 1024 * 1024 if 'scheduler' in plan.get('workloadInputs', {}) else plan['policy']['maxEvents'] * 2048)):
             raise ValueError('cross-version-journal-input-invalid')
         events = []
         with path.open(encoding='utf-8') as stream:
             while True:
                 if checkpoint['status'] == 'partial' and len(events) == checkpoint['sequence']:
                     break
-                line = stream.readline(2049)
+                line = stream.readline(line_limit + 1)
                 if not line:
                     break
-                if len(line) > 2048 or len(events) >= plan['policy']['maxEvents']:
+                if len(line) > line_limit or len(events) >= plan['policy']['maxEvents']:
                     raise ValueError('cross-version-journal-budget-exceeded')
                 events.append(json.loads(line, object_pairs_hook=unique_members))
         result = evidence.verify(plan, events, checkpoint)

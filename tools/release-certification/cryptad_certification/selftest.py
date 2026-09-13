@@ -37,6 +37,7 @@ SUITE_MODULES = {
                                  "cryptad_certification.tests.test_maintenance_drill_train"],
     "cross-version-soak": [
         "cryptad_certification.tests.test_cross_version_evidence",
+        "cryptad_certification.tests.test_runtime_pressure_evidence",
         "cryptad_certification.tests.test_cross_version_command",
         "cryptad_certification.tests.test_cross_version_product_admission",
         "cryptad_certification.tests.test_cross_version_supervisor_authority",

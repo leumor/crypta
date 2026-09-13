@@ -518,3 +518,22 @@ narrow admission success does not close missing runtime adapters or operational 
 ## Catalog-origin role and finite transitions
 
 The [PR-305 catalog-origin driver](pr-305-federated-app-projection-and-catalog-origin.md) exercises an absent-app role with exact preselected A1/A2/B3 subjects through normal catalog install/update/switch/rollback. It reuses the bounded supervisor HTTP client and binds native declarations, daemon/tool/JDK identity, private mutation intent and actual durable postconditions. The existing four-role staged Mail/API path retains its startup subjects. Local mirror request counters prove only owned loopback traffic; the broader measured maintenance directions and 72-hour requirement remain open.
+
+## Bounded scheduler integration profile
+
+The separate `bounded-scheduler-integration` journal profile permits one exact `candidate-sender`
+subject only for a finite synthetic source-build experiment. It has a maximum 600-second plan,
+4,096 journal events and the selected `app-budgets` scenario. Operational `bounded-live` and
+`protected-long-live` rosters, original authorization and duration policies retain their meaning.
+The pure verifier continues to report the missing complete cross-version cases.
+
+A prospectively selected `workloadInputs.scheduler` allows one bounded `runtimeEvidence`
+attachment containing the actual numeric series and native causal events. The attachment cap is
+1 MiB, 240 samples and 2,048 native events; its journal has a 16 MiB total cap. Historical journal
+and supervisor versions retain their original byte limits and meaning. The maintenance projection
+uses measurement v3 / supervisor v4 for these prospective components and reauthenticates the
+original producer; it cannot manufacture missing baseline review or promote unrelated rows.
+
+Follow [the focused runbook](pr-306-scheduler-pressure-and-runtime-resource-baselines.md). Keep
+requested duration, qualified sampling intervals, actual scheduler work, fault intervals and restarts
+separate. A source-bound local journal remains local integrity, not original protected evidence.

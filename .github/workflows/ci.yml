@@ -231,6 +231,8 @@ jobs:
       - name: Run performance smoke self-test
         shell: bash
         run: ${{ matrix.python_cmd }} tools/perf/perf_smoke.py --self-test
+      - name: Verify bounded runtime series and baseline comparison
+        run: ${{ matrix.python_cmd }} -m unittest discover -s tools/perf -p test_runtime_baseline.py
 
   release-certification-self-test:
     name: release certification self-test (${{ matrix.os }})
@@ -330,6 +332,18 @@ jobs:
           python3 - <<'PY'
           import unittest
           suite = unittest.defaultTestLoader.loadTestsFromName("test_catalog_origin_packaged")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
+              raise SystemExit(1)
+          PY
+
+      - name: Exercise real scheduler pressure and bounded resource recovery
+        env:
+          PYTHONPATH: tools/interop:tools/release-certification:tools/release-certification/protected
+        run: |
+          python3 - <<'PY'
+          import unittest
+          suite = unittest.defaultTestLoader.loadTestsFromName("test_scheduler_pressure_packaged")
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
               raise SystemExit(1)

@@ -53,7 +53,7 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  * immutable snapshots; no live trust store, source, origin, or installed bundle is modified. Public
  * key membership never substitutes for the catalog, publisher and reviewer scopes. The caller must
  * independently authenticate the original handoff and complete candidate roster before invoking
- * this pure tool.
+ * this offline verifier.
  */
 final class FederationSelectionContext {
   /** Closed basename grammar for copied local scope records. */
@@ -203,7 +203,9 @@ final class FederationSelectionContext {
    *
    * <p>The selection is capped at 1 MiB; reference lists are nonempty and capped at 64 entries.
    * Catalog, signature and bundle snapshots together must not exceed 512 MiB. The caller owns
-   * scratch cleanup, including partial snapshots left when preparation fails.
+   * scratch cleanup, including partial snapshots left when preparation fails. The scratch tree must
+   * remain private and exclusively owned until verification and cleanup finish; this context does
+   * not coordinate concurrent filesystem writers.
    *
    * @param source private selection JSON file; relative references use its parent directory
    * @param expectedGeneration independently approved integer generation, from 1 through 2^53 - 1
@@ -212,6 +214,8 @@ final class FederationSelectionContext {
    * @throws IOException if reading or copying a reference fails
    * @throws IllegalArgumentException if format, generation, validity, confinement or digest checks
    *     fail
+   * @throws java.time.format.DateTimeParseException if a validity timestamp cannot be parsed
+   * @throws NullPointerException if either path is null
    */
   static FederationSelectionContext snapshot(Path source, long expectedGeneration, Path scratch)
       throws IOException {

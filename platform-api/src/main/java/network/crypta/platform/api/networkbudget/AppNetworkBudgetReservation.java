@@ -26,6 +26,7 @@ import java.util.function.Supplier;
  */
 public final class AppNetworkBudgetReservation implements AutoCloseable {
   private final AppNetworkBudgetDecision decision;
+  private final long observationId;
   private final Supplier<AppNetworkBudgetDecision> commitAction;
   private final Runnable closeAction;
   private final AtomicBoolean closed = new AtomicBoolean();
@@ -35,9 +36,27 @@ public final class AppNetworkBudgetReservation implements AutoCloseable {
       AppNetworkBudgetDecision decision,
       Supplier<AppNetworkBudgetDecision> commitAction,
       Runnable closeAction) {
+    this(decision, commitAction, closeAction, 0);
+  }
+
+  AppNetworkBudgetReservation(
+      AppNetworkBudgetDecision decision,
+      Supplier<AppNetworkBudgetDecision> commitAction,
+      Runnable closeAction,
+      long observationId) {
+    this.observationId = observationId;
     this.decision = Objects.requireNonNull(decision, "decision");
     this.commitAction = Objects.requireNonNull(commitAction, "commitAction");
     this.closeAction = Objects.requireNonNull(closeAction, "closeAction");
+  }
+
+  /**
+   * Returns process-local causal reservation identifier, zero for an uninstrumented embedding.
+   *
+   * @return process-local causal reservation identifier, zero for an uninstrumented embedding
+   */
+  public long observationId() {
+    return observationId;
   }
 
   /**

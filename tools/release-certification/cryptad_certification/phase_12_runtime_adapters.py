@@ -461,12 +461,15 @@ def _measured(values, now, *, mail=False, measurements=False):
         result["claims"] = ["p12-300-consumers"]
         result["coverage"] = {"required": sorted(row["id"] for row in measured["rows"]), "observed": []}
         result["blockers"].append("maintenance-required-consumer-adapters-incomplete")
-        if measured["schemaVersion"] == 2:
+        if measured["schemaVersion"] in {2, 3}:
             result["components"] = {"subjectAdmission": measured["subjectAdmission"]["status"],
                                     "measurementDerivation": measured["measurementDerivation"]["status"],
                                     "originalAuthentication": "unverified",
                                     "maintenanceEligibility": measured["maintenanceEligibility"]}
             result["measurements"]["consumerComponents"] = dict(result["components"])
+            if measured["schemaVersion"] == 3 and measured["runtimeComponents"] is not None:
+                result["components"]["runtimeClaims"] = measured["runtimeComponents"]["claims"]
+                result["measurements"]["consumerComponents"] = dict(result["components"])
     return result
 
 
@@ -583,8 +586,8 @@ def _supervisor_relationships(authority, values, now):
         if (report["approvalOrigin"] != chain[-1]["origin"]
                 or report["approvalReportDigest"] != soak.digest(authorization)):
             raise ValueError("phase12-runtime-supervisor-approval-substituted")
-        if final["schemaVersion"] == 3 and (
-                report["schemaVersion"] != 3
+        if final["schemaVersion"] in {3, 4} and (
+                report["schemaVersion"] != final["schemaVersion"]
                 or report["admittedProductsDigest"] != final["admittedProductsDigest"]):
             raise ValueError("phase12-runtime-supervisor-products-substituted")
     return final, observation
@@ -674,17 +677,20 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                 owner = _protected("maintenance_runtime_projection")
                 original = final["maintenanceMeasurements"]
                 evaluated = (dt.datetime.fromisoformat(original["evaluationCutoff"])
-                             if original["schemaVersion"] == 2 else now)
+                             if original["schemaVersion"] in {2, 3} else now)
                 if evaluated > now:
                     raise ValueError("maintenance-measurements-future-evaluation")
                 measured = owner.project(plan, values["events.json"], values["checkpoint.json"], values["products.json"], now=evaluated)
-                if final.get("schemaVersion") not in {2, 3} or measured != original:
+                if final.get("schemaVersion") not in {2, 3, 4} or measured != original:
                     raise ValueError("maintenance-measurements-substituted")
-                if original["schemaVersion"] == 2:
-                    if (final["schemaVersion"] != 3
+                if original["schemaVersion"] in {2, 3}:
+                    if (final["schemaVersion"] != original["schemaVersion"] + 1
                             or final["admittedProductsDigest"] != soak.digest(values["products.json"])):
                         raise ValueError("maintenance-measurements-products-substituted")
                     result["components"]["originalAuthentication"] = "authenticated"
+                    result["measurements"]["consumerComponents"] = dict(result["components"])
+                if measured["schemaVersion"] == 3 and measured["runtimeComponents"] is not None:
+                    result["components"]["runtimeClaims"] = measured["runtimeComponents"]["claims"]
                     result["measurements"]["consumerComponents"] = dict(result["components"])
                 result["dimensions"].update(runtimeExecution="partial", coverage="partial")
         else:

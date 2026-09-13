@@ -38,13 +38,21 @@ CASES.update({
     "stable-api-runtime": (("candidate-sender", ""), ("previous", "")),
 })
 
-PROFILES = {"offline-self-test", "bounded-live", "protected-long-live"}
+PROFILES = {"offline-self-test", "bounded-live", "protected-long-live", "bounded-scheduler-integration"}
 KINDS = {"continuation", "start", "node-start", "probe", "sample", "operation", "fault", "recovery", "node-stop", "cleanup", "finish"}
 OUTCOMES = {"pass", "fail", "partial", "unsupported", "not-observed", "cleanup-incomplete"}
 ZERO = "sha256:" + "0" * 64
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 IDENTIFIER = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}\Z")
+RUNTIME_EVENT_BYTES = 1024 * 1024 + 4096
+
+
+def event_byte_limit(plan):
+    """Prospective runtime attachments are bounded; historical lines retain their 4 KiB cap."""
+    return RUNTIME_EVENT_BYTES if "scheduler" in plan.get("workloadInputs", {}) else 4096
+
+
 COUNTERS = {"operations", "bytes", "memoryBytes", "threads", "fileDescriptors", "queueDepth", "subscriptions", "failures"}
 
 
@@ -90,18 +98,19 @@ def validate_plan(plan):
         raise EvidenceError("policy-budget-invalid")
     if plan["profile"] == "protected-long-live" and policy["minimumObservedSeconds"] < 72 * 3600:
         raise EvidenceError("protected-policy-duration-too-short")
+    scheduler_local = plan["profile"] == "bounded-scheduler-integration"
     scenarios = plan["requiredScenarios"]
-    if not isinstance(scenarios, list) or any(not isinstance(s, str) for s in scenarios) or len(scenarios) != len(set(scenarios)) or set(scenarios) != SCENARIOS:
+    if not isinstance(scenarios, list) or any(not isinstance(s, str) for s in scenarios) or len(scenarios) != len(set(scenarios)) or set(scenarios) != ({"app-budgets"} if scheduler_local else SCENARIOS):
         raise EvidenceError("required-scenario-set-invalid")
     producer = plan["producer"]
     _closed(producer, {"sourceCommit", "runnerDigest", "adapterDigest"}, "producer")
     if not COMMIT.fullmatch(str(producer["sourceCommit"])) or any(not DIGEST.fullmatch(str(producer[k])) for k in ("runnerDigest", "adapterDigest")):
         raise EvidenceError("producer-identity-invalid")
     nodes = plan["nodes"]
-    if not isinstance(nodes, list) or not 4 <= len(nodes) <= 6:
+    if not isinstance(nodes, list) or not ((len(nodes) == 1) if scheduler_local else 4 <= len(nodes) <= 6):
         raise EvidenceError("node-count-invalid")
     workload = plan.get("workloadInputs", {})
-    if (not isinstance(workload, dict) or not set(workload) <= {"budget", "catalog"}
+    if (not isinstance(workload, dict) or not set(workload) <= {"budget", "catalog", "scheduler"}
             or any(not DIGEST.fullmatch(str(value)) for value in workload.values())):
         raise EvidenceError("workload-input-binding-invalid")
     cohorts = plan.get("cohorts", [])
@@ -133,6 +142,12 @@ def validate_plan(plan):
             raise EvidenceError("app-digests-invalid")
         if node["role"] in {"relay-no-apps", "hyphanet"} and apps:
             raise EvidenceError("app-free-role-has-apps")
+    if scheduler_local:
+        if (roles != ["candidate-sender"] or plan["provenanceClass"] != "source-build-comparison"
+                or not nodes[0]["appDigests"] or set(workload) != {"scheduler"} or cohorts
+                or plan["requestedSeconds"] > 600 or plan["policy"]["maxEvents"] > 4096):
+            raise EvidenceError("scheduler-local-profile-scope-invalid")
+        return json.loads(json.dumps(plan))
     if len(roles) != len(set(roles)) or not MANDATORY_ROLES <= set(roles):
         raise EvidenceError("node-roster-invalid")
     by_role = {n["role"]: n for n in nodes}
@@ -272,14 +287,14 @@ class Journal:
             raise EvidenceError("continuation-checkpoint-substituted-or-complete")
         path = self.root / "journal.jsonl"
         stat = path.lstat()
-        if path.is_symlink() or not path.is_file() or stat.st_uid != os.getuid() or stat.st_mode & 0o077 or stat.st_size > self.plan["policy"]["maxEvents"] * 4096:
+        if path.is_symlink() or not path.is_file() or stat.st_uid != os.getuid() or stat.st_mode & 0o077 or stat.st_size > (16 * 1024 * 1024 if "scheduler" in self.plan.get("workloadInputs", {}) else self.plan["policy"]["maxEvents"] * 4096):
             raise EvidenceError("continuation-journal-unsafe")
         with path.open() as stream:
             while True:
-                line = stream.readline(4097)
+                line = stream.readline(event_byte_limit(self.plan) + 1)
                 if not line:
                     break
-                if len(line) > 4096 or not line.endswith("\n"):
+                if len(line) > event_byte_limit(self.plan) or not line.endswith("\n"):
                     raise EvidenceError("continuation-journal-truncated")
                 self.events.append(json.loads(line, object_pairs_hook=_unique_json_members))
                 if len(self.events) >= self.plan["policy"]["maxEvents"]:
@@ -305,7 +320,7 @@ class Journal:
             finally:
                 os.close(self._lock)
 
-    def append(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, prior_checkpoint=None, peer_role="", node_epoch=None, cohort=""):
+    def append(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, prior_checkpoint=None, peer_role="", node_epoch=None, cohort="", runtime_evidence=None):
         if self.finished or len(self.events) >= self.plan["policy"]["maxEvents"]:
             raise EvidenceError("journal-closed-or-budget-exhausted")
         scope = (cohort, role)
@@ -328,7 +343,13 @@ class Journal:
             event["cohort"] = cohort
         if kind == "continuation":
             event["priorCheckpoint"] = prior_checkpoint
+        if runtime_evidence is not None:
+            event["runtimeEvidence"] = runtime_evidence
         _validate_event(event, self.plan)
+        if "scheduler" in self.plan.get("workloadInputs", {}) and self._stream.tell() > 16 * 1024 * 1024 - event_byte_limit(self.plan):
+            raise EvidenceError("journal-total-byte-budget-exceeded")
+        if len(json.dumps(event, separators=(",", ":")).encode()) + 1 > event_byte_limit(self.plan):
+            raise EvidenceError("journal-event-byte-budget-exceeded")
         self._stream.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
         self._stream.flush()
         os.fsync(self._stream.fileno())
@@ -366,6 +387,25 @@ def _validate_event(event, plan):
                 or event.get("peerRole")
                 or event.get("scenario") not in {"", "daemon-upgrade", "unsafe-downgrade"}):
             raise EvidenceError("event-cohort-binding-invalid")
+    if isinstance(event, dict) and "runtimeEvidence" in event:
+        fields.add("runtimeEvidence")
+        from .runtime_pressure_evidence import validate, RuntimeEvidenceError
+        binding = plan.get("workloadInputs", {}).get("scheduler")
+        if (binding is None or event.get("kind") != "operation" or event.get("scenario") != "app-budgets"
+                or event.get("role") != "candidate-sender" or event.get("outcome") != "partial"):
+            raise EvidenceError("runtime-evidence-journal-binding-invalid")
+        try:
+            validate(event["runtimeEvidence"], workload_digest=binding, observation_time=event["wallTime"])
+        except (RuntimeEvidenceError, ValueError, TypeError, KeyError):
+            raise EvidenceError("runtime-evidence-journal-contract-invalid") from None
+        selected = next(node for node in plan["nodes"] if node["role"] == event["role"])
+        fingerprint = event["runtimeEvidence"]["series"]["fingerprint"]
+        if (fingerprint["sourceCommit"] != selected["sourceCommit"]
+                or fingerprint["productDigest"] != selected["artifactDigest"]
+                or fingerprint["appCohortDigest"] != digest(selected["appDigests"])
+                or event["runtimeEvidence"]["series"]["evidenceClass"] !=
+                   ("operational" if plan["profile"] == "protected-long-live" else "synthetic-local")):
+            raise EvidenceError("runtime-evidence-exact-subject-mismatch")
     _closed(event, fields, "event")
     if any(not isinstance(event[k], str) for k in ("kind", "outcome", "role", "scenario", "peerRole", "operation")):
         raise EvidenceError("event-enum-type-invalid")

@@ -81,6 +81,54 @@ class PlatformApiOperatorRoutesTest {
   private static final HexFormat HEX = HexFormat.of();
 
   @Test
+  void runtimeObservationRequiresOperatorAndRejectsMutation() {
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+    List<String> path = List.of(OPERATOR_SEGMENT, "runtime-observation");
+    var response = router.route(request("GET", path, Map.of()));
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"inFlightOperations\":null"));
+    assertTrue(response.body().contains("\"pendingKeys\":null"));
+    assertTrue(response.body().contains("fixed-management-beans-v1"));
+    assertEquals(405, router.route(request("POST", path, Map.of())).statusCode());
+    assertEquals(
+        403,
+        router
+            .route(request("GET", path, Map.of(), PlatformApiPrincipal.appToken(APP_ID, List.of())))
+            .statusCode());
+    assertEquals(
+        403,
+        router
+            .route(
+                request(
+                    "GET",
+                    path,
+                    Map.of(),
+                    PlatformApiPrincipal.appBrowserSession(APP_ID, List.of())))
+            .statusCode());
+  }
+
+  @Test
+  void runtimeObservationUsesNativeAggregateAndRedactsProbeFailures() {
+    RuntimePorts ports = runtimePorts();
+    ContentFetchPort fetch = mock(ContentFetchPort.class);
+    when(ports.contentFetch()).thenReturn(fetch);
+    when(fetch.observation())
+        .thenReturn(
+            new network.crypta.runtime.spi.ContentFetchObservation(
+                true, "synthetic-epoch", 5, 1000, 1, 20, 3, 1, 1, false));
+    PlatformApiRouter router = new PlatformApiRouter(ports);
+    List<String> path = List.of(OPERATOR_SEGMENT, "runtime-observation");
+    var response = router.route(request("GET", path, Map.of()));
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"inFlightOperations\":1"));
+    when(fetch.observation()).thenThrow(new IllegalStateException(SOURCE));
+    var unavailable = router.route(request("GET", path, Map.of()));
+    assertEquals(200, unavailable.statusCode());
+    assertTrue(unavailable.body().contains("\"inFlightOperations\":null"));
+    assertFalse(unavailable.body().contains(SOURCE));
+  }
+
+  @Test
   void route_whenSupportLifecycleRequested_expectReadOnlyFailClosedSnapshot() {
     PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
 

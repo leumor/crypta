@@ -479,3 +479,12 @@ narrow admission success does not close missing runtime adapters or operational 
 ## PR-305 selected-federation implementation disposition
 
 The [focused PR-305 runbook](pr-305-federated-app-projection-and-catalog-origin.md) records the actual PR-304 squash integration, private selected-context versions and executable catalog-origin lifecycle. Baseline and successor evaluations use the same fixed `2026-09-11T17:20:00Z` cutoff and disjoint output roots. Native/local process results remain separate from original protected runtime, independent review and long-duration evidence. No historical approved repository-status file is replaced, no mandatory requirement is removed, and unrelated maintenance rows retain their existing blockers.
+
+PR-306 adds bounded native scheduler/budget observations, an exact-process resource series and a
+separate runtime baseline comparator. The [focused runbook](pr-306-scheduler-pressure-and-runtime-resource-baselines.md)
+records the source-owned prospective delta and actual validation. Its before/after repository
+assessments use cutoff `2026-09-12T17:00:00Z` in separate retained roots. Implementation pins may
+refresh without changing the accepted scope digest, mandatory assertions or historical statements.
+Narrow observed scheduler components remain separate from reviewed production resource bounds,
+original protected operation, default-profile/long-duration observation and all other Phase 12
+requirements. The encrypted selected-federation maintenance companion rejection remains intact.

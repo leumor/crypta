@@ -301,11 +301,66 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None)
                                          "participantEpochsDigest": digest([{key: event.get(key) for key in
                                              ("epoch", "role", "nodeEpoch", "peerRole", "peerNodeEpoch")} for event in events]),
                                          "blockers": sorted(derivation)})
+    runtime_events = [event for event in events if "runtimeEvidence" in event]
+    if not runtime_events and "scheduler" in plan.get("workloadInputs", {}):
+        result.update(schemaVersion=3, runtimeComponents=None)
+    if runtime_events:
+        from cryptad_certification.runtime_pressure_evidence import derive
+        if len(runtime_events) != 1:
+            raise ProjectionError("maintenance-runtime-component-replayed")
+        event = runtime_events[0]
+        components = derive(event["runtimeEvidence"],
+                            workload_digest=plan["workloadInputs"]["scheduler"],
+                            observation_time=event["wallTime"])
+        result.update(schemaVersion=3, runtimeComponents=components)
+        pressure_claims = ("scheduler-executor-observed", "pressure-before-budget-observed",
+                           "budget-family-accounting-verified", "background-recovery-observed")
+        if (result["subjectAdmission"]["status"] == "pass" and result["measurementDerivation"]["status"] == "pass"
+                and all(components["claims"][name] == "observed" for name in pressure_claims)):
+            for row in result["rows"]:
+                if row["id"] == PREFIX + "performance":
+                    row["blockers"].remove("scheduler-pressure-adapter-missing")
+        # An applicable original reviewed baseline is independently required. Local comparison
+        # diagnostics cannot remove that blocker, and no maintenance row changes status here.
     return result
 
 
 def validate(value):
     """Validate historical diagnostics or the closed prospective narrow-component contract."""
+    if isinstance(value, dict) and value.get("schemaVersion") == 3:
+        from cryptad_certification.runtime_pressure_evidence import CLAIMS
+        components = value.get("runtimeComponents")
+        if "runtimeComponents" in value and components is None:
+            historical = {key: item for key, item in value.items() if key != "runtimeComponents"}
+            historical["schemaVersion"] = 2
+            validate(historical)
+            return value
+        fields = {"schemaVersion", "claims", "workloadDigest", "seriesDigest", "evidenceDigest",
+                  "resourceFindings", "baselineStatus", "fullAppBudgets", "releaseEligible"}
+        if (not isinstance(components, dict) or set(components) != fields
+                or type(components["schemaVersion"]) is not int or components["schemaVersion"] != 1
+                or not isinstance(components["claims"], dict) or set(components["claims"]) != set(CLAIMS)
+                or any(status not in {"observed", "not-observed"} for status in components["claims"].values())
+                or any(not _digest_valid(components[key]) for key in ("workloadDigest", "seriesDigest", "evidenceDigest"))
+                or components["baselineStatus"] not in {"missing-reviewed-runtime-baseline", "incomparable", "insufficient-data", "measured-but-uncompared", "fail", "within-reviewed-local-bounds"}
+                or components["fullAppBudgets"] != "not-observed" or components["releaseEligible"] is not False
+                or not isinstance(components["resourceFindings"], list)
+                or any(not isinstance(code, str) or not re.fullmatch(r"runtime-[a-z-]{1,80}", code) for code in components["resourceFindings"])
+                or components["baselineStatus"] in {"missing-reviewed-runtime-baseline", "incomparable"} and components["claims"]["runtime-baseline-comparable"] != "not-observed"
+                or components["claims"]["runtime-within-reviewed-bounds"] != "not-observed"):
+            raise ProjectionError("maintenance-runtime-component-contract-invalid")
+        historical = json.loads(json.dumps(value))
+        historical.pop("runtimeComponents")
+        historical["schemaVersion"] = 2
+        for row in historical["rows"]:
+            if row["id"] == PREFIX + "performance" and "scheduler-pressure-adapter-missing" not in row["blockers"]:
+                if (historical["subjectAdmission"]["status"] != "pass"
+                        or historical["measurementDerivation"]["status"] != "pass"
+                        or any(components["claims"][name] != "observed" for name in CLAIMS[:4])):
+                    raise ProjectionError("maintenance-runtime-component-admission-invalid")
+                row["blockers"] = sorted(row["blockers"] + ["scheduler-pressure-adapter-missing"])
+        validate(historical)
+        return value
     if not isinstance(value, dict) or value.get("schemaVersion") != 2:
         return _validate_v1(value)
     extra = {"admittedProductsDigest", "evaluationCutoff", "subjectAdmission", "measurementDerivation"}
@@ -351,14 +406,14 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     """Materialize original measured inputs in the protected producer, never in offline verify."""
     from cross_version_supervisor_authority import authenticate_report
     report, origin = authenticate_report(coordinates, private_root)
-    if report.get("schemaVersion") not in {2, 3} or report.get("operation") != "finish":
+    if report.get("schemaVersion") not in {2, 3, 4} or report.get("operation") != "finish":
         raise ProjectionError("maintenance-measurements-original-finish-v2-required")
     value = validate(report["maintenanceMeasurements"])
     if (value["planDigest"] != expected_plan_digest or report["planDigest"] != expected_plan_digest
             or value["policyByteDigest"] != expected_policy_digest
             or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]
             or value["schemaVersion"] != report["schemaVersion"] - 1
-            or (value["schemaVersion"] == 2 and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
+            or (value["schemaVersion"] in {2, 3} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
         raise ProjectionError("maintenance-measurements-original-selection-mismatch")
     policy_bytes = POLICY.read_bytes()
     if "sha256:" + hashlib.sha256(policy_bytes).hexdigest() != expected_policy_digest:
@@ -368,6 +423,6 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     maximum_age = json.loads(policy_bytes)["evidenceWindows"]["maximumAgeDays"]
     if (now.tzinfo is None or now.utcoffset() is None or end is None or end > now
             or now - end > dt.timedelta(days=maximum_age)
-            or (value["schemaVersion"] == 2 and parse_timestamp(value["evaluationCutoff"]) > now)):
+            or (value["schemaVersion"] in {2, 3} and parse_timestamp(value["evaluationCutoff"]) > now)):
         raise ProjectionError("maintenance-measurements-original-observation-expired")
     return AuthenticatedMeasurements(value, origin, _AUTHORITY)

@@ -220,26 +220,26 @@ def validate_report(report):
     }
     version = report.get('schemaVersion') if isinstance(report, dict) else None
     extra = {'maintenanceMeasurements'} if version == 2 else set()
-    if version == 3:
+    if version in {3, 4}:
         extra = {'admittedProductsDigest'}
         if report.get('operation') in {'checkpoint', 'finish'}:
             extra.add('maintenanceMeasurements')
     if (not isinstance(report, dict) or report.get('operation') not in variants
             or set(report) != common | variants[report['operation']] | extra
-            or type(version) is not int or version not in {1, 2, 3} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
-            or (version == 3 and report['operation'] not in {'start', 'checkpoint', 'finish'})
+            or type(version) is not int or version not in {1, 2, 3, 4} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
+            or (version in {3, 4} and report['operation'] not in {'start', 'checkpoint', 'finish'})
             or report.get('kind') != 'cryptad-cross-version-supervisor'
             or report.get('purpose') != 'nonrelease-observed-experiment' or report.get('releaseEligible') is not False):
         raise AuthorityError('protected-supervisor-report-contract-invalid')
-    if version == 3 and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
+    if version in {3, 4} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
         raise AuthorityError('protected-supervisor-products-binding-invalid')
-    if version in {2, 3} and report['operation'] in {'checkpoint', 'finish'}:
+    if version in {2, 3, 4} and report['operation'] in {'checkpoint', 'finish'}:
         from maintenance_runtime_projection import validate
         measured = validate(report['maintenanceMeasurements'])
         if (measured['planDigest'] != report['planDigest'] or measured['producer'] != report['producer']
                 or measured['checkpointDigest'] != report['checkpoint']['digest']
                 or measured['schemaVersion'] != version - 1
-                or (version == 3 and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
+                or (version in {3, 4} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
             raise AuthorityError('protected-supervisor-measurements-binding-invalid')
     if report['operation'] == 'authorize':
         plan = validate_plan(report['plan'])
@@ -376,13 +376,15 @@ def authenticate_runner(plan, private_config, authorization):
 def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None):
     expected_uid = pwd.getpwnam('cryptad-soak').pw_uid if expected_uid is None else expected_uid
     maximum = plan['policy']['maxEvents']
+    from cryptad_certification.cross_version_evidence import event_byte_limit
+    line_limit = event_byte_limit(plan) if 'scheduler' in plan.get('workloadInputs', {}) else 2048
     root_fd = directory_fd(root)
     files = {}
     try:
         observed = os.fstat(root_fd)
         if observed.st_uid != expected_uid or observed.st_mode & 0o077:
             raise AuthorityError('protected-journal-path-not-owned')
-        for name, bound in (('checkpoint.json', 2048), ('journal.jsonl', maximum * 2048)):
+        for name, bound in (('checkpoint.json', 2048), ('journal.jsonl', (16 * 1024 * 1024 if "scheduler" in plan.get("workloadInputs", {}) else maximum * 2048))):
             descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
             files[name] = descriptor
             observed = os.fstat(descriptor)
@@ -398,8 +400,8 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False,
         events = []
         with os.fdopen(files.pop('journal.jsonl'), 'rb') as stream:
             for _ in range(sequence):
-                line = stream.readline(2049)
-                if not line or len(line) > 2048 or not line.endswith(b'\n'):
+                line = stream.readline(line_limit + 1)
+                if not line or len(line) > line_limit or not line.endswith(b'\n'):
                     raise AuthorityError('protected-checkpoint-journal-incomplete')
                 events.append(decode_json(line))
             if (require_eof or checkpoint.get('status') == 'complete') and stream.read(1):
@@ -490,7 +492,7 @@ def control(operation):
         report['approvalOrigin'] = origin
         report['approvalReportDigest'] = digest(previous)
         if product_rows and any('runtimeBinding' in row for row in product_rows):
-            report['schemaVersion'] = 3
+            report['schemaVersion'] = 4 if 'scheduler' in plan.get('workloadInputs', {}) else 3
             report['admittedProductsDigest'] = digest(product_rows)
         return report
     if previous.get('operation') not in {'start', 'checkpoint'}:
@@ -503,7 +505,7 @@ def control(operation):
         raise AuthorityError('protected-collection-original-start-substituted')
     if activation.get('products') and any('runtimeBinding' in row for row in activation['products']):
         bound_digest = digest(activation['products'])
-        if previous.get('schemaVersion') != 3 or previous.get('admittedProductsDigest') != bound_digest:
+        if previous.get('schemaVersion') != (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3) or previous.get('admittedProductsDigest') != bound_digest:
             raise AuthorityError('protected-collection-products-substituted')
         # Reopen the admitted private files at every continuation/finish boundary. Root activation
         # is the authority; no release credential or online authentication is passed to the service.
@@ -516,7 +518,7 @@ def control(operation):
         raise AuthorityError('protected-finish-service-still-running')
     report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid,
                            require_eof=operation == 'finish', activation=activation))
-    report['schemaVersion'] = 3 if report['maintenanceMeasurements']['schemaVersion'] == 2 else 2
+    report['schemaVersion'] = report['maintenanceMeasurements']['schemaVersion'] + 1
     return report
 
 
